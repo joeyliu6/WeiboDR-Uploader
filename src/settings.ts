@@ -22,6 +22,11 @@ const r2PublicDomainEl = document.getElementById('r2-public-domain') as HTMLInpu
 
 const baiduPrefixEl = document.getElementById('baidu-prefix') as HTMLInputElement;
 
+const webdavUrlEl = document.getElementById('webdav-url') as HTMLInputElement;
+const webdavUsernameEl = document.getElementById('webdav-username') as HTMLInputElement;
+const webdavPasswordEl = document.getElementById('webdav-password') as HTMLInputElement;
+const webdavRemotePathEl = document.getElementById('webdav-remote-path') as HTMLInputElement;
+
 const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
 const saveStatusEl = document.getElementById('save-status')!;
 
@@ -40,6 +45,19 @@ async function loadSettings() {
   r2PathEl.value = config.r2.path || '';
   r2PublicDomainEl.value = config.r2.publicDomain || '';
   baiduPrefixEl.value = config.baiduPrefix || DEFAULT_CONFIG.baiduPrefix;
+  
+  // WebDAV 配置 (v1.2)
+  if (config.webdav) {
+    webdavUrlEl.value = config.webdav.url || '';
+    webdavUsernameEl.value = config.webdav.username || '';
+    webdavPasswordEl.value = config.webdav.password || '';
+    webdavRemotePathEl.value = config.webdav.remotePath || DEFAULT_CONFIG.webdav.remotePath;
+  } else {
+    webdavUrlEl.value = '';
+    webdavUsernameEl.value = '';
+    webdavPasswordEl.value = '';
+    webdavRemotePathEl.value = DEFAULT_CONFIG.webdav.remotePath;
+  }
   
   // 设置单选框
   const format = config.outputFormat || 'baidu';
@@ -71,6 +89,12 @@ async function saveSettings() {
     },
     baiduPrefix: baiduPrefixEl.value.trim(),
     outputFormat: format as UserConfig['outputFormat'],
+    webdav: {
+      url: webdavUrlEl.value.trim(),
+      username: webdavUsernameEl.value.trim(),
+      password: webdavPasswordEl.value.trim(),
+      remotePath: webdavRemotePathEl.value.trim() || DEFAULT_CONFIG.webdav.remotePath,
+    },
   };
 
   try {

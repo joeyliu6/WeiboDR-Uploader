@@ -60,6 +60,22 @@
             </div>
         </div>
 
+        <div class="form-section">
+            <h2>WebDAV 自动备份 (可选) (v1.2)</h2>
+            <p>配置后，每次上传成功会自动将历史记录同步到 WebDAV（例如：坚果云）。</p>
+            <label>WebDAV URL</label>
+            <input type="text" id="webdav-url" placeholder="例如: https://dav.jianguoyun.com/dav/" />
+            
+            <label>WebDAV 用户名</label>
+            <input type="text" id="webdav-username" placeholder="通常是邮箱" />
+            
+            <label>WebDAV 密码</label>
+            <input type="password" id="webdav-password" placeholder="通常是应用的授权码" />
+            
+            <label>远程路径</label>
+            <input type="text" id="webdav-remote-path" placeholder="例如: /WeiboDR/history.json" value="/WeiboDR/history.json" />
+        </div>
+
         <div class="footer">
             <button id="save-btn">保存并关闭</button>
             <span id="save-status"></span>

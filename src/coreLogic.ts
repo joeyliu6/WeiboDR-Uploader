@@ -3,6 +3,7 @@ import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
 import { writeText as writeToClipboard } from "@tauri-apps/api/clipboard";
 import { sendNotification, isPermissionGranted, requestPermission } from "@tauri-apps/api/notification";
 import { readBinaryFile } from '@tauri-apps/api/fs';
+import { getClient, Body } from '@tauri-apps/api/http';
 import { uploadToWeibo } from './weiboUploader';
 import { UserConfig, R2Config, HistoryItem } from './config';
 import { Store } from './store';
@@ -91,6 +92,49 @@ async function showNotification(title: string, body?: string) {
 }
 
 /**
+ * 同步历史记录到 WebDAV (v1.2 新增 - 自动同步)
+ * 非阻塞性，失败时只在控制台记录
+ */
+async function syncHistoryToWebDAV(items: HistoryItem[], config: UserConfig) {
+  if (!config.webdav) {
+    return; // 未配置 WebDAV，静默跳过
+  }
+
+  const { url, username, password, remotePath } = config.webdav;
+  
+  if (!url || !username || !password || !remotePath) {
+    return; // 配置不完整，静默跳过
+  }
+
+  try {
+    const jsonContent = JSON.stringify(items, null, 2);
+    
+    // 构建 WebDAV URL
+    const webdavUrl = url.endsWith('/') ? url + remotePath.substring(1) : url + remotePath;
+
+    // 使用 Basic Auth
+    const auth = btoa(`${username}:${password}`);
+    
+    const client = await getClient();
+    const response = await client.put(webdavUrl, Body.text(jsonContent), {
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Basic ${auth}`
+      }
+    });
+
+    if (response.ok) {
+      console.log(`[WebDAV] 已自动同步 ${items.length} 条记录到 WebDAV`);
+    } else {
+      console.error(`[WebDAV] 自动同步失败: HTTP ${response.status}`);
+    }
+  } catch (error) {
+    console.error("[WebDAV] 自动同步失败:", error);
+    // 非阻塞性错误，只在控制台记录
+  }
+}
+
+/**
  * * * (核心工作流) 处理用户拖拽的文件
  * * */
 export async function handleFileUpload(filePath: string, config: UserConfig) {
@@ -160,6 +204,12 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       await historyStore.set('uploads', newItems);
       await historyStore.save();
       console.log("[历史记录] 已保存成功。");
+
+      // [v1.2 新增] 自动同步到 WebDAV (异步，非阻塞)
+      syncHistoryToWebDAV(newItems, config)
+        .catch(err => {
+          console.error("[WebDAV] 自动同步异常:", err);
+        });
 
     } catch (historyError) {
       console.error("[历史记录] 保存失败:", historyError);

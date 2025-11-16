@@ -23,7 +23,12 @@
           "https://picupload.weibo.com/*",
           "https://*.r2.cloudflarestorage.com/*",
           "https://weibo.com/*",
-          "https://*.weibo.com/*"
+          "https://*.weibo.com/*",
+          "https://dav.jianguoyun.com/*",
+          "https://*.jianguoyun.com/*",
+          "https://dav.yandex.com/*",
+          "https://*.yandex.com/*",
+          "https://webdav.*/*"
         ]
       },
       "notification": {

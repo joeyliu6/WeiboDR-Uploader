@@ -10,11 +10,19 @@ export interface R2Config {
   publicDomain: string;
 }
 
+export interface WebDAVConfig {
+  url: string;           // WebDAV URL (例如: https://dav.jianguoyun.com/dav/)
+  username: string;      // WebDAV 用户名 (通常是邮箱)
+  password: string;     // WebDAV 密码 (通常是应用的授权码)
+  remotePath: string;   // 远程路径 (例如: /WeiboDR/history.json)
+}
+
 export interface UserConfig {
   weiboCookie: string;
   r2: R2Config;
   baiduPrefix: string;
   outputFormat: 'baidu' | 'weibo' | 'r2';
+  webdav: WebDAVConfig; // v1.2 新增
 }
 
 export interface HistoryItem {
@@ -39,5 +47,11 @@ export const DEFAULT_CONFIG: UserConfig = {
   },
   baiduPrefix: 'https://image.baidu.com/search/down?thumburl=',
   outputFormat: 'baidu',
+  webdav: {
+    url: '',
+    username: '',
+    password: '',
+    remotePath: '/WeiboDR/history.json',
+  },
 };
 
