@@ -20,13 +20,10 @@ export default defineConfig({
     },
   },
   build: {
-    rollupOptions: {
-      input: {
-        main: resolve(fileURLToPath(new URL(".", import.meta.url)), "index.html"),
-        settings: resolve(fileURLToPath(new URL(".", import.meta.url)), "src/settings.html"),
-        history: resolve(fileURLToPath(new URL(".", import.meta.url)), "src/history.html"),
-      },
-    },
-  },
+            rollupOptions: {
+                input: {
+                    main: resolve(fileURLToPath(new URL(".", import.meta.url)), "index.html"),
+                },
+            },  },
 });
 

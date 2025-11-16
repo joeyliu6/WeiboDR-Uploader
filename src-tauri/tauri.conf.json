@@ -69,31 +69,9 @@
         "fullscreen": false,
         "resizable": true,
         "title": "WeiboDR-Uploader (微博灾备上传器)",
-        "width": 450,
-        "height": 300,
+        "width": 800,
+        "height": 600,
         "label": "main"
-      },
-      {
-        "width": 600,
-        "height": 750,
-        "resizable": true,
-        "title": "设置",
-        "label": "settings",
-        "url": "/src/settings.html",
-        "visible": false,
-        "decorations": true,
-        "alwaysOnTop": true
-      },
-      {
-        "width": 700,
-        "height": 500,
-        "resizable": true,
-        "title": "上传历史记录",
-        "label": "history",
-        "url": "/src/history.html",
-        "visible": false,
-        "decorations": true,
-        "alwaysOnTop": false
       }
     ],
     "systemTray": {

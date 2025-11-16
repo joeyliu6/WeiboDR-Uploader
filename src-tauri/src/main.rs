@@ -4,7 +4,7 @@
     windows_subsystem = "windows"
 )]
 
-use tauri::{CustomMenuItem, Manager, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem, SystemTrayEvent, WindowUrl};
+use tauri::{CustomMenuItem, Manager, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem, SystemTrayEvent};
 
 fn main() {
     // 1. 定义原生菜单栏 (PRD 1.1)
@@ -34,14 +34,10 @@ fn main() {
     // "窗口" 菜单
     let history = CustomMenuItem::new("history".to_string(), "上传历史记录")
         .accelerator("CmdOrCtrl+H"); // 快捷键 CmdOrCtrl+H
-    let close_window = CustomMenuItem::new("close_window".to_string(), "关闭窗口")
-        .accelerator("CmdOrCtrl+W"); // 快捷键 CmdOrCtrl+W
-    
     let window_menu = Submenu::new(
         "窗口",
         Menu::new()
             .add_item(history)
-            .add_item(close_window)
     );
     
     // 构建完整菜单
@@ -68,78 +64,15 @@ fn main() {
             
             match event.menu_item_id() {
                 "preferences" => {
-                    eprintln!("尝试打开设置窗口");
-                    let app_handle = app.clone();
-                    // 如果窗口不存在，创建它；如果存在，显示它
-                    if let Some(window) = app.get_window("settings") {
-                        if let Err(e) = window.show() {
-                            eprintln!("显示设置窗口失败: {:?}", e);
-                        }
-                        if let Err(e) = window.set_focus() {
-                            eprintln!("设置窗口焦点失败: {:?}", e);
-                        }
-                    } else {
-                        eprintln!("设置窗口不存在，尝试创建...");
-                        // 动态创建窗口
-                        match tauri::WindowBuilder::new(
-                            &app_handle,
-                            "settings",
-                            WindowUrl::App("/src/settings.html".into())
-                        )
-                        .title("设置")
-                        .inner_size(600.0, 750.0)
-                        .resizable(true)
-                        .always_on_top(true)
-                        .visible(false)
-                        .build() {
-                            Ok(window) => {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                            Err(e) => {
-                                eprintln!("创建设置窗口失败: {:?}", e);
-                            }
-                        }
+                    eprintln!("菜单事件触发: 偏好设置");
+                    if let Some(main_window) = app.get_window("main") {
+                        let _ = main_window.emit("navigate-to", "settings");
                     }
                 }
                 "history" => {
-                    eprintln!("尝试打开历史记录窗口");
-                    let app_handle = app.clone();
-                    // 如果窗口不存在，创建它；如果存在，显示它
-                    if let Some(window) = app.get_window("history") {
-                        if let Err(e) = window.show() {
-                            eprintln!("显示历史记录窗口失败: {:?}", e);
-                        }
-                        if let Err(e) = window.set_focus() {
-                            eprintln!("设置历史记录窗口焦点失败: {:?}", e);
-                        }
-                    } else {
-                        eprintln!("历史记录窗口不存在，尝试创建...");
-                        // 动态创建窗口
-                        match tauri::WindowBuilder::new(
-                            &app_handle,
-                            "history",
-                            WindowUrl::App("/src/history.html".into())
-                        )
-                        .title("上传历史记录")
-                        .inner_size(700.0, 500.0)
-                        .resizable(true)
-                        .always_on_top(false)
-                        .visible(false)
-                        .build() {
-                            Ok(window) => {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                            Err(e) => {
-                                eprintln!("创建历史记录窗口失败: {:?}", e);
-                            }
-                        }
-                    }
-                }
-                "close_window" => {
-                    if let Some(window) = app.get_focused_window() {
-                        let _ = window.close();
+                    eprintln!("菜单事件触发: 上传历史记录");
+                    if let Some(main_window) = app.get_window("main") {
+                        let _ = main_window.emit("navigate-to", "history");
                     }
                 }
                 "quit" => {
@@ -157,50 +90,15 @@ fn main() {
                         std::process::exit(0);
                     }
                     "open_settings" => {
-                        // 获取 "settings" 窗口句柄，如果不存在则创建
-                        if let Some(window) = app.get_window("settings") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        } else {
-                            // 动态创建窗口
-                            let app_handle = app.clone();
-                            if let Ok(window) = tauri::WindowBuilder::new(
-                                &app_handle,
-                                "settings",
-                                WindowUrl::App("/src/settings.html".into())
-                            )
-                            .title("设置")
-                            .inner_size(600.0, 750.0)
-                            .resizable(true)
-                            .always_on_top(true)
-                            .visible(false)
-                            .build() {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                        eprintln!("托盘事件触发: 打开设置");
+                        if let Some(main_window) = app.get_window("main") {
+                            let _ = main_window.emit("navigate-to", "settings");
                         }
                     }
                     "open_history" => {
-                        if let Some(window) = app.get_window("history") {
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        } else {
-                            // 动态创建窗口
-                            let app_handle = app.clone();
-                            if let Ok(window) = tauri::WindowBuilder::new(
-                                &app_handle,
-                                "history",
-                                WindowUrl::App("/src/history.html".into())
-                            )
-                            .title("上传历史记录")
-                            .inner_size(700.0, 500.0)
-                            .resizable(true)
-                            .always_on_top(false)
-                            .visible(false)
-                            .build() {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
+                        eprintln!("托盘事件触发: 上传历史记录");
+                        if let Some(main_window) = app.get_window("main") {
+                            let _ = main_window.emit("navigate-to", "history");
                         }
                     }
                     _ => {}
