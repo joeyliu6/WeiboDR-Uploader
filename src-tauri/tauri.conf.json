@@ -47,6 +47,9 @@
       },
       "path": {
         "all": true
+      },
+      "dialog": {
+        "save": true
       }
     },
     "bundle": {
