@@ -17,12 +17,19 @@ export interface WebDAVConfig {
   remotePath: string;   // 远程路径 (例如: /WeiboDR/history.json)
 }
 
+export interface AccountConfig {
+  allowUserAccount: boolean;
+  username: string;
+  password?: string; // 密码是敏感信息，加密存储
+}
+
 export interface UserConfig {
   weiboCookie: string;
   r2: R2Config;
   baiduPrefix: string;
   outputFormat: 'baidu' | 'weibo' | 'r2';
   webdav: WebDAVConfig; // v1.2 新增
+  account: AccountConfig; // v2.1 新增
 }
 
 export interface HistoryItem {
@@ -32,6 +39,13 @@ export interface HistoryItem {
   weiboPid: string;              // 微博返回的 PID (例如 006G4xsfgy1h8pbgtnqirj)
   generatedLink: string;         // 最终复制到剪贴板的链接
   r2Key: string | null;          // 如果 R2 备份成功，存储 R2 上的 Key；否则为 null
+}
+
+export interface FailedItem {
+  id: string;                   // 时间戳或UUID
+  filePath: string;              // 文件的本地绝对路径
+  configSnapshot: UserConfig;    // 失败当时的用户配置
+  errorMessage: string;          // 失败原因
 }
 
 // 默认配置
@@ -52,6 +66,11 @@ export const DEFAULT_CONFIG: UserConfig = {
     username: '',
     password: '',
     remotePath: '/WeiboDR/history.json',
+  },
+  account: {
+    allowUserAccount: false,
+    username: '',
+    password: '',
   },
 };
 

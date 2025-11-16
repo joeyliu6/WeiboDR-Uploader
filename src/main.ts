@@ -2,8 +2,9 @@
 import { listen } from '@tauri-apps/api/event';
 
 import { Store } from './store';
-import { UserConfig, HistoryItem, DEFAULT_CONFIG } from './config';
+import { UserConfig, HistoryItem, FailedItem, DEFAULT_CONFIG } from './config';
 import { handleFileUpload } from './coreLogic';
+import { emit } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
@@ -12,19 +13,22 @@ import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
 // --- STORES ---
 const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
+const retryStore = new Store('.retry.dat');
 
 // --- DOM ELEMENTS ---
 // Views
 const uploadView = document.getElementById('upload-view')!;
 const historyView = document.getElementById('history-view')!;
 const settingsView = document.getElementById('settings-view')!;
-const views = [uploadView, historyView, settingsView];
+const failedView = document.getElementById('failed-view')!;
+const views = [uploadView, historyView, settingsView, failedView];
 
 // Navigation
 const navUploadBtn = document.getElementById('nav-upload')!;
 const navHistoryBtn = document.getElementById('nav-history')!;
+const navFailedBtn = document.getElementById('nav-failed')!;
 const navSettingsBtn = document.getElementById('nav-settings')!;
-const navButtons = [navUploadBtn, navHistoryBtn, navSettingsBtn];
+const navButtons = [navUploadBtn, navHistoryBtn, navFailedBtn, navSettingsBtn];
 
 // Upload View Elements
 const dropZone = document.getElementById('drop-zone')!;
@@ -36,6 +40,9 @@ const loadingSpinner = document.getElementById('loading-spinner')!;
 const weiboCookieEl = document.getElementById('weibo-cookie') as HTMLTextAreaElement;
 const testCookieBtn = document.getElementById('test-cookie-btn') as HTMLButtonElement;
 const cookieStatusEl = document.getElementById('cookie-status')!;
+const allowUserAccountEl = document.getElementById('allow-user-account') as HTMLInputElement;
+const weiboUsernameEl = document.getElementById('weibo-username') as HTMLInputElement;
+const weiboPasswordEl = document.getElementById('weibo-password') as HTMLInputElement;
 const r2AccountIdEl = document.getElementById('r2-account-id') as HTMLInputElement;
 const r2KeyIdEl = document.getElementById('r2-key-id') as HTMLInputElement;
 const r2SecretKeyEl = document.getElementById('r2-secret-key') as HTMLInputElement;
@@ -58,9 +65,15 @@ const syncWebdavBtn = document.getElementById('sync-webdav-btn')!;
 const searchInput = document.getElementById('search-input') as HTMLInputElement;
 const historyStatusMessageEl = document.querySelector('#history-view #status-message') as HTMLElement;
 
+// Failed View Elements
+const failedBody = document.getElementById('failed-body')!;
+const retryAllBtn = document.getElementById('retry-all-btn')!;
+const clearAllFailedBtn = document.getElementById('clear-all-failed-btn')!;
+const badgeEl = document.getElementById('badge')!;
+
 
 // --- VIEW ROUTING ---
-function navigateTo(viewId: 'upload' | 'history' | 'settings') {
+function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed') {
   // Deactivate all views and buttons
   views.forEach(v => v.classList.remove('active'));
   navButtons.forEach(b => b.classList.remove('active'));
@@ -79,6 +92,8 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings') {
     loadHistory();
   } else if (viewId === 'settings') {
     loadSettings();
+  } else if (viewId === 'failed') {
+    loadFailedQueue();
   }
 }
 
@@ -133,6 +148,22 @@ async function loadSettings() {
     }
   
     weiboCookieEl.value = config.weiboCookie || '';
+    
+    // 加载账号密码配置
+    if (config.account) {
+      allowUserAccountEl.checked = config.account.allowUserAccount || false;
+      weiboUsernameEl.value = config.account.username || '';
+      weiboPasswordEl.value = config.account.password || '';
+      weiboUsernameEl.disabled = !allowUserAccountEl.checked;
+      weiboPasswordEl.disabled = !allowUserAccountEl.checked;
+    } else {
+      allowUserAccountEl.checked = false;
+      weiboUsernameEl.value = '';
+      weiboPasswordEl.value = '';
+      weiboUsernameEl.disabled = true;
+      weiboPasswordEl.disabled = true;
+    }
+    
     r2AccountIdEl.value = config.r2.accountId || '';
     r2KeyIdEl.value = config.r2.accessKeyId || '';
     r2SecretKeyEl.value = config.r2.secretAccessKey || '';
@@ -185,6 +216,11 @@ async function saveSettings() {
         username: webdavUsernameEl.value.trim(),
         password: webdavPasswordEl.value.trim(),
         remotePath: webdavRemotePathEl.value.trim() || DEFAULT_CONFIG.webdav.remotePath,
+      },
+      account: {
+        allowUserAccount: allowUserAccountEl.checked,
+        username: weiboUsernameEl.value.trim(),
+        password: weiboPasswordEl.value.trim(),
       },
     };
   
@@ -493,22 +529,173 @@ async function syncToWebDAV() {
     }
 }
 
+// --- FAILED QUEUE LOGIC (v2.1) ---
+async function loadFailedQueue() {
+  try {
+    const items = await retryStore.get<FailedItem[]>('failed') || [];
+    renderFailedTable(items);
+    updateFailedBadge(items.length);
+  } catch (err) {
+    console.error('加载失败队列失败:', err);
+    renderFailedTable([]);
+  }
+}
+
+async function renderFailedTable(items: FailedItem[]) {
+  failedBody.innerHTML = '';
+  
+  if (items.length === 0) {
+    failedBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">暂无失败记录</td></tr>';
+    return;
+  }
+  
+  for (const item of items) {
+    const tr = document.createElement('tr');
+    tr.setAttribute('data-id', item.id);
+    
+    const tdName = document.createElement('td');
+    const name = item.filePath.split(/[/\\]/).pop() || item.filePath;
+    tdName.textContent = name;
+    tdName.title = item.filePath;
+    tr.appendChild(tdName);
+    
+    const tdError = document.createElement('td');
+    tdError.textContent = item.errorMessage;
+    tdError.title = item.errorMessage;
+    tr.appendChild(tdError);
+    
+    const tdAction = document.createElement('td');
+    const retryBtn = document.createElement('button');
+    retryBtn.textContent = '重试';
+    retryBtn.addEventListener('click', async () => {
+      await retryFailedItem(item.id);
+    });
+    tdAction.appendChild(retryBtn);
+    
+    const removeBtn = document.createElement('button');
+    removeBtn.textContent = '移除';
+    removeBtn.style.marginLeft = '10px';
+    removeBtn.addEventListener('click', async () => {
+      await removeFailedItem(item.id);
+    });
+    tdAction.appendChild(removeBtn);
+    
+    tr.appendChild(tdAction);
+    failedBody.appendChild(tr);
+  }
+}
+
+async function updateFailedBadge(count: number) {
+  if (count > 0) {
+    badgeEl.textContent = count.toString();
+    badgeEl.style.display = 'inline-block';
+  } else {
+    badgeEl.style.display = 'none';
+  }
+}
+
+async function retryFailedItem(itemId: string) {
+  try {
+    const items = await retryStore.get<FailedItem[]>('failed') || [];
+    const item = items.find(i => i.id === itemId);
+    if (!item) {
+      return;
+    }
+    
+    const result = await handleFileUpload(item.filePath, item.configSnapshot);
+    if (result.status === 'success') {
+      // 从失败队列中移除
+      const newItems = items.filter(i => i.id !== itemId);
+      await retryStore.set('failed', newItems);
+      await retryStore.save();
+      await loadFailedQueue();
+      await emit('update-failed-count', newItems.length);
+    }
+  } catch (err) {
+    console.error('重试失败:', err);
+  }
+}
+
+async function removeFailedItem(itemId: string) {
+  try {
+    const items = await retryStore.get<FailedItem[]>('failed') || [];
+    const newItems = items.filter(i => i.id !== itemId);
+    await retryStore.set('failed', newItems);
+    await retryStore.save();
+    await loadFailedQueue();
+    await emit('update-failed-count', newItems.length);
+  } catch (err) {
+    console.error('移除失败项失败:', err);
+  }
+}
+
+async function retryAllFailed() {
+  try {
+    const items = await retryStore.get<FailedItem[]>('failed') || [];
+    if (items.length === 0) {
+      return;
+    }
+    
+    for (const item of items) {
+      const result = await handleFileUpload(item.filePath, item.configSnapshot);
+      if (result.status === 'success') {
+        // 从失败队列中移除
+        const currentItems = await retryStore.get<FailedItem[]>('failed') || [];
+        const newItems = currentItems.filter(i => i.id !== item.id);
+        await retryStore.set('failed', newItems);
+        await retryStore.save();
+      }
+    }
+    
+    await loadFailedQueue();
+    const remainingItems = await retryStore.get<FailedItem[]>('failed') || [];
+    await emit('update-failed-count', remainingItems.length);
+  } catch (err) {
+    console.error('全部重试失败:', err);
+  }
+}
+
+async function clearAllFailed() {
+  if (!confirm('确定要清除所有失败记录吗？')) {
+    return;
+  }
+  try {
+    await retryStore.clear();
+    await retryStore.save();
+    await loadFailedQueue();
+    await emit('update-failed-count', 0);
+  } catch (err) {
+    console.error('清除失败队列失败:', err);
+  }
+}
+
 // --- INITIALIZATION ---
 function initialize() {
     // Bind navigation events
     navUploadBtn.addEventListener('click', () => navigateTo('upload'));
     navHistoryBtn.addEventListener('click', () => navigateTo('history'));
+    navFailedBtn.addEventListener('click', () => navigateTo('failed'));
     navSettingsBtn.addEventListener('click', () => navigateTo('settings'));
 
     // Bind settings events
     saveBtn.addEventListener('click', saveSettings);
     testCookieBtn.addEventListener('click', testWeiboConnection);
+    
+    // 账号密码复选框启用/禁用逻辑
+    allowUserAccountEl.addEventListener('change', () => {
+      weiboUsernameEl.disabled = !allowUserAccountEl.checked;
+      weiboPasswordEl.disabled = !allowUserAccountEl.checked;
+    });
 
     // Bind history events
     clearHistoryBtn.addEventListener('click', clearHistory);
     exportJsonBtn.addEventListener('click', exportToJson);
     syncWebdavBtn.addEventListener('click', syncToWebDAV);
     searchInput.addEventListener('input', applySearchFilter);
+    
+    // Bind failed queue events
+    retryAllBtn.addEventListener('click', retryAllFailed);
+    clearAllFailedBtn.addEventListener('click', clearAllFailed);
 
     // Initialize file drop listeners
     initializeUpload();
@@ -518,9 +705,18 @@ function initialize() {
         const page = event.payload as 'settings' | 'history';
         navigateTo(page);
     });
+    
+    // Listen for failed count updates
+    listen('update-failed-count', async (event) => {
+      const count = event.payload as number;
+      await updateFailedBadge(count);
+    });
 
     // Start on the upload view
     navigateTo('upload');
+    
+    // 初始化失败队列角标
+    loadFailedQueue();
 }
 
 document.addEventListener('DOMContentLoaded', initialize);

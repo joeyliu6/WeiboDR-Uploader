@@ -47,6 +47,7 @@ body, html {
   cursor: pointer;
   margin-bottom: 20px;
   transition: color 0.2s;
+  position: relative;
 }
 
 .nav-btn:hover {
@@ -55,6 +56,21 @@ body, html {
 
 .nav-btn.active {
   color: #3498db;
+}
+
+.badge {
+  position: absolute;
+  top: -5px;
+  right: -5px;
+  background-color: #e74c3c;
+  color: white;
+  border-radius: 10px;
+  padding: 2px 6px;
+  font-size: 10px;
+  font-weight: bold;
+  min-width: 18px;
+  text-align: center;
+  line-height: 1.2;
 }
 
 #nav-settings {
@@ -294,4 +310,63 @@ body, html {
     border-radius: 4px;
     color: #eee;
     font-size: 1em;
+}
+
+/* Failed View Styles */
+#failed-view .container {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 10px 20px 40px 20px;
+}
+
+#failed-view h1 {
+  color: #eee;
+  border-bottom: 1px solid #444;
+  padding-bottom: 10px;
+  font-size: 1.5em;
+}
+
+#failed-view table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 20px;
+}
+
+#failed-view th, #failed-view td {
+  border-bottom: 1px solid #444;
+  padding: 12px 8px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+#failed-view th {
+  color: #bbb;
+}
+
+#failed-view td {
+  color: #ddd;
+  font-size: 0.9em;
+}
+
+#failed-view button {
+  background-color: #3498db;
+  border: none;
+  color: white;
+  padding: 8px 12px;
+  border-radius: 4px;
+  font-size: 0.9em;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+#failed-view button:hover {
+  background-color: #2980b9;
+}
+
+#failed-view #clear-all-failed-btn {
+  background-color: #c0392b;
+}
+
+#failed-view #clear-all-failed-btn:hover {
+  background-color: #a93226;
 }

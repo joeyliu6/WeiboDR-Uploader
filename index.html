@@ -11,6 +11,7 @@
       <div class="sidebar">
         <button id="nav-upload" class="nav-btn active">☁️</button>
         <button id="nav-history" class="nav-btn">📜</button>
+        <button id="nav-failed" class="nav-btn">⚠️<span class="badge" id="badge" style="display: none;">0</span></button>
         <button id="nav-settings" class="nav-btn">⚙️</button>
       </div>
       <div class="content-area">
@@ -68,6 +69,18 @@
                 <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串..."></textarea>
                 <button id="test-cookie-btn">测试连接</button>
                 <span id="cookie-status"></span>
+                
+                <div class="form-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
+                    <h3>高级选项</h3>
+                    <div class="radio-group">
+                        <input type="checkbox" id="allow-user-account" />
+                        <label for="allow-user-account">启用账号密码自动续期 (推荐)</label>
+                    </div>
+                    <label>微博登录邮箱/手机号</label>
+                    <input type="text" id="weibo-username" placeholder="微博登录邮箱/手机号" disabled />
+                    <label>微博登录密码</label>
+                    <input type="password" id="weibo-password" placeholder="微博登录密码" disabled />
+                </div>
             </div>
     
             <div class="form-section">
@@ -132,6 +145,28 @@
                 <button id="save-btn">保存并关闭</button>
                 <span id="save-status"></span>
             </div>
+        </div>
+        </div>
+        <div id="failed-view" class="view">
+          <div class="container">
+            <h1>失败队列</h1>
+            
+            <div class="footer" style="margin-bottom: 20px;">
+                <button id="retry-all-btn">全部重试</button>
+                <button id="clear-all-failed-btn">全部清除</button>
+            </div>
+            
+            <table id="failed-table">
+                <thead>
+                    <tr>
+                        <th>本地文件名</th>
+                        <th>失败原因</th>
+                        <th>操作</th>
+                    </tr>
+                </thead>
+                <tbody id="failed-body">
+                </tbody>
+            </table>
         </div>
         </div>
       </div>

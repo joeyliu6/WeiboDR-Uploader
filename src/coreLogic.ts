@@ -5,9 +5,11 @@ import { sendNotification, isPermissionGranted, requestPermission } from "@tauri
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { getClient, Body } from '@tauri-apps/api/http';
 import { uploadToWeibo } from './weiboUploader';
-import { UserConfig, R2Config, HistoryItem } from './config';
+import { UserConfig, R2Config, HistoryItem, FailedItem } from './config';
 import { Store } from './store';
 import { basename } from '@tauri-apps/api/path';
+import { invoke } from '@tauri-apps/api/tauri';
+import { emit } from '@tauri-apps/api/event';
 
 /**
  * 步骤 B: 备份 R2 (并行, 非阻塞性)
@@ -66,12 +68,15 @@ function generateLink(
     case 'weibo':
       return weiboLargeUrl;
     case 'r2':
-      // PRD 3.4: 动态使用 R2 公开域名
+      // v2.1: 检查 R2 公开域，如果不存在则回退到微博链接
       const publicDomain = config.r2.publicDomain;
-      if (!publicDomain) {
-        console.warn("警告：R2 公开访问域名未配置，将使用占位符。");
+      if (!publicDomain || !publicDomain.trim() || !publicDomain.startsWith('http')) {
+        console.warn("警告：R2 公开访问域名未配置或格式不正确，回退到微博链接。");
+        sendNotification("R2 链接生成失败！", "请在设置中配置 R2 公开访问域。");
+        // 回退到微博链接
+        return weiboLargeUrl;
       }
-      const domain = publicDomain || 'https://<YOUR_R2_PUBLIC_DOMAIN>';
+      const domain = publicDomain.endsWith('/') ? publicDomain.slice(0, -1) : publicDomain;
       const path = config.r2.path || '';
       const key = (path.endsWith('/') || path === '' ? path : path + '/') + hashName;
       return `${domain}/${key}`; 
@@ -225,9 +230,107 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
     // --- [阻塞性错误处理] ---
     // 捕获 [步骤 A] 的失败
     console.error("核心流程失败:", error);
-    await showNotification("上传失败", error.message);
     
-    return { status: 'error', message: error.message };
+    const errorMessage = error.message || '未知错误';
+    
+    // v2.1: Cookie 自动续期逻辑
+    if (errorMessage.includes("Cookie")) {
+      // 检查是否启用了账号密码自动续期
+      if (config.account && config.account.allowUserAccount && 
+          config.account.username && config.account.password) {
+        console.log("[自动续期] 检测到 Cookie 过期，尝试自动续期...");
+        
+        try {
+          // 调用 Rust 后端登录
+          const newCookie = await invoke<string>("attempt_weibo_login", {
+            username: config.account.username,
+            password: config.account.password
+          });
+          
+          console.log("[自动续期] 登录成功，更新 Cookie...");
+          
+          // 更新内存中的 Cookie
+          config.weiboCookie = newCookie;
+          
+          // 更新存储中的 Cookie
+          const configStore = new Store('.settings.dat');
+          const savedConfig = await configStore.get<UserConfig>('config');
+          if (savedConfig) {
+            savedConfig.weiboCookie = newCookie;
+            await configStore.set('config', savedConfig);
+            await configStore.save();
+          }
+          
+          // 自动重试上传
+          console.log("[自动续期] 使用新 Cookie 重试上传...");
+          return await handleFileUpload(filePath, config);
+          
+        } catch (loginError: any) {
+          console.error("[自动续期] 登录失败:", loginError);
+          await showNotification(
+            "Cookie 已过期，且自动续期失败！", 
+            `请检查账号密码或手动更新 Cookie。错误: ${loginError}`
+          );
+          
+          // v2.0 优化：自动导航到设置视图
+          await emit('navigate-to', 'settings');
+          
+          return { status: 'error', message: `Cookie 过期且自动续期失败: ${loginError}` };
+        }
+      } else {
+        // 未启用自动续期，按原样处理
+        await showNotification("上传失败", errorMessage);
+        return { status: 'error', message: errorMessage };
+      }
+    }
+    
+    // v2.1: 失败重试队列逻辑
+    // 判断错误类型：可重试 vs 不可重试
+    const isRetryable = errorMessage.includes("网络错误") || 
+                        errorMessage.includes("超时") || 
+                        errorMessage.includes("HTTP 状态码: 5") ||
+                        errorMessage.includes("Network Error") ||
+                        errorMessage.includes("Failed to fetch");
+    
+    const isNonRetryable = errorMessage.includes("文件读取失败") || 
+                           errorMessage.includes("无法解析响应");
+    
+    if (isRetryable && !isNonRetryable) {
+      // 可重试错误：添加到失败队列
+      try {
+        const retryStore = new Store('.retry.dat');
+        const items = await retryStore.get<FailedItem[]>('failed') || [];
+        const name = await basename(filePath);
+        
+        const newItem: FailedItem = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          filePath: filePath,
+          configSnapshot: { ...config }, // 保存配置快照
+          errorMessage: errorMessage,
+        };
+        
+        const newItems = [newItem, ...items];
+        await retryStore.set('failed', newItems);
+        await retryStore.save();
+        
+        // 发出事件通知侧边栏更新角标
+        await emit('update-failed-count', newItems.length);
+        
+        // 发送非阻塞通知
+        await showNotification("文件上传失败", `已将 ${name} 添加到重试队列。`);
+        
+        return { status: 'failed', message: errorMessage };
+      } catch (retryError) {
+        console.error("[失败队列] 保存失败项失败:", retryError);
+        // 如果保存失败，按原样通知用户
+        await showNotification("上传失败", errorMessage);
+        return { status: 'error', message: errorMessage };
+      }
+    } else {
+      // 不可重试错误：直接通知用户
+      await showNotification("上传失败", errorMessage);
+      return { status: 'error', message: errorMessage };
+    }
   }
 }
 
