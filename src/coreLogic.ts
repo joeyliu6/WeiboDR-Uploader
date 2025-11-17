@@ -39,14 +39,46 @@ function validateR2Config(config: R2Config): { valid: boolean; missingFields: st
 }
 
 /**
- * 步骤 B: 备份 R2 (并行, 非阻塞性)
+ * 检测文件类型（基于magic number）
+ */
+function detectFileType(bytes: Uint8Array): string | null {
+  if (bytes.length < 4) return null;
+  
+  // JPEG: FF D8 FF
+  if (bytes[0] === 0xFF && bytes[1] === 0xD8 && bytes[2] === 0xFF) {
+    return 'image/jpeg';
+  }
+  
+  // PNG: 89 50 4E 47
+  if (bytes[0] === 0x89 && bytes[1] === 0x50 && bytes[2] === 0x4E && bytes[3] === 0x47) {
+    return 'image/png';
+  }
+  
+  // GIF: 47 49 46
+  if (bytes[0] === 0x47 && bytes[1] === 0x49 && bytes[2] === 0x46) {
+    return 'image/gif';
+  }
+  
+  // WebP: 52 49 46 46 ... 57 45 42 50
+  if (bytes[0] === 0x52 && bytes[1] === 0x49 && bytes[2] === 0x46 && bytes[3] === 0x46) {
+    if (bytes.length >= 12 && bytes[8] === 0x57 && bytes[9] === 0x45 && bytes[10] === 0x42 && bytes[11] === 0x50) {
+      return 'image/webp';
+    }
+  }
+  
+  return null;
+}
+
+/**
+ * 步骤 B: 备份 R2 (并行, 非阻塞性, 带超时保护)
  * @returns {Promise<string | null>} 成功返回 r2Key，失败或未配置返回 null
  * @throws {Error} 非阻塞性错误 "R2 备份失败"
  */
 async function backupToR2(
   fileBytes: Uint8Array, // 接受字节流
   hashName: string, 
-  config: R2Config
+  config: R2Config,
+  timeoutMs: number = 60000 // 默认60秒超时
 ): Promise<string | null> {
   console.log(`[步骤 B] 开始异步备份 ${hashName} 到 R2... (文件大小: ${(fileBytes.length / 1024).toFixed(2)}KB)`);
   
@@ -103,11 +135,19 @@ async function backupToR2(
   console.log(`[步骤 B] 目标路径: ${key}`);
 
   try {
-    await r2Client.send(new PutObjectCommand({
+    // 使用超时保护包装上传操作
+    const uploadPromise = r2Client.send(new PutObjectCommand({
       Bucket: bucketName.trim(),
       Key: key,
       Body: fileBytes, // 使用字节流
     }));
+    
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error(`上传超时（超过${timeoutMs / 1000}秒）`)), timeoutMs);
+    });
+    
+    await Promise.race([uploadPromise, timeoutPromise]);
+    
     console.log(`[步骤 B] R2 备份成功: ${key}`);
     return key; // 返回 R2 Key
   } catch (error: any) {
@@ -491,8 +531,14 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
   let fileBytes: Uint8Array;
   try {
     console.log(`[核心流程] 开始读取文件: ${filePath}`);
-    // 新增步骤：从Tauri提供的路径读取文件为字节流
-    fileBytes = await readBinaryFile(filePath);
+    
+    // 添加读取超时保护（30秒）
+    const readPromise = readBinaryFile(filePath);
+    const timeoutPromise = new Promise<never>((_, reject) => {
+      setTimeout(() => reject(new Error('文件读取超时（超过30秒）')), 30000);
+    });
+    
+    fileBytes = await Promise.race([readPromise, timeoutPromise]);
     
     if (!fileBytes || !(fileBytes instanceof Uint8Array)) {
       throw new Error("文件读取失败：返回的数据格式不正确");
@@ -503,6 +549,19 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
     }
     
     console.log(`[核心流程] 文件读取成功，大小: ${(fileBytes.length / 1024).toFixed(2)}KB`);
+    
+    // 验证文件类型
+    const fileType = detectFileType(fileBytes);
+    if (!fileType) {
+      console.warn(`[核心流程] 警告: 无法识别文件类型，文件可能不是有效的图片`);
+    } else {
+      console.log(`[核心流程] 检测到文件类型: ${fileType}`);
+    }
+    
+    // 验证文件不是空文件或损坏文件
+    if (fileBytes.length < 100) {
+      throw new Error("文件过小（小于100字节），可能是损坏的文件");
+    }
   } catch (readError: any) {
     const errorMsg = readError?.message || String(readError);
     const lowerError = errorMsg.toLowerCase();

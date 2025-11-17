@@ -10,6 +10,19 @@ import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
 import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
 
+// --- GLOBAL ERROR HANDLERS ---
+window.addEventListener('error', (event) => {
+  console.error('[全局错误]:', event.error);
+  // 防止应用崩溃
+  event.preventDefault();
+});
+
+window.addEventListener('unhandledrejection', (event) => {
+  console.error('[未处理的Promise拒绝]:', event.reason);
+  // 防止应用崩溃
+  event.preventDefault();
+});
+
 // --- STORES ---
 const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
@@ -99,44 +112,77 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed') {
 
 // --- UPLOAD LOGIC (from main.ts) ---
 async function initializeUpload() {
-    listen('tauri://file-drop', async (event) => {
-        const filePaths = event.payload as string[];
-        console.log('Dropped files:', filePaths);
-      
-        let config = await configStore.get<UserConfig>('config');
-        if (!config || !config.weiboCookie) {
-          statusMessage.textContent = '⚠️ 错误：请先在设置中配置微博 Cookie！';
-          navigateTo('settings');
-          return;
-        }
-      
-        dropMessage.classList.add('hidden');
-        loadingSpinner.classList.remove('hidden');
-        statusMessage.textContent = `开始上传 ${filePaths.length} 个文件...`;
-      
-        for (const path of filePaths) {
-          try {
-            await handleFileUpload(path, config); 
-          } catch (error) {
-            console.error('Upload failed for file:', path, error);
+    try {
+      await listen('tauri://file-drop', async (event) => {
+        try {
+          const filePaths = event.payload as string[];
+          
+          // 验证输入
+          if (!Array.isArray(filePaths) || filePaths.length === 0) {
+            console.warn('[上传] 无效的文件列表');
+            return;
           }
+          
+          console.log('Dropped files:', filePaths);
+        
+          let config = await configStore.get<UserConfig>('config');
+          if (!config || !config.weiboCookie) {
+            if (statusMessage) statusMessage.textContent = '⚠️ 错误：请先在设置中配置微博 Cookie！';
+            navigateTo('settings');
+            return;
+          }
+        
+          if (dropMessage) dropMessage.classList.add('hidden');
+          if (loadingSpinner) loadingSpinner.classList.remove('hidden');
+          if (statusMessage) statusMessage.textContent = `开始上传 ${filePaths.length} 个文件...`;
+        
+          for (const path of filePaths) {
+            try {
+              // 验证路径
+              if (!path || typeof path !== 'string' || path.trim().length === 0) {
+                console.warn('[上传] 跳过无效路径:', path);
+                continue;
+              }
+              await handleFileUpload(path, config); 
+            } catch (error) {
+              console.error('[上传] 文件上传失败:', path, error);
+              // 继续处理其他文件
+            }
+          }
+        
+          if (dropMessage) dropMessage.classList.remove('hidden');
+          if (loadingSpinner) loadingSpinner.classList.add('hidden');
+          if (statusMessage) statusMessage.textContent = '拖拽文件到此处上传';
+        } catch (error) {
+          console.error('[上传] 文件拖拽处理失败:', error);
+          if (dropMessage) dropMessage.classList.remove('hidden');
+          if (loadingSpinner) loadingSpinner.classList.add('hidden');
+          if (statusMessage) statusMessage.textContent = '上传失败，请重试';
         }
-      
-        dropMessage.classList.remove('hidden');
-        loadingSpinner.classList.add('hidden');
-        statusMessage.textContent = '拖拽文件到此处上传';
       });
       
-      listen('tauri://file-drop-hover', () => {
-        dropZone.classList.add('drag-over');
+      await listen('tauri://file-drop-hover', () => {
+        try {
+          if (dropZone) dropZone.classList.add('drag-over');
+        } catch (error) {
+          console.error('[上传] 拖拽悬停处理失败:', error);
+        }
       });
       
-      listen('tauri://file-drop-cancelled', () => {
-        dropZone.classList.remove('drag-over');
+      await listen('tauri://file-drop-cancelled', () => {
+        try {
+          if (dropZone) dropZone.classList.remove('drag-over');
+        } catch (error) {
+          console.error('[上传] 拖拽取消处理失败:', error);
+        }
       });
       
       window.addEventListener('dragover', (e) => e.preventDefault());
       window.addEventListener('drop', (e) => e.preventDefault());
+    } catch (error) {
+      console.error('[上传] 初始化上传监听器失败:', error);
+      throw error;
+    }
 }
 
 

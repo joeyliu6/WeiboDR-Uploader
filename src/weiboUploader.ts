@@ -197,16 +197,25 @@ function parseWeiboResponse(xmlText: string): string {
 }
 
 /**
- * 步骤 A: 上传微博
+ * 延迟函数（用于重试）
+ */
+async function delay(ms: number): Promise<void> {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+/**
+ * 步骤 A: 上传微博（带重试机制）
  * 逻辑基于 `weibo-picture-store` 项目源码
  * @param fileBytes 文件的字节流
  * @param cookie 用户的 Cookie 字符串
+ * @param maxRetries 最大重试次数（默认3次）
  * @returns {Promise<{hashName: string, largeUrl: string}>} "主键"
  * @throws {WeiboUploadError} 阻塞性错误
  */
 export async function uploadToWeibo(
   fileBytes: Uint8Array, 
-  cookie: string
+  cookie: string,
+  maxRetries: number = 3
 ): Promise<{ hashName: string; largeUrl: string }> {
   
   console.log(`[步骤 A] 开始上传到微博... (文件大小: ${(fileBytes.length / 1024).toFixed(2)}KB)`);
@@ -264,95 +273,161 @@ export async function uploadToWeibo(
     );
   }
 
-  try {
-    console.log(`[步骤 A] 发送上传请求...`);
-    const response = await client.post(url, Body.bytes(fileBytes), {
-      responseType: ResponseType.Text,
-      headers: {
-        'Content-Type': 'application/octet-stream',
-        'Cookie': cookie.trim(),
-        // (关键) 伪造请求头，逻辑参考 `weibo-referer.ts`
-        'Referer': 'https://photo.weibo.com/',
-        'Origin': 'https://photo.weibo.com',
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
-      },
-      // 设置超时时间（30秒）
-      timeout: 30000,
-    });
-
-    // 检查 HTTP 状态码
-    if (!response.ok) {
-      const status = response.status;
-      let errorMessage = `HTTP 请求失败，状态码: ${status}`;
-      
-      // 根据状态码提供更详细的错误信息
-      if (status === 401 || status === 403) {
-        errorMessage = `认证失败（状态码: ${status}）：Cookie 可能已过期或无效`;
-      } else if (status === 413) {
-        errorMessage = `文件过大（状态码: ${status}）：请减小文件大小`;
-      } else if (status === 429) {
-        errorMessage = `请求过于频繁（状态码: ${status}）：请稍后再试`;
-      } else if (status >= 500) {
-        errorMessage = `服务器错误（状态码: ${status}）：微博服务器可能暂时不可用，请稍后重试`;
-      } else if (status >= 400) {
-        errorMessage = `客户端错误（状态码: ${status}）：请求参数可能不正确`;
-      }
-
-      throw new WeiboUploadError(
-        errorMessage,
-        `HTTP_${status}`,
-        status,
-        new Error(`HTTP ${status}`)
-      );
-    }
-
-    // 4. 解析 XML 响应 (逻辑参考 `upload.ts`)
-    const xmlText = response.data as string;
-    if (!xmlText || typeof xmlText !== 'string') {
-      throw new WeiboUploadError(
-        '响应数据格式错误：服务器返回的数据不是文本格式',
-        'INVALID_RESPONSE_TYPE',
-        response.status,
-        new Error('Response data is not a string')
-      );
-    }
-
-    console.log(`[步骤 A] 收到响应，长度: ${xmlText.length} 字符`);
-    
-    let pid: string;
+  // 重试逻辑
+  let lastError: Error | WeiboUploadError | undefined;
+  
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
-      pid = parseWeiboResponse(xmlText);
-    } catch (error) {
-      if (error instanceof WeiboUploadError) {
+      if (attempt > 0) {
+        const backoffDelay = Math.min(1000 * Math.pow(2, attempt - 1), 10000); // 指数退避，最大10秒
+        console.log(`[步骤 A] 重试第 ${attempt}/${maxRetries} 次，等待 ${backoffDelay}ms...`);
+        await delay(backoffDelay);
+      }
+      
+      console.log(`[步骤 A] 发送上传请求... (尝试 ${attempt + 1}/${maxRetries + 1})`);
+      const response = await client.post(url, Body.bytes(fileBytes), {
+        responseType: ResponseType.Text,
+        headers: {
+          'Content-Type': 'application/octet-stream',
+          'Cookie': cookie.trim(),
+          // (关键) 伪造请求头，逻辑参考 `weibo-referer.ts`
+          'Referer': 'https://photo.weibo.com/',
+          'Origin': 'https://photo.weibo.com',
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36',
+        },
+        // 设置超时时间（30秒）
+        timeout: 30000,
+      });
+
+      // 检查 HTTP 状态码
+      if (!response.ok) {
+        const status = response.status;
+        let errorMessage = `HTTP 请求失败，状态码: ${status}`;
+        let shouldRetry = false;
+        
+        // 根据状态码提供更详细的错误信息
+        if (status === 401 || status === 403) {
+          errorMessage = `认证失败（状态码: ${status}）：Cookie 可能已过期或无效`;
+          // 认证失败不重试
+        } else if (status === 413) {
+          errorMessage = `文件过大（状态码: ${status}）：请减小文件大小`;
+          // 文件过大不重试
+        } else if (status === 429) {
+          errorMessage = `请求过于频繁（状态码: ${status}）：请稍后再试`;
+          shouldRetry = true; // 限流错误可以重试
+        } else if (status >= 500) {
+          errorMessage = `服务器错误（状态码: ${status}）：微博服务器可能暂时不可用，请稍后重试`;
+          shouldRetry = true; // 服务器错误可以重试
+        } else if (status >= 400) {
+          errorMessage = `客户端错误（状态码: ${status}）：请求参数可能不正确`;
+          // 客户端错误不重试
+        }
+
+        const error = new WeiboUploadError(
+          errorMessage,
+          `HTTP_${status}`,
+          status,
+          new Error(`HTTP ${status}`)
+        );
+        
+        if (shouldRetry && attempt < maxRetries) {
+          lastError = error;
+          console.warn(`[步骤 A] ${errorMessage}，将重试...`);
+          continue; // 继续重试
+        }
+        
         throw error;
       }
-      throw new WeiboUploadError(
-        `解析响应失败: ${error instanceof Error ? error.message : String(error)}`,
-        'PARSE_ERROR',
-        response.status,
-        error
-      );
+
+      // 4. 解析 XML 响应 (逻辑参考 `upload.ts`)
+      const xmlText = response.data as string;
+      if (!xmlText || typeof xmlText !== 'string') {
+        throw new WeiboUploadError(
+          '响应数据格式错误：服务器返回的数据不是文本格式',
+          'INVALID_RESPONSE_TYPE',
+          response.status,
+          new Error('Response data is not a string')
+        );
+      }
+
+      console.log(`[步骤 A] 收到响应，长度: ${xmlText.length} 字符`);
+      
+      let pid: string;
+      try {
+        pid = parseWeiboResponse(xmlText);
+      } catch (error) {
+        if (error instanceof WeiboUploadError) {
+          // 某些解析错误可以重试（如网络导致的部分响应）
+          const isRetryable = error.code === 'EMPTY_RESPONSE';
+          if (isRetryable && attempt < maxRetries) {
+            lastError = error;
+            console.warn(`[步骤 A] ${error.message}，将重试...`);
+            continue;
+          }
+          throw error;
+        }
+        throw new WeiboUploadError(
+          `解析响应失败: ${error instanceof Error ? error.message : String(error)}`,
+          'PARSE_ERROR',
+          response.status,
+          error
+        );
+      }
+
+      const hashName = `${pid}.jpg`;
+      
+      // 5. 构建链接 (逻辑参考 `utils.ts` 的 genExternalUrl)
+      // 我们硬编码使用 tvax（目前最稳定）和 large
+      const largeUrl = `https://tvax1.sinaimg.cn/large/${hashName}`;
+
+      console.log(`[步骤 A] 微博上传成功: ${hashName} (链接: ${largeUrl})`);
+      return { hashName, largeUrl };
+      
+    } catch (error: any) {
+      // 捕获每次尝试的错误
+      lastError = error;
+      
+      // 判断是否应该重试
+      if (error instanceof WeiboUploadError) {
+        // 某些错误不应该重试
+        const nonRetryableCodes = ['COOKIE_EXPIRED', 'COOKIE_ERROR', 'INVALID_COOKIE', 'EMPTY_COOKIE', 
+                                    'INVALID_FILE_TYPE', 'EMPTY_FILE', 'FILE_TOO_LARGE', 'FILE_TOO_SMALL'];
+        if (nonRetryableCodes.includes(error.code || '')) {
+          throw error; // 立即抛出，不重试
+        }
+      }
+      
+      // 网络错误可以重试
+      const errorString = error?.toString() || String(error);
+      const lowerError = errorString.toLowerCase();
+      const isNetworkError = lowerError.includes('network') || lowerError.includes('connection') || 
+                             lowerError.includes('timeout') || lowerError.includes('超时') || 
+                             lowerError.includes('网络');
+      
+      if (isNetworkError && attempt < maxRetries) {
+        console.warn(`[步骤 A] 网络错误，将重试... (${error?.message || errorString})`);
+        continue; // 继续重试
+      }
+      
+      // 如果已经是最后一次尝试，抛出错误
+      if (attempt >= maxRetries) {
+        break; // 退出重试循环
+      }
     }
+  }
+  
+  // 所有重试都失败了
+  if (lastError) {
 
-    const hashName = `${pid}.jpg`;
-    
-    // 5. 构建链接 (逻辑参考 `utils.ts` 的 genExternalUrl)
-    // 我们硬编码使用 tvax（目前最稳定）和 large
-    const largeUrl = `https://tvax1.sinaimg.cn/large/${hashName}`;
-
-    console.log(`[步骤 A] 微博上传成功: ${hashName} (链接: ${largeUrl})`);
-    return { hashName, largeUrl };
-
-  } catch (error: any) {
     // 如果是 WeiboUploadError，直接抛出
-    if (error instanceof WeiboUploadError) {
-      console.error(`[步骤 A] 微博上传失败:`, error.message);
-      throw error;
+    if (lastError instanceof WeiboUploadError) {
+      console.error(`[步骤 A] 微博上传失败（已重试${maxRetries}次）:`, lastError.message);
+      throw lastError;
     }
 
     // 处理网络错误
-    const errorString = error?.toString() || String(error);
-    const errorMessage = error?.message || errorString;
+    const errorString = lastError?.toString() || String(lastError);
+    const errorMessage = (lastError as any)?.message || errorString;
     const lowerError = errorString.toLowerCase();
 
     if (lowerError.includes('network error') || 
@@ -362,20 +437,20 @@ export async function uploadToWeibo(
         lowerError.includes('超时') ||
         lowerError.includes('网络')) {
       throw new WeiboUploadError(
-        '网络连接失败：请检查您的网络连接、防火墙设置或代理配置。如果问题持续，可能是微博服务器暂时不可用。',
+        `网络连接失败（已重试${maxRetries}次）：请检查您的网络连接、防火墙设置或代理配置。如果问题持续，可能是微博服务器暂时不可用。`,
         'NETWORK_ERROR',
         undefined,
-        error
+        lastError
       );
     }
 
     // 处理超时错误
     if (lowerError.includes('timeout') || lowerError.includes('超时')) {
       throw new WeiboUploadError(
-        '请求超时：上传时间过长，可能是网络较慢或文件较大。请检查网络连接或尝试减小文件大小。',
+        `请求超时（已重试${maxRetries}次）：上传时间过长，可能是网络较慢或文件较大。请检查网络连接或尝试减小文件大小。`,
         'TIMEOUT_ERROR',
         undefined,
-        error
+        lastError
       );
     }
 
@@ -385,18 +460,26 @@ export async function uploadToWeibo(
         `Cookie 错误: ${errorMessage}`,
         'COOKIE_ERROR',
         undefined,
-        error
+        lastError
       );
     }
 
     // 其他未知错误
-    console.error("[步骤 A] 微博上传捕获到未知错误:", error);
+    console.error("[步骤 A] 微博上传捕获到未知错误:", lastError);
     throw new WeiboUploadError(
-      `微博上传失败: ${errorMessage || '未知错误'}。如果问题持续，请检查控制台日志获取更多信息。`,
+      `微博上传失败（已重试${maxRetries}次）: ${errorMessage || '未知错误'}。如果问题持续，请检查控制台日志获取更多信息。`,
       'UNKNOWN_ERROR',
       undefined,
-      error
+      lastError
     );
   }
+  
+  // 不应该到达这里
+  throw new WeiboUploadError(
+    '上传失败：未知错误',
+    'UNKNOWN_ERROR',
+    undefined,
+    lastError
+  );
 }
 

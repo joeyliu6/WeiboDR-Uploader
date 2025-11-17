@@ -20,6 +20,7 @@ export class StoreError extends Error {
 
 class SimpleStore {
   private filePath: string;
+  private pendingWrites: Map<string, Promise<void>> = new Map();
 
   constructor(filename: string) {
     if (!filename || typeof filename !== 'string' || filename.trim().length === 0) {
@@ -31,6 +32,19 @@ class SimpleStore {
       );
     }
     this.filePath = filename.trim();
+  }
+  
+  /**
+   * 等待所有pending写操作完成
+   */
+  private async waitForPendingWrites(excludeKey?: string): Promise<void> {
+    const promises = Array.from(this.pendingWrites.entries())
+      .filter(([key]) => key !== excludeKey)
+      .map(([_, promise]) => promise.catch(() => {})); // 忽略错误，只等待完成
+    
+    if (promises.length > 0) {
+      await Promise.all(promises);
+    }
   }
 
   /**
@@ -195,7 +209,28 @@ class SimpleStore {
     if (value === undefined) {
       console.warn(`[Store] 警告: 尝试保存 undefined 值到键 "${key}"`);
     }
-
+    
+    // 等待其他写操作完成，避免并发写入冲突
+    await this.waitForPendingWrites(key);
+    
+    // 创建写入Promise并注册
+    const writePromise = (async () => {
+      try {
+        await this._performWrite(key, value);
+      } finally {
+        // 写入完成后清除
+        this.pendingWrites.delete(key);
+      }
+    })();
+    
+    this.pendingWrites.set(key, writePromise);
+    await writePromise;
+  }
+  
+  /**
+   * 执行实际的写入操作
+   */
+  private async _performWrite(key: string, value: any): Promise<void> {
     try {
       const dataPath = await this.getDataPath();
       const appDir = await appDataDir();

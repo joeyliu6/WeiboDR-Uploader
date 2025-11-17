@@ -123,10 +123,24 @@ struct LoginResponse {
 
 #[tauri::command]
 async fn attempt_weibo_login(username: String, password: String) -> Result<String, String> {
+    // 输入验证
+    if username.trim().is_empty() {
+        return Err("用户名不能为空".to_string());
+    }
+    if password.trim().is_empty() {
+        return Err("密码不能为空".to_string());
+    }
+    
+    eprintln!("[登录] 开始尝试登录，用户名: {}", username);
+    
     let client = reqwest::Client::builder()
         .cookie_store(true)
+        .timeout(std::time::Duration::from_secs(30)) // 30秒超时
         .build()
-        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+        .map_err(|e| {
+            eprintln!("[登录] 创建 HTTP 客户端失败: {:?}", e);
+            format!("创建 HTTP 客户端失败: {}", e)
+        })?;
 
     // 第一步：POST 登录请求
     let mut form_data: HashMap<String, String> = HashMap::new();
@@ -146,6 +160,8 @@ async fn attempt_weibo_login(username: String, password: String) -> Result<Strin
     form_data.insert("hff".to_string(), "".to_string());
     form_data.insert("hfp".to_string(), "".to_string());
 
+    eprintln!("[登录] 发送登录请求到微博服务器...");
+    
     let response = client
         .post("https://passport.weibo.cn/sso/login")
         .header("Referer", "https://passport.weibo.cn/signin/login")
@@ -154,34 +170,64 @@ async fn attempt_weibo_login(username: String, password: String) -> Result<Strin
         .form(&form_data)
         .send()
         .await
-        .map_err(|e| format!("登录请求失败: {}", e))?;
+        .map_err(|e| {
+            eprintln!("[登录] 登录请求失败: {:?}", e);
+            let error_msg = e.to_string().to_lowercase();
+            if error_msg.contains("timeout") || error_msg.contains("超时") {
+                "登录请求超时：请检查网络连接".to_string()
+            } else if error_msg.contains("connection") || error_msg.contains("连接") {
+                "无法连接到微博服务器：请检查网络连接和防火墙设置".to_string()
+            } else {
+                format!("登录请求失败: {}", e)
+            }
+        })?;
 
     let status = response.status();
+    eprintln!("[登录] 收到响应，状态码: {}", status);
+    
     if !status.is_success() {
-        return Err(format!("登录请求失败: HTTP {}", status));
+        let error_msg = match status.as_u16() {
+            400 => "请求参数错误".to_string(),
+            403 => "访问被拒绝：可能触发了安全验证".to_string(),
+            429 => "请求过于频繁：请稍后再试".to_string(),
+            500..=599 => format!("服务器错误 (HTTP {})：微博服务器可能暂时不可用", status),
+            _ => format!("登录请求失败: HTTP {}", status),
+        };
+        return Err(error_msg);
     }
 
     let login_result: LoginResponse = response
         .json()
         .await
-        .map_err(|e| format!("解析登录响应失败: {}", e))?;
+        .map_err(|e| {
+            eprintln!("[登录] 解析登录响应失败: {:?}", e);
+            format!("解析登录响应失败: {}。服务器可能返回了异常数据", e)
+        })?;
+    
+    eprintln!("[登录] 登录响应解析成功，retcode: {}", login_result.retcode);
 
     // 检查返回码
     if login_result.retcode != 20000000 {
-        let error_msg = login_result.msg.unwrap_or_else(|| {
+        let error_msg = login_result.msg.clone().unwrap_or_else(|| {
             match login_result.retcode {
-                50050011 => "需要验证码".to_string(),
-                50011002 => "用户名或密码错误".to_string(),
+                50050011 => "需要验证码：请稍后再试或使用其他登录方式".to_string(),
+                50011002 => "用户名或密码错误：请检查您的账号密码".to_string(),
+                50011003 => "账号异常：请前往微博官网解除限制".to_string(),
+                50011015 => "账号已被锁定：请联系微博客服".to_string(),
                 _ => format!("登录失败 (错误码: {})", login_result.retcode),
             }
         });
+        eprintln!("[登录] 登录失败: {} (retcode: {})", error_msg, login_result.retcode);
         return Err(error_msg);
     }
 
     // 第二步：从 loginresulturl 获取 Cookie
     let login_url = login_result.login_result_url.ok_or_else(|| {
-        "登录成功但未返回登录结果 URL".to_string()
+        eprintln!("[登录] 登录成功但未返回登录结果 URL");
+        "登录成功但未返回登录结果 URL：这可能是微博 API 变更，请联系开发者".to_string()
     })?;
+    
+    eprintln!("[登录] 准备从登录结果 URL 获取 Cookie: {}", login_url);
 
     let cookie_response = client
         .get(&login_url)
@@ -189,29 +235,53 @@ async fn attempt_weibo_login(username: String, password: String) -> Result<Strin
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
         .send()
         .await
-        .map_err(|e| format!("获取 Cookie 失败: {}", e))?;
+        .map_err(|e| {
+            eprintln!("[登录] 获取 Cookie 失败: {:?}", e);
+            let error_msg = e.to_string().to_lowercase();
+            if error_msg.contains("timeout") || error_msg.contains("超时") {
+                "获取 Cookie 超时：请检查网络连接".to_string()
+            } else if error_msg.contains("connection") || error_msg.contains("连接") {
+                "无法连接到服务器：请检查网络连接".to_string()
+            } else {
+                format!("获取 Cookie 失败: {}", e)
+            }
+        })?;
+    
+    eprintln!("[登录] Cookie 响应状态码: {}", cookie_response.status());
 
     // 从响应头中提取所有 Set-Cookie
     let mut cookie_parts = Vec::new();
+    let mut cookie_count = 0;
+    
     for (name, value) in cookie_response.headers() {
         if name.as_str().to_lowercase() == "set-cookie" {
-            if let Some(cookie_str) = value.to_str().ok() {
+            cookie_count += 1;
+            if let Ok(cookie_str) = value.to_str() {
                 // Set-Cookie 格式: name=value; path=/; domain=.weibo.cn; HttpOnly
                 // 我们只需要 name=value 部分
                 if let Some(name_value) = cookie_str.split(';').next() {
-                    cookie_parts.push(name_value.trim().to_string());
+                    let trimmed = name_value.trim();
+                    if !trimmed.is_empty() {
+                        cookie_parts.push(trimmed.to_string());
+                        eprintln!("[登录] 提取 Cookie: {}", trimmed.split('=').next().unwrap_or("unknown"));
+                    }
                 }
             }
         }
     }
     
+    eprintln!("[登录] 共找到 {} 个 Set-Cookie 头，成功提取 {} 个 Cookie", cookie_count, cookie_parts.len());
+    
     // 如果响应头中没有 Set-Cookie，返回错误
     if cookie_parts.is_empty() {
-        return Err("未能从登录结果 URL 的响应中提取 Cookie。请检查网络连接或稍后重试。".to_string());
+        eprintln!("[登录] 错误: 未能从响应中提取任何 Cookie");
+        return Err("未能从登录结果中提取 Cookie：这可能是微博 API 变更或网络问题，请稍后重试或手动获取 Cookie。".to_string());
     }
 
     // 拼接所有 Cookie
     let cookie_string = cookie_parts.join("; ");
+    eprintln!("[登录] ✓ Cookie 提取成功，长度: {} 字符", cookie_string.len());
+    
     Ok(cookie_string)
 }
 
