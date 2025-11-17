@@ -19,6 +19,11 @@ use windows::{
     Win32::System::Com::CoTaskMemFree,
 };
 
+// 用于 R2 和 WebDAV 测试
+use hmac::{Hmac, Mac};
+use sha2::{Digest, Sha256};
+type HmacSha256 = Hmac<Sha256>;
+
 fn main() {
     // 1. 定义原生菜单栏 (PRD 1.1)
     // "文件" 菜单 (或 "应用" 菜单 on macOS)
@@ -71,7 +76,9 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             save_cookie_from_login,
             start_cookie_monitoring,
-            get_request_header_cookie
+            get_request_header_cookie,
+            test_r2_connection,
+            test_webdav_connection
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
@@ -439,5 +446,185 @@ fn pwstr_to_string_and_free(pwstr: PWSTR) -> String {
 #[cfg(target_os = "windows")]
 fn encode_wide(value: &str) -> Vec<u16> {
     value.encode_utf16().chain(std::iter::once(0)).collect()
+}
+
+// === R2 和 WebDAV 测试命令 ===
+
+/// R2 配置结构体（与 TypeScript 接口匹配）
+#[derive(serde::Deserialize, Clone)]
+struct R2Config {
+    #[serde(rename = "accountId")]
+    account_id: String,
+    #[serde(rename = "accessKeyId")]
+    access_key_id: String,
+    #[serde(rename = "secretAccessKey")]
+    secret_access_key: String,
+    #[serde(rename = "bucketName")]
+    bucket_name: String,
+    path: String,
+    #[serde(rename = "publicDomain")]
+    public_domain: String,
+}
+
+/// WebDAV 配置结构体（与 TypeScript 接口匹配）
+#[derive(serde::Deserialize, Clone)]
+struct WebDAVConfig {
+    url: String,
+    username: String,
+    password: String,
+    #[serde(rename = "remotePath")]
+    remote_path: String,
+}
+
+/// 测试 R2 连接
+#[tauri::command]
+async fn test_r2_connection(config: R2Config) -> Result<String, String> {
+    // 检查空字段
+    if config.account_id.is_empty() 
+        || config.access_key_id.is_empty() 
+        || config.secret_access_key.is_empty() 
+        || config.bucket_name.is_empty() {
+        return Err("配置不完整: AccountID、KeyID、Secret 和 Bucket 均为必填项。".to_string());
+    }
+
+    // 使用 HEAD bucket 请求测试连接
+    let endpoint_url = format!("https://{}.r2.cloudflarestorage.com/{}", config.account_id, config.bucket_name);
+    
+    // 获取当前时间
+    let now = chrono::Utc::now();
+    let date_str = now.format("%Y%m%d").to_string();
+    let datetime_str = now.format("%Y%m%dT%H%M%SZ").to_string();
+    
+    // AWS Signature V4 签名
+    let region = "auto";
+    let service = "s3";
+    let host = format!("{}.r2.cloudflarestorage.com", config.account_id);
+    let canonical_uri = format!("/{}", config.bucket_name);
+    let canonical_querystring = "";
+    let canonical_headers = format!("host:{}\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:{}\n", host, datetime_str);
+    let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+    let payload_hash = "UNSIGNED-PAYLOAD";
+    
+    // 创建规范请求
+    let canonical_request = format!(
+        "HEAD\n{}\n{}\n{}\n{}\n{}",
+        canonical_uri, canonical_querystring, canonical_headers, signed_headers, payload_hash
+    );
+    
+    // 计算规范请求的哈希
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_request.as_bytes());
+    let canonical_request_hash = hex::encode(hasher.finalize());
+    
+    // 创建待签名字符串
+    let credential_scope = format!("{}/{}/{}/aws4_request", date_str, region, service);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        datetime_str, credential_scope, canonical_request_hash
+    );
+    
+    // 计算签名
+    let k_date = hmac_sha256(format!("AWS4{}", config.secret_access_key).as_bytes(), date_str.as_bytes());
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, service.as_bytes());
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+    
+    // 构建 Authorization header
+    let authorization_header = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        config.access_key_id, credential_scope, signed_headers, signature
+    );
+    
+    // 发送请求
+    let client = reqwest::Client::new();
+    match client
+        .head(&endpoint_url)
+        .header("Host", host)
+        .header("x-amz-date", datetime_str)
+        .header("x-amz-content-sha256", payload_hash)
+        .header("Authorization", authorization_header)
+        .send()
+        .await
+    {
+        Ok(response) => {
+            let status = response.status();
+            if status.is_success() {
+                Ok("R2 连接成功！".to_string())
+            } else if status == reqwest::StatusCode::NOT_FOUND {
+                Err(format!("连接失败: 存储桶 (Bucket) '{}' 未找到。", config.bucket_name))
+            } else if status == reqwest::StatusCode::FORBIDDEN {
+                Err("连接失败: Access Key ID 或 Secret Access Key 无效，或权限不足。".to_string())
+            } else {
+                Err(format!("连接失败: HTTP {}", status))
+            }
+        }
+        Err(err) => {
+            if err.is_connect() {
+                Err("连接失败: 无法连接到 R2 服务器。请检查网络连接。".to_string())
+            } else if err.is_timeout() {
+                Err("连接失败: 请求超时。".to_string())
+            } else {
+                Err(format!("连接失败: {}", err))
+            }
+        }
+    }
+}
+
+/// HMAC-SHA256 辅助函数
+fn hmac_sha256(key: &[u8], data: &[u8]) -> Vec<u8> {
+    let mut mac = HmacSha256::new_from_slice(key).expect("HMAC can take key of any size");
+    mac.update(data);
+    mac.finalize().into_bytes().to_vec()
+}
+
+/// 测试 WebDAV 连接
+#[tauri::command]
+async fn test_webdav_connection(config: WebDAVConfig) -> Result<String, String> {
+    // 检查空字段
+    if config.url.is_empty() || config.username.is_empty() || config.password.is_empty() {
+        return Err("配置不完整: URL、用户名和密码均为必填项。".to_string());
+    }
+
+    let client = reqwest::Client::new();
+    let auth_header = format!(
+        "Basic {}",
+        base64::Engine::encode(&base64::engine::general_purpose::STANDARD, format!("{}:{}", config.username, config.password))
+    );
+
+    // 执行 WebDAV 的 'PROPFIND' 请求 (比 OPTIONS 更可靠)
+    let response = client
+        .request(reqwest::Method::from_bytes(b"PROPFIND").unwrap(), &config.url)
+        .header("Authorization", auth_header)
+        .header("Depth", "0") // 只检查根 URL 本身
+        .send()
+        .await;
+
+    match response {
+        Ok(res) => {
+            let status = res.status();
+            // 200 (OK) 或 207 (Multi-Status) 都表示连接成功
+            if status.is_success() || status.as_u16() == 207 {
+                Ok("WebDAV 连接成功！".to_string())
+            } else if status == reqwest::StatusCode::UNAUTHORIZED {
+                Err("连接失败: 用户名或密码错误。".to_string())
+            } else if status == reqwest::StatusCode::NOT_FOUND {
+                Err("连接失败: URL 未找到。请检查链接是否正确。".to_string())
+            } else {
+                Err(format!("连接失败: 服务器返回状态 {}", status))
+            }
+        }
+        Err(err) => {
+            // 处理网络层错误
+            let err_str = err.to_string();
+            if err.is_connect() {
+                Err("连接失败: 无法连接到服务器。请检查 URL 或网络。".to_string())
+            } else if err.is_timeout() {
+                Err("连接失败: 请求超时。".to_string())
+            } else {
+                Err(format!("连接失败: {}", err_str))
+            }
+        }
+    }
 }
 

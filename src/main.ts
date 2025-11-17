@@ -1,5 +1,6 @@
 // src/main.ts
 import { listen } from '@tauri-apps/api/event';
+import { invoke } from '@tauri-apps/api/tauri';
 
 import { Store } from './store';
 import { UserConfig, HistoryItem, FailedItem, DEFAULT_CONFIG } from './config';
@@ -95,9 +96,12 @@ const webdavUrlEl = getElement<HTMLInputElement>('webdav-url', 'WebDAV URL输入
 const webdavUsernameEl = getElement<HTMLInputElement>('webdav-username', 'WebDAV用户名输入框');
 const webdavPasswordEl = getElement<HTMLInputElement>('webdav-password', 'WebDAV密码输入框');
 const webdavRemotePathEl = getElement<HTMLInputElement>('webdav-remote-path', 'WebDAV远程路径输入框');
-const saveBtn = getElement<HTMLButtonElement>('save-btn', '保存按钮');
 const saveStatusEl = getElement<HTMLElement>('save-status', '保存状态');
 const loginWithWebviewBtn = getElement<HTMLButtonElement>('login-with-webview-btn', 'WebView登录按钮');
+const testR2Btn = getElement<HTMLButtonElement>('test-r2-btn', 'R2测试按钮');
+const r2StatusMessageEl = getElement<HTMLElement>('r2-status-message', 'R2状态消息');
+const testWebdavBtn = getElement<HTMLButtonElement>('test-webdav-btn', 'WebDAV测试按钮');
+const webdavStatusMessageEl = getElement<HTMLElement>('webdav-status-message', 'WebDAV状态消息');
 
 // History View Elements
 const historyBody = getElement<HTMLElement>('history-body', '历史记录表格体');
@@ -597,9 +601,11 @@ async function loadSettings(): Promise<void> {
 }
   
 /**
- * 保存设置
+ * 保存设置（已弃用 - 现在使用 handleAutoSave）
  * 从 UI 表单中读取配置并保存到存储
+ * 此函数保留以备将来需要手动触发保存的场景
  */
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 async function saveSettings(): Promise<void> {
   try {
     console.log('[设置] 开始保存设置...');
@@ -677,6 +683,201 @@ async function saveSettings(): Promise<void> {
     console.error('[设置] 保存设置失败:', error);
     if (saveStatusEl) {
       saveStatusEl.textContent = `❌ 保存失败: ${errorMsg}`;
+    }
+  }
+}
+
+/**
+ * 自动保存设置（无需手动点击保存按钮）
+ * 在用户修改表单后自动触发
+ */
+async function handleAutoSave(): Promise<void> {
+  try {
+    console.log('[自动保存] 触发自动保存...');
+    
+    // 显示保存状态
+    if (saveStatusEl) {
+      saveStatusEl.textContent = '保存中...';
+      saveStatusEl.style.color = 'orange';
+    }
+    
+    // 读取输出格式
+    let format: string = 'baidu';
+    try {
+      const formatRadio = document.querySelector('input[name="output-format"]:checked') as HTMLInputElement;
+      format = formatRadio?.value || 'baidu';
+    } catch (error) {
+      console.warn('[自动保存] 读取输出格式失败，使用默认值 baidu:', error);
+    }
+  
+    // 验证必填字段
+    if (format === 'r2' && r2PublicDomainEl && !r2PublicDomainEl.value.trim()) {
+      const errorMsg = '⚠️ 当输出格式为 R2 时，公开访问域名不能为空！';
+      console.warn('[自动保存] 验证失败:', errorMsg);
+      if (saveStatusEl) {
+        saveStatusEl.textContent = errorMsg;
+        saveStatusEl.style.color = 'red';
+        setTimeout(() => {
+          if (saveStatusEl) {
+            saveStatusEl.textContent = '';
+          }
+        }, 3000);
+      }
+      return;
+    }
+  
+    // 构建配置对象（带空值检查）
+    const config: UserConfig = {
+      weiboCookie: weiboCookieEl?.value.trim() || '',
+      r2: {
+        accountId: r2AccountIdEl?.value.trim() || '',
+        accessKeyId: r2KeyIdEl?.value.trim() || '',
+        secretAccessKey: r2SecretKeyEl?.value.trim() || '',
+        bucketName: r2BucketEl?.value.trim() || '',
+        path: r2PathEl?.value.trim() || '',
+        publicDomain: r2PublicDomainEl?.value.trim() || '',
+      },
+      baiduPrefix: baiduPrefixEl?.value.trim() || DEFAULT_CONFIG.baiduPrefix,
+      outputFormat: format as UserConfig['outputFormat'],
+      webdav: {
+        url: webdavUrlEl?.value.trim() || '',
+        username: webdavUsernameEl?.value.trim() || '',
+        password: webdavPasswordEl?.value.trim() || '',
+        remotePath: webdavRemotePathEl?.value.trim() || DEFAULT_CONFIG.webdav.remotePath,
+      },
+    };
+  
+    // 保存到存储
+    try {
+      await configStore.set('config', config);
+      await configStore.save();
+      console.log('[自动保存] ✓ 配置自动保存成功');
+      
+      if (saveStatusEl) {
+        saveStatusEl.textContent = '✓ 已自动保存';
+        saveStatusEl.style.color = 'lightgreen';
+        
+        setTimeout(() => {
+          if (saveStatusEl) {
+            saveStatusEl.textContent = '';
+          }
+        }, 2000);
+      }
+    } catch (saveError) {
+      const errorMsg = saveError instanceof Error ? saveError.message : String(saveError);
+      console.error('[自动保存] 保存配置失败:', saveError);
+      if (saveStatusEl) {
+        saveStatusEl.textContent = `✗ 保存失败: ${errorMsg}`;
+        saveStatusEl.style.color = 'red';
+      }
+      throw saveError;
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[自动保存] 自动保存失败:', error);
+    if (saveStatusEl) {
+      saveStatusEl.textContent = `✗ 保存失败: ${errorMsg}`;
+      saveStatusEl.style.color = 'red';
+    }
+  }
+}
+
+/**
+ * 测试 R2 连接
+ * 调用 Rust 后端验证 R2 凭据是否有效
+ */
+async function testR2Connection(): Promise<void> {
+  try {
+    console.log('[R2测试] 开始测试 R2 连接...');
+    
+    if (!r2StatusMessageEl) {
+      console.error('[R2测试] r2StatusMessageEl 不存在');
+      return;
+    }
+    
+    // 构建 R2 配置
+    const r2Config = {
+      accountId: r2AccountIdEl?.value.trim() || '',
+      accessKeyId: r2KeyIdEl?.value.trim() || '',
+      secretAccessKey: r2SecretKeyEl?.value.trim() || '',
+      bucketName: r2BucketEl?.value.trim() || '',
+      path: r2PathEl?.value.trim() || '',
+      publicDomain: r2PublicDomainEl?.value.trim() || '',
+    };
+    
+    // 更新状态
+    r2StatusMessageEl.textContent = '测试中...';
+    r2StatusMessageEl.style.color = 'orange';
+    
+    try {
+      const successMessage = await invoke<string>('test_r2_connection', { config: r2Config });
+      r2StatusMessageEl.textContent = `✓ ${successMessage}`;
+      r2StatusMessageEl.style.color = 'lightgreen';
+      
+      setTimeout(() => {
+        if (r2StatusMessageEl) {
+          r2StatusMessageEl.textContent = '';
+        }
+      }, 3000);
+    } catch (errorMessage) {
+      r2StatusMessageEl.textContent = `✗ ${errorMessage}`;
+      r2StatusMessageEl.style.color = 'red';
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[R2测试] 测试 R2 连接失败:', error);
+    if (r2StatusMessageEl) {
+      r2StatusMessageEl.textContent = `✗ 测试失败: ${errorMsg}`;
+      r2StatusMessageEl.style.color = 'red';
+    }
+  }
+}
+
+/**
+ * 测试 WebDAV 连接
+ * 调用 Rust 后端验证 WebDAV 凭据是否有效
+ */
+async function testWebDAVConnection(): Promise<void> {
+  try {
+    console.log('[WebDAV测试] 开始测试 WebDAV 连接...');
+    
+    if (!webdavStatusMessageEl) {
+      console.error('[WebDAV测试] webdavStatusMessageEl 不存在');
+      return;
+    }
+    
+    // 构建 WebDAV 配置
+    const webdavConfig = {
+      url: webdavUrlEl?.value.trim() || '',
+      username: webdavUsernameEl?.value.trim() || '',
+      password: webdavPasswordEl?.value.trim() || '',
+      remotePath: webdavRemotePathEl?.value.trim() || DEFAULT_CONFIG.webdav.remotePath,
+    };
+    
+    // 更新状态
+    webdavStatusMessageEl.textContent = '测试中...';
+    webdavStatusMessageEl.style.color = 'orange';
+    
+    try {
+      const successMessage = await invoke<string>('test_webdav_connection', { config: webdavConfig });
+      webdavStatusMessageEl.textContent = `✓ ${successMessage}`;
+      webdavStatusMessageEl.style.color = 'lightgreen';
+      
+      setTimeout(() => {
+        if (webdavStatusMessageEl) {
+          webdavStatusMessageEl.textContent = '';
+        }
+      }, 3000);
+    } catch (errorMessage) {
+      webdavStatusMessageEl.textContent = `✗ ${errorMessage}`;
+      webdavStatusMessageEl.style.color = 'red';
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[WebDAV测试] 测试 WebDAV 连接失败:', error);
+    if (webdavStatusMessageEl) {
+      webdavStatusMessageEl.textContent = `✗ 测试失败: ${errorMsg}`;
+      webdavStatusMessageEl.style.color = 'red';
     }
   }
 }
@@ -1311,15 +1512,44 @@ function initialize(): void {
     }
 
     // Bind settings events (带空值检查)
-    if (saveBtn) {
-      saveBtn.addEventListener('click', () => {
-        saveSettings().catch(err => {
-          console.error('[初始化] 保存设置失败:', err);
+    // 为所有设置输入框绑定自动保存事件
+    const settingsInputs = [
+      weiboCookieEl,
+      r2AccountIdEl,
+      r2KeyIdEl,
+      r2SecretKeyEl,
+      r2BucketEl,
+      r2PathEl,
+      r2PublicDomainEl,
+      baiduPrefixEl,
+      webdavUrlEl,
+      webdavUsernameEl,
+      webdavPasswordEl,
+      webdavRemotePathEl
+    ];
+    
+    settingsInputs.forEach(input => {
+      if (input) {
+        // 对于文本输入框和密码框，使用 blur 事件
+        if (input.type === 'text' || input.type === 'password' || input.tagName === 'TEXTAREA') {
+          input.addEventListener('blur', () => {
+            handleAutoSave().catch(err => {
+              console.error('[初始化] 自动保存失败:', err);
+            });
+          });
+        }
+      }
+    });
+    
+    // 为输出格式单选按钮绑定自动保存事件
+    const formatRadios = document.querySelectorAll('input[name="output-format"]');
+    formatRadios.forEach(radio => {
+      radio.addEventListener('change', () => {
+        handleAutoSave().catch(err => {
+          console.error('[初始化] 自动保存失败:', err);
         });
       });
-    } else {
-      console.warn('[初始化] 警告: 保存按钮不存在');
-    }
+    });
     
     if (testCookieBtn) {
       testCookieBtn.addEventListener('click', () => {
@@ -1331,14 +1561,24 @@ function initialize(): void {
       console.warn('[初始化] 警告: Cookie测试按钮不存在');
     }
     
-    if (weiboCookieEl) {
-      weiboCookieEl.addEventListener('blur', () => {
-        saveSettings().catch(err => {
-          console.error('[初始化] 自动保存设置失败:', err);
+    if (testR2Btn) {
+      testR2Btn.addEventListener('click', () => {
+        testR2Connection().catch(err => {
+          console.error('[初始化] 测试R2连接失败:', err);
         });
       });
     } else {
-      console.warn('[初始化] 警告: Cookie输入框不存在');
+      console.warn('[初始化] 警告: R2测试按钮不存在');
+    }
+    
+    if (testWebdavBtn) {
+      testWebdavBtn.addEventListener('click', () => {
+        testWebDAVConnection().catch(err => {
+          console.error('[初始化] 测试WebDAV连接失败:', err);
+        });
+      });
+    } else {
+      console.warn('[初始化] 警告: WebDAV测试按钮不存在');
     }
     
     if (loginWithWebviewBtn) {

@@ -38,7 +38,54 @@
 2. 查看您已创建的存储桶列表
 3. 复制存储桶名称（例如：`my-images-bucket`）
 
-### 1.4 配置公开访问域名（可选）
+### 1.4 配置 CORS 规则（重要！）
+
+**必须配置 CORS 规则，否则应用无法上传文件到 R2！**
+
+1. 在 Cloudflare Dashboard 中，进入 **R2** 页面
+2. 选择您的存储桶
+3. 点击 **Settings**（设置）标签
+4. 找到 **CORS Policy**（CORS 策略）部分
+5. 点击 **Edit**（编辑）或 **Add CORS Policy**（添加 CORS 策略）
+6. 添加以下 CORS 配置：
+
+```json
+[
+  {
+    "AllowedOrigins": ["*"],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+**或者更安全的配置（仅允许本地开发）：**
+
+```json
+[
+  {
+    "AllowedOrigins": [
+      "http://localhost:*",
+      "tauri://localhost",
+      "http://127.0.0.1:*"
+    ],
+    "AllowedMethods": ["GET", "PUT", "POST", "DELETE", "HEAD"],
+    "AllowedHeaders": ["*"],
+    "ExposeHeaders": ["ETag"],
+    "MaxAgeSeconds": 3600
+  }
+]
+```
+
+7. 点击 **Save**（保存）
+
+**⚠️ 重要提示：**
+- 如果不配置 CORS，您会看到类似 `CORS policy: No 'Access-Control-Allow-Origin' header` 的错误
+- 配置后可能需要等待几分钟才能生效
+
+### 1.5 配置公开访问域名（可选）
 
 如果您想通过自定义域名访问 R2 中的文件：
 
@@ -101,10 +148,19 @@
 - 确认防火墙没有阻止应用访问 Cloudflare R2
 - 检查代理设置
 
+### 问题：R2 备份失败，提示 "CORS policy" 或 "Access-Control-Allow-Origin" 错误
+
+**解决方案**：
+- **这是最常见的问题！** 您需要在 R2 存储桶中配置 CORS 规则
+- 请参考 **步骤 1.4：配置 CORS 规则**
+- 配置后等待几分钟让设置生效
+- 如果问题仍然存在，检查 CORS 配置中的 `AllowedOrigins` 是否包含 `*` 或您的应用域名
+
 ### 问题：上传成功但 R2 备份没有执行
 
 **解决方案**：
 - 检查是否所有必填字段都已填写（Account ID、Access Key ID、Secret Access Key、Bucket Name）
+- **检查是否已配置 CORS 规则（步骤 1.4）**
 - 查看应用控制台日志，确认是否有错误信息
 - R2 备份是异步非阻塞的，即使失败也不会影响微博上传
 

@@ -94,6 +94,9 @@
     
                 <label>R2 公开访问域名 (Public Domain)</label>
                 <input type="text" id="r2-public-domain" placeholder="例如: https://images.example.com (末尾不要加 /)" />
+                
+                <button type="button" id="test-r2-btn">测试 R2 连接</button>
+                <span id="r2-status-message"></span>
             </div>
     
             <div class="form-section">
@@ -130,10 +133,12 @@
                 
                 <label>远程路径</label>
                 <input type="text" id="webdav-remote-path" placeholder="例如: /WeiboDR/history.json" value="/WeiboDR/history.json" />
+                
+                <button type="button" id="test-webdav-btn">测试 WebDAV 连接</button>
+                <span id="webdav-status-message"></span>
             </div>
     
             <div class="footer">
-                <button id="save-btn">保存并关闭</button>
                 <span id="save-status"></span>
             </div>
         </div>
