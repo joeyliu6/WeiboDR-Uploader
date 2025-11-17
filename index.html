@@ -67,23 +67,11 @@
                 <h2>微博 Cookie (必填)</h2>
                 <p>用于 m.weibo.cn 接口。这是项目成功的关键。</p>
                 <div style="display: flex; gap: 10px; margin-bottom: 10px;">
-                    <button id="login-with-account-btn" style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">🔐 使用账号密码登录</button>
+                    <button id="login-with-webview-btn" style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">🌐 自动获取Cookie</button>
                     <button id="test-cookie-btn" style="flex: 1;">测试连接</button>
                 </div>
-                <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串...或点击上方'使用账号密码登录'按钮自动获取"></textarea>
+                <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串...或点击上方'自动获取Cookie'按钮"></textarea>
                 <span id="cookie-status"></span>
-                
-                <div class="form-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
-                    <h3>高级选项</h3>
-                    <div class="radio-group">
-                        <input type="checkbox" id="allow-user-account" />
-                        <label for="allow-user-account">启用账号密码自动续期 (推荐)</label>
-                    </div>
-                    <label>微博登录邮箱/手机号</label>
-                    <input type="text" id="weibo-username" placeholder="微博登录邮箱/手机号" disabled />
-                    <label>微博登录密码</label>
-                    <input type="password" id="weibo-password" placeholder="微博登录密码" disabled />
-                </div>
             </div>
     
             <div class="form-section">

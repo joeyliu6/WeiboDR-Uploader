@@ -5,8 +5,19 @@
 )]
 
 use tauri::{CustomMenuItem, Manager, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem, SystemTrayEvent};
-use serde::Deserialize;
-use std::collections::HashMap;
+use std::time::Duration;
+#[cfg(target_os = "windows")]
+use std::{collections::BTreeMap, sync::mpsc};
+#[cfg(target_os = "windows")]
+use webview2_com::{
+    GetCookiesCompletedHandler,
+    Microsoft::Web::WebView2::Win32::{ICoreWebView2CookieList, ICoreWebView2_2},
+};
+#[cfg(target_os = "windows")]
+use windows::{
+    core::{Interface, PWSTR},
+    Win32::System::Com::CoTaskMemFree,
+};
 
 fn main() {
     // 1. 定义原生菜单栏 (PRD 1.1)
@@ -57,7 +68,11 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![attempt_weibo_login, save_cookie_from_login])
+        .invoke_handler(tauri::generate_handler![
+            save_cookie_from_login,
+            start_cookie_monitoring,
+            get_request_header_cookie
+        ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
         .on_menu_event(|event| {            // 5. 处理菜单栏事件
@@ -113,178 +128,6 @@ fn main() {
         .expect("error while running tauri application");
 }
 
-#[derive(Deserialize)]
-struct LoginResponse {
-    retcode: i32,
-    #[serde(rename = "loginresulturl")]
-    login_result_url: Option<String>,
-    msg: Option<String>,
-}
-
-#[tauri::command]
-async fn attempt_weibo_login(username: String, password: String) -> Result<String, String> {
-    // 输入验证
-    if username.trim().is_empty() {
-        return Err("用户名不能为空".to_string());
-    }
-    if password.trim().is_empty() {
-        return Err("密码不能为空".to_string());
-    }
-    
-    eprintln!("[登录] 开始尝试登录，用户名: {}", username);
-    
-    let client = reqwest::Client::builder()
-        .cookie_store(true)
-        .timeout(std::time::Duration::from_secs(30)) // 30秒超时
-        .build()
-        .map_err(|e| {
-            eprintln!("[登录] 创建 HTTP 客户端失败: {:?}", e);
-            format!("创建 HTTP 客户端失败: {}", e)
-        })?;
-
-    // 第一步：POST 登录请求
-    let mut form_data: HashMap<String, String> = HashMap::new();
-    form_data.insert("username".to_string(), username);
-    form_data.insert("password".to_string(), password);
-    form_data.insert("entry".to_string(), "mweibo".to_string());
-    form_data.insert("savestate".to_string(), "1".to_string());
-    form_data.insert("ec".to_string(), "0".to_string());
-    form_data.insert("pagerefer".to_string(), "".to_string());
-    form_data.insert("r".to_string(), "https://m.weibo.cn/".to_string());
-    form_data.insert("wentry".to_string(), "".to_string());
-    form_data.insert("loginfrom".to_string(), "".to_string());
-    form_data.insert("client_id".to_string(), "".to_string());
-    form_data.insert("code".to_string(), "".to_string());
-    form_data.insert("qq".to_string(), "".to_string());
-    form_data.insert("mainpageflag".to_string(), "1".to_string());
-    form_data.insert("hff".to_string(), "".to_string());
-    form_data.insert("hfp".to_string(), "".to_string());
-
-    eprintln!("[登录] 发送登录请求到微博服务器...");
-    
-    let response = client
-        .post("https://passport.weibo.cn/sso/login")
-        .header("Referer", "https://passport.weibo.cn/signin/login")
-        .header("Origin", "https://passport.weibo.cn")
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
-        .form(&form_data)
-        .send()
-        .await
-        .map_err(|e| {
-            eprintln!("[登录] 登录请求失败: {:?}", e);
-            let error_msg = e.to_string().to_lowercase();
-            if error_msg.contains("timeout") || error_msg.contains("超时") {
-                "登录请求超时：请检查网络连接".to_string()
-            } else if error_msg.contains("connection") || error_msg.contains("连接") {
-                "无法连接到微博服务器：请检查网络连接和防火墙设置".to_string()
-            } else {
-                format!("登录请求失败: {}", e)
-            }
-        })?;
-
-    let status = response.status();
-    eprintln!("[登录] 收到响应，状态码: {}", status);
-    
-    if !status.is_success() {
-        let error_msg = match status.as_u16() {
-            400 => "请求参数错误".to_string(),
-            403 => "访问被拒绝：可能触发了安全验证".to_string(),
-            429 => "请求过于频繁：请稍后再试".to_string(),
-            500..=599 => format!("服务器错误 (HTTP {})：微博服务器可能暂时不可用", status),
-            _ => format!("登录请求失败: HTTP {}", status),
-        };
-        return Err(error_msg);
-    }
-
-    let login_result: LoginResponse = response
-        .json()
-        .await
-        .map_err(|e| {
-            eprintln!("[登录] 解析登录响应失败: {:?}", e);
-            format!("解析登录响应失败: {}。服务器可能返回了异常数据", e)
-        })?;
-    
-    eprintln!("[登录] 登录响应解析成功，retcode: {}", login_result.retcode);
-
-    // 检查返回码
-    if login_result.retcode != 20000000 {
-        let error_msg = login_result.msg.clone().unwrap_or_else(|| {
-            match login_result.retcode {
-                50050011 => "需要验证码：请稍后再试或使用其他登录方式".to_string(),
-                50011002 => "用户名或密码错误：请检查您的账号密码".to_string(),
-                50011003 => "账号异常：请前往微博官网解除限制".to_string(),
-                50011015 => "账号已被锁定：请联系微博客服".to_string(),
-                _ => format!("登录失败 (错误码: {})", login_result.retcode),
-            }
-        });
-        eprintln!("[登录] 登录失败: {} (retcode: {})", error_msg, login_result.retcode);
-        return Err(error_msg);
-    }
-
-    // 第二步：从 loginresulturl 获取 Cookie
-    let login_url = login_result.login_result_url.ok_or_else(|| {
-        eprintln!("[登录] 登录成功但未返回登录结果 URL");
-        "登录成功但未返回登录结果 URL：这可能是微博 API 变更，请联系开发者".to_string()
-    })?;
-    
-    eprintln!("[登录] 准备从登录结果 URL 获取 Cookie: {}", login_url);
-
-    let cookie_response = client
-        .get(&login_url)
-        .header("Referer", "https://passport.weibo.cn/signin/login")
-        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/108.0.0.0 Safari/537.36")
-        .send()
-        .await
-        .map_err(|e| {
-            eprintln!("[登录] 获取 Cookie 失败: {:?}", e);
-            let error_msg = e.to_string().to_lowercase();
-            if error_msg.contains("timeout") || error_msg.contains("超时") {
-                "获取 Cookie 超时：请检查网络连接".to_string()
-            } else if error_msg.contains("connection") || error_msg.contains("连接") {
-                "无法连接到服务器：请检查网络连接".to_string()
-            } else {
-                format!("获取 Cookie 失败: {}", e)
-            }
-        })?;
-    
-    eprintln!("[登录] Cookie 响应状态码: {}", cookie_response.status());
-
-    // 从响应头中提取所有 Set-Cookie
-    let mut cookie_parts = Vec::new();
-    let mut cookie_count = 0;
-    
-    for (name, value) in cookie_response.headers() {
-        if name.as_str().to_lowercase() == "set-cookie" {
-            cookie_count += 1;
-            if let Ok(cookie_str) = value.to_str() {
-                // Set-Cookie 格式: name=value; path=/; domain=.weibo.cn; HttpOnly
-                // 我们只需要 name=value 部分
-                if let Some(name_value) = cookie_str.split(';').next() {
-                    let trimmed = name_value.trim();
-                    if !trimmed.is_empty() {
-                        cookie_parts.push(trimmed.to_string());
-                        eprintln!("[登录] 提取 Cookie: {}", trimmed.split('=').next().unwrap_or("unknown"));
-                    }
-                }
-            }
-        }
-    }
-    
-    eprintln!("[登录] 共找到 {} 个 Set-Cookie 头，成功提取 {} 个 Cookie", cookie_count, cookie_parts.len());
-    
-    // 如果响应头中没有 Set-Cookie，返回错误
-    if cookie_parts.is_empty() {
-        eprintln!("[登录] 错误: 未能从响应中提取任何 Cookie");
-        return Err("未能从登录结果中提取 Cookie：这可能是微博 API 变更或网络问题，请稍后重试或手动获取 Cookie。".to_string());
-    }
-
-    // 拼接所有 Cookie
-    let cookie_string = cookie_parts.join("; ");
-    eprintln!("[登录] ✓ Cookie 提取成功，长度: {} 字符", cookie_string.len());
-    
-    Ok(cookie_string)
-}
-
 #[tauri::command]
 async fn save_cookie_from_login(cookie: String, app: tauri::AppHandle) -> Result<(), String> {
     eprintln!("[保存Cookie] 开始保存Cookie，长度: {}", cookie.len());
@@ -299,6 +142,13 @@ async fn save_cookie_from_login(cookie: String, app: tauri::AppHandle) -> Result
         match main_window.emit("cookie-updated", cookie.clone()) {
             Ok(_) => {
                 eprintln!("[保存Cookie] ✓ 已发送Cookie到主窗口");
+
+                // 成功后，异步关闭登录窗口
+                if let Some(login_window) = app.get_window("login-webview") {
+                    let _ = login_window.close();
+                    eprintln!("[保存Cookie] ✓ 已请求关闭登录窗口");
+                }
+                
                 Ok(())
             }
             Err(e) => {
@@ -310,5 +160,284 @@ async fn save_cookie_from_login(cookie: String, app: tauri::AppHandle) -> Result
         eprintln!("[保存Cookie] 错误: 找不到主窗口");
         Err("找不到主窗口".to_string())
     }
+}
+
+#[tauri::command]
+async fn start_cookie_monitoring(app: tauri::AppHandle) -> Result<(), String> {
+    eprintln!("[Cookie监控] 开始监控登录窗口的Cookie");
+    
+    let app_handle = app.clone();
+    
+    // 在新线程中运行监控
+    std::thread::spawn(move || {
+        let mut check_count = 0;
+        let max_checks = 120; // 最多检查120次（4分钟）
+        
+        while check_count < max_checks {
+            std::thread::sleep(Duration::from_secs(2));
+            check_count += 1;
+            
+            // 获取登录窗口
+            if let Some(login_window) = app_handle.get_window("login-webview") {
+                #[cfg(target_os = "windows")]
+                {
+                    if attempt_cookie_capture_and_save(&login_window, &app_handle) {
+                        break;
+                    }
+                }
+
+                #[cfg(not(target_os = "windows"))]
+                {
+                    // 准备注入的JS，用于检查和发送Cookie
+                    let check_js = r#"
+                        (async function() {
+                            try {
+                                const cookie = document.cookie || '';
+                                // 微博登录成功的关键Cookie字段
+                                if (cookie.includes('SUB=') || cookie.includes('SUBP=')) {
+                                    // 调用Tauri后端命令来保存Cookie
+                                    await window.__TAURI__.invoke('save_cookie_from_login', { 
+                                        cookie: cookie 
+                                    });
+                                    return true; // 表示成功
+                                }
+                                return false; // 表示未登录
+                            } catch (e) {
+                                console.error('[自动监控] JS执行错误:', e);
+                                return false;
+                            }
+                        })()
+                    "#;
+                    
+                    // 执行JS
+                    if let Err(e) = login_window.eval(check_js) {
+                        eprintln!("[Cookie监控] 执行JS脚本失败: {:?}", e);
+                    }
+                }
+            } else {
+                eprintln!("[Cookie监控] 登录窗口已关闭，自动停止监控");
+                break; // 窗口关闭，退出循环
+            }
+        }
+        
+        eprintln!("[Cookie监控] 监控结束（检查次数: {}）", check_count);
+    });
+    
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_request_header_cookie(app: tauri::AppHandle) -> Result<String, String> {
+    #[cfg(target_os = "windows")]
+    {
+        let Some(login_window) = app.get_window("login-webview") else {
+            return Err("登录窗口未打开，请先点击“开始登录”".to_string());
+        };
+
+        match try_extract_cookie_header(&login_window) {
+            Ok(Some(cookie)) => {
+                if cookie.contains("SUB=") && cookie.contains("SUBP=") {
+                    eprintln!("[Cookie获取] 请求头Cookie长度: {}", cookie.len());
+                    Ok(cookie)
+                } else {
+                    Err("提取到的 Cookie 缺少关键字段（SUB / SUBP），请确认已成功登录微博"
+                        .to_string())
+                }
+            }
+            Ok(None) => Err("未检测到 Cookie，请确认已完成登录后再试".to_string()),
+            Err(err) => Err(format!("提取请求头 Cookie 失败: {}", err)),
+        }
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = app;
+        Err("当前操作系统暂不支持请求头 Cookie 提取，请使用页面内的手动复制方式".to_string())
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn attempt_cookie_capture_and_save(
+    login_window: &tauri::Window,
+    app_handle: &tauri::AppHandle,
+) -> bool {
+    match try_extract_cookie_header(login_window) {
+        Ok(Some(cookie)) => {
+            if cookie.contains("SUB=") && cookie.contains("SUBP=") {
+                eprintln!("[Cookie监控] 检测到请求头Cookie，尝试保存");
+                match tauri::async_runtime::block_on(save_cookie_from_login(
+                    cookie.clone(),
+                    app_handle.clone(),
+                )) {
+                    Ok(_) => {
+                        eprintln!("[Cookie监控] ✓ 请求头Cookie保存成功");
+                        true
+                    }
+                    Err(err) => {
+                        eprintln!("[Cookie监控] 保存Cookie失败: {}", err);
+                        false
+                    }
+                }
+            } else {
+                false
+            }
+        }
+        Ok(None) => false,
+        Err(err) => {
+            eprintln!("[Cookie监控] 读取请求头Cookie失败: {}", err);
+            false
+        }
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn try_extract_cookie_header(window: &tauri::Window) -> Result<Option<String>, String> {
+    let (result_tx, result_rx) = mpsc::channel();
+    window
+        .with_webview(move |inner| {
+            let res = (|| -> Result<Option<String>, String> {
+                let controller = inner.controller();
+                let webview = unsafe { controller.CoreWebView2() }
+                    .map_err(|e| format!("{:?}", e))?;
+                let webview2: ICoreWebView2_2 = webview
+                    .cast()
+                    .map_err(|e| format!("{:?}", e))?;
+                let cookie_manager = unsafe { webview2.CookieManager() }
+                    .map_err(|e| format!("{:?}", e))?;
+
+                let mut cookie_store: BTreeMap<String, String> = BTreeMap::new();
+                let target_urls = [
+                    "https://weibo.com/"
+                ];
+
+                for url in target_urls {
+                    let cm = cookie_manager.clone();
+                    let url_string = url.to_string();
+                    let url_string_clone = url_string.clone(); // Clone for use in closure
+                    let (tx, rx) = mpsc::channel();
+
+                    let result = GetCookiesCompletedHandler::wait_for_async_operation(
+                        Box::new(move |handler| unsafe {
+                            let wide = encode_wide(&url_string_clone);
+                            cm.GetCookies(
+                                windows::core::PCWSTR::from_raw(wide.as_ptr()),
+                                &handler,
+                            )
+                            .map_err(webview2_com::Error::WindowsError)
+                        }),
+                        Box::new(move |hr, list| {
+                            hr?;
+                            tx.send(list)
+                                .expect("send GetCookies result over channel");
+                            Ok(())
+                        }),
+                    );
+
+                    if let Err(err) = result {
+                        eprintln!(
+                            "[Cookie监控] 获取 {} 请求头Cookie失败: {:?}",
+                            url_string, err
+                        );
+                        continue;
+                    }
+
+                    match rx.recv() {
+                        Ok(Some(list)) => {
+                            if let Err(err) = merge_cookie_list(&mut cookie_store, list)
+                            {
+                                eprintln!(
+                                    "[Cookie监控] 解析 {} Cookie 失败: {}",
+                                    url_string, err
+                                );
+                            }
+                        }
+                        Ok(None) => continue,
+                        Err(_) => {
+                            return Err("接收Cookie结果失败".to_string());
+                        }
+                    }
+                }
+
+                if cookie_store.is_empty() {
+                    return Ok(None);
+                }
+
+                // 调试输出：显示提取到的所有Cookie
+                eprintln!("[Cookie调试] 提取到的Cookie键值对: {:?}", cookie_store);
+
+                let header = cookie_store
+                    .into_iter()
+                    .map(|(k, v)| format!("{k}={v}"))
+                    .collect::<Vec<_>>()
+                    .join("; ");
+
+                eprintln!("[Cookie调试] 生成的请求头Cookie: {}", header);
+
+                Ok(Some(header))
+            })();
+
+            let _ = result_tx.send(res);
+        })
+        .map_err(|e| e.to_string())?;
+
+    result_rx
+        .recv()
+        .map_err(|_| "无法获取登录WebView".to_string())?
+}
+
+#[cfg(target_os = "windows")]
+fn merge_cookie_list(
+    store: &mut BTreeMap<String, String>,
+    list: ICoreWebView2CookieList,
+) -> Result<(), String> {
+    unsafe {
+        let mut count = 0;
+        list.Count(&mut count)
+            .map_err(|e| format!("{:?}", e))?;
+        for idx in 0..count {
+            let cookie = list
+                .GetValueAtIndex(idx)
+                .map_err(|e| format!("{:?}", e))?;
+            let name = read_cookie_string(|ptr| cookie.Name(ptr))?;
+            let value = read_cookie_string(|ptr| cookie.Value(ptr))?;
+            if name.is_empty() || value.is_empty() {
+                continue;
+            }
+            store.insert(name, value);
+        }
+    }
+    Ok(())
+}
+
+#[cfg(target_os = "windows")]
+fn read_cookie_string<F>(getter: F) -> Result<String, String>
+where
+    F: FnOnce(&mut PWSTR) -> windows::core::Result<()>,
+{
+    let mut buffer = PWSTR::null();
+    getter(&mut buffer).map_err(|e| format!("{:?}", e))?;
+    Ok(pwstr_to_string_and_free(buffer))
+}
+
+#[cfg(target_os = "windows")]
+fn pwstr_to_string_and_free(pwstr: PWSTR) -> String {
+    if pwstr.is_null() {
+        return String::new();
+    }
+    unsafe {
+        let mut len = 0;
+        while *pwstr.0.add(len) != 0 {
+            len += 1;
+        }
+        let slice = std::slice::from_raw_parts(pwstr.0, len);
+        let result = String::from_utf16_lossy(slice);
+        CoTaskMemFree(pwstr.0 as _);
+        result
+    }
+}
+
+#[cfg(target_os = "windows")]
+fn encode_wide(value: &str) -> Vec<u16> {
+    value.encode_utf16().chain(std::iter::once(0)).collect()
 }
 

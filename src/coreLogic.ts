@@ -8,7 +8,6 @@ import { uploadToWeibo, WeiboUploadError } from './weiboUploader';
 import { UserConfig, R2Config, HistoryItem, FailedItem } from './config';
 import { Store, StoreError } from './store';
 import { basename } from '@tauri-apps/api/path';
-import { invoke } from '@tauri-apps/api/tauri';
 import { emit } from '@tauri-apps/api/event';
 
 /**
@@ -732,92 +731,22 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       error: error
     });
     
-    // v2.1: Cookie 自动续期逻辑
+    // Cookie 过期提示
     const lowerErrorMessage = errorMessage.toLowerCase();
     if (lowerErrorMessage.includes("cookie") || lowerErrorMessage.includes("认证") || 
         errorCode === 'COOKIE_EXPIRED' || errorCode === 'COOKIE_ERROR' || 
         errorCode === 'INVALID_COOKIE' || errorCode === 'EMPTY_COOKIE') {
-      // 检查是否启用了账号密码自动续期
-      if (config.account && config.account.allowUserAccount && 
-          config.account.username && config.account.password) {
-        console.log("[自动续期] 检测到 Cookie 过期，尝试自动续期...");
-        
-        try {
-          console.log("[自动续期] 开始尝试自动登录...");
-          
-          // 验证账号密码
-          if (!config.account.username || config.account.username.trim().length === 0) {
-            throw new Error("用户名不能为空");
-          }
-          if (!config.account.password || config.account.password.trim().length === 0) {
-            throw new Error("密码不能为空");
-          }
-          
-          // 调用 Rust 后端登录
-          const newCookie = await invoke<string>("attempt_weibo_login", {
-            username: config.account.username.trim(),
-            password: config.account.password.trim()
-          });
-          
-          if (!newCookie || typeof newCookie !== 'string' || newCookie.trim().length === 0) {
-            throw new Error("登录返回的 Cookie 为空");
-          }
-          
-          console.log("[自动续期] ✅ 登录成功，更新 Cookie...");
-          
-          // 更新内存中的 Cookie
-          config.weiboCookie = newCookie.trim();
-          
-          // 更新存储中的 Cookie
-          try {
-            const configStore = new Store('.settings.dat');
-            const savedConfig = await configStore.get<UserConfig>('config');
-            if (savedConfig) {
-              savedConfig.weiboCookie = newCookie.trim();
-              await configStore.set('config', savedConfig);
-              await configStore.save();
-              console.log("[自动续期] ✅ Cookie 已保存到存储");
-            } else {
-              console.warn("[自动续期] 警告: 无法读取配置，Cookie 仅更新到内存");
-            }
-          } catch (saveError: any) {
-            console.error("[自动续期] 保存 Cookie 失败:", saveError?.message || String(saveError));
-            // 即使保存失败，也继续使用新 Cookie 重试
-          }
-          
-          // 自动重试上传
-          console.log("[自动续期] 使用新 Cookie 重试上传...");
-          return await handleFileUpload(filePath, config);
-          
-        } catch (loginError: any) {
-          const loginErrorMsg = loginError?.message || String(loginError);
-          console.error("[自动续期] ❌ 登录失败:", loginErrorMsg);
-          
-          let userMessage = "Cookie 已过期，且自动续期失败！";
-          if (loginErrorMsg.includes("用户名") || loginErrorMsg.includes("密码")) {
-            userMessage = `自动续期失败：${loginErrorMsg}，请检查设置中的账号密码配置`;
-          } else if (loginErrorMsg.includes("网络") || loginErrorMsg.includes("连接")) {
-            userMessage = `自动续期失败：网络连接失败，请检查网络后手动更新 Cookie`;
-          } else {
-            userMessage = `自动续期失败：${loginErrorMsg}，请检查账号密码或手动更新 Cookie`;
-          }
-          
-          await showNotification("Cookie 已过期", userMessage);
-          
-          // v2.0 优化：自动导航到设置视图
-          try {
-            await emit('navigate-to', 'settings');
-          } catch (emitError: any) {
-            console.warn("[自动续期] 导航到设置失败:", emitError?.message || String(emitError));
-          }
-          
-          return { status: 'error', message: userMessage };
-        }
-      } else {
-        // 未启用自动续期，按原样处理
-        await showNotification("上传失败", errorMessage);
-        return { status: 'error', message: errorMessage };
+      console.log("[Cookie错误] Cookie可能已过期，请重新获取");
+      await showNotification("Cookie错误", "Cookie可能已过期，请重新获取Cookie");
+      
+      // 导航到设置页面
+      try {
+        await emit('navigate-to', 'settings');
+      } catch (emitError: any) {
+        console.warn("[Cookie错误] 导航到设置失败:", emitError?.message || String(emitError));
       }
+      
+      return { status: 'error', message: "Cookie已过期，请重新获取Cookie" };
     }
     
     // v2.1: 失败重试队列逻辑

@@ -3,7 +3,7 @@
     "beforeDevCommand": "npm run dev",
     "beforeBuildCommand": "npm run build",
     "devPath": "http://localhost:1420",
-    "withGlobalTauri": false
+    "withGlobalTauri": true
   },
   "package": {
     "productName": "WeiboDR-Uploader",
@@ -65,7 +65,29 @@
       ]
     },
     "security": {
-      "csp": null
+      "csp": null,
+      "dangerousRemoteDomainIpcAccess": [
+        {
+          "domain": "m.weibo.cn",
+          "windows": ["login-webview"],
+          "enableTauriAPI": true
+        },
+        {
+          "domain": "passport.weibo.cn",
+          "windows": ["login-webview"],
+          "enableTauriAPI": true
+        },
+        {
+          "domain": "weibo.com",
+          "windows": ["login-webview"],
+          "enableTauriAPI": true
+        },
+        {
+          "domain": "login.sina.com.cn",
+          "windows": ["login-webview"],
+          "enableTauriAPI": true
+        }
+      ]
     },
     "windows": [
       {

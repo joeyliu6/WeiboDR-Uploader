@@ -17,19 +17,12 @@ export interface WebDAVConfig {
   remotePath: string;   // 远程路径 (例如: /WeiboDR/history.json)
 }
 
-export interface AccountConfig {
-  allowUserAccount: boolean;
-  username: string;
-  password?: string; // 密码是敏感信息，加密存储
-}
-
 export interface UserConfig {
   weiboCookie: string;
   r2: R2Config;
   baiduPrefix: string;
   outputFormat: 'baidu' | 'weibo' | 'r2';
   webdav: WebDAVConfig; // v1.2 新增
-  account: AccountConfig; // v2.1 新增
 }
 
 export interface HistoryItem {
@@ -66,11 +59,6 @@ export const DEFAULT_CONFIG: UserConfig = {
     username: '',
     password: '',
     remotePath: '/WeiboDR/history.json',
-  },
-  account: {
-    allowUserAccount: false,
-    username: '',
-    password: '',
   },
 };
 

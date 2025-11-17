@@ -54,9 +54,6 @@ const loadingSpinner = document.getElementById('loading-spinner')!;
 const weiboCookieEl = document.getElementById('weibo-cookie') as HTMLTextAreaElement;
 const testCookieBtn = document.getElementById('test-cookie-btn') as HTMLButtonElement;
 const cookieStatusEl = document.getElementById('cookie-status')!;
-const allowUserAccountEl = document.getElementById('allow-user-account') as HTMLInputElement;
-const weiboUsernameEl = document.getElementById('weibo-username') as HTMLInputElement;
-const weiboPasswordEl = document.getElementById('weibo-password') as HTMLInputElement;
 const r2AccountIdEl = document.getElementById('r2-account-id') as HTMLInputElement;
 const r2KeyIdEl = document.getElementById('r2-key-id') as HTMLInputElement;
 const r2SecretKeyEl = document.getElementById('r2-secret-key') as HTMLInputElement;
@@ -70,7 +67,7 @@ const webdavPasswordEl = document.getElementById('webdav-password') as HTMLInput
 const webdavRemotePathEl = document.getElementById('webdav-remote-path') as HTMLInputElement;
 const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
 const saveStatusEl = document.getElementById('save-status')!;
-const loginWithAccountBtn = document.getElementById('login-with-account-btn') as HTMLButtonElement;
+const loginWithWebviewBtn = document.getElementById('login-with-webview-btn') as HTMLButtonElement;
 
 // History View Elements
 const historyBody = document.getElementById('history-body')!;
@@ -189,45 +186,47 @@ async function initializeUpload() {
 
 
 // --- LOGIN WINDOW LOGIC ---
-async function openLoginWindow() {
+// 打开官方WebView登录窗口
+async function openWebviewLoginWindow() {
   try {
-    console.log('[登录窗口] 开始打开登录窗口');
+    console.log('[WebView登录窗口] 开始打开官方登录窗口');
     
     // 检查窗口是否已存在
-    const existingWindow = WebviewWindow.getByLabel('login');
+    const existingWindow = WebviewWindow.getByLabel('login-webview');
     if (existingWindow) {
-      console.log('[登录窗口] 窗口已存在，聚焦');
+      console.log('[WebView登录窗口] 窗口已存在，聚焦');
       await existingWindow.setFocus();
       return;
     }
     
-    // 创建新的登录窗口
-    const loginWindow = new WebviewWindow('login', {
-      url: '/login.html',
-      title: '微博登录',
-      width: 450,
-      height: 650,
-      resizable: false,
+    // 创建新的Cookie获取窗口
+    const loginWindow = new WebviewWindow('login-webview', {
+      url: '/login-webview.html',
+      title: '微博登录 - 自动获取Cookie',
+      width: 500,
+      height: 800,
+      resizable: true,
       center: true,
-      alwaysOnTop: true,
+      alwaysOnTop: false,
       decorations: true,
       transparent: false,
     });
     
     loginWindow.once('tauri://created', () => {
-      console.log('[登录窗口] 窗口创建成功');
+      console.log('[WebView登录窗口] 窗口创建成功');
     });
     
     loginWindow.once('tauri://error', (e) => {
-      console.error('[登录窗口] 窗口创建失败:', e);
+      console.error('[WebView登录窗口] 窗口创建失败:', e);
       alert('打开登录窗口失败，请重试');
     });
     
   } catch (error) {
-    console.error('[登录窗口] 打开窗口异常:', error);
+    console.error('[WebView登录窗口] 打开窗口异常:', error);
     alert(`打开登录窗口失败: ${error}`);
   }
 }
+
 
 // 监听Cookie更新事件
 async function setupCookieListener() {
@@ -258,7 +257,7 @@ async function setupCookieListener() {
         
         // 显示成功提示
         if (cookieStatusEl) {
-          cookieStatusEl.textContent = '✅ 登录成功，Cookie已自动填充！';
+          cookieStatusEl.textContent = '✅ Cookie已自动填充并保存！';
           cookieStatusEl.style.color = 'lightgreen';
           
           setTimeout(() => {
@@ -289,22 +288,6 @@ async function loadSettings() {
     }
   
     weiboCookieEl.value = config.weiboCookie || '';
-    
-    // 加载账号密码配置
-    if (config.account) {
-      allowUserAccountEl.checked = config.account.allowUserAccount || false;
-      weiboUsernameEl.value = config.account.username || '';
-      weiboPasswordEl.value = config.account.password || '';
-      weiboUsernameEl.disabled = !allowUserAccountEl.checked;
-      weiboPasswordEl.disabled = !allowUserAccountEl.checked;
-    } else {
-      allowUserAccountEl.checked = false;
-      weiboUsernameEl.value = '';
-      weiboPasswordEl.value = '';
-      weiboUsernameEl.disabled = true;
-      weiboPasswordEl.disabled = true;
-    }
-    
     r2AccountIdEl.value = config.r2.accountId || '';
     r2KeyIdEl.value = config.r2.accessKeyId || '';
     r2SecretKeyEl.value = config.r2.secretAccessKey || '';
@@ -357,11 +340,6 @@ async function saveSettings() {
         username: webdavUsernameEl.value.trim(),
         password: webdavPasswordEl.value.trim(),
         remotePath: webdavRemotePathEl.value.trim() || DEFAULT_CONFIG.webdav.remotePath,
-      },
-      account: {
-        allowUserAccount: allowUserAccountEl.checked,
-        username: weiboUsernameEl.value.trim(),
-        password: weiboPasswordEl.value.trim(),
       },
     };
   
@@ -822,13 +800,7 @@ function initialize() {
     saveBtn.addEventListener('click', saveSettings);
     testCookieBtn.addEventListener('click', testWeiboConnection);
     weiboCookieEl.addEventListener('blur', saveSettings);
-    loginWithAccountBtn.addEventListener('click', openLoginWindow);
-    
-    // 账号密码复选框启用/禁用逻辑
-    allowUserAccountEl.addEventListener('change', () => {
-      weiboUsernameEl.disabled = !allowUserAccountEl.checked;
-      weiboPasswordEl.disabled = !allowUserAccountEl.checked;
-    });
+    loginWithWebviewBtn.addEventListener('click', openWebviewLoginWindow);
 
     // Bind history events
     clearHistoryBtn.addEventListener('click', clearHistory);

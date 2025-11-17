@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>微博官方登录</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Microsoft YaHei', sans-serif;
+            background: #f5f5f5;
+            height: 100vh;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .toolbar {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 15px 20px;
+            color: white;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
+        }
+
+        .toolbar h1 {
+            font-size: 16px;
+            font-weight: 600;
+        }
+
+        .toolbar-buttons {
+            display: flex;
+            gap: 10px;
+        }
+
+        .toolbar-btn {
+            padding: 6px 16px;
+            background: rgba(255, 255, 255, 0.2);
+            color: white;
+            border: 1px solid rgba(255, 255, 255, 0.3);
+            border-radius: 6px;
+            font-size: 13px;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .toolbar-btn:hover {
+            background: rgba(255, 255, 255, 0.3);
+        }
+
+        .toolbar-btn.primary {
+            background: white;
+            color: #667eea;
+            border-color: white;
+        }
+
+        .toolbar-btn.primary:hover {
+            background: #f0f0f0;
+        }
+
+        .webview-container {
+            flex: 1;
+            position: relative;
+            background: white;
+        }
+
+        iframe {
+            width: 100%;
+            height: 100%;
+            border: none;
+        }
+
+        .loading-overlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            right: 0;
+            bottom: 0;
+            background: white;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+        }
+
+        .loading-overlay.hidden {
+            display: none;
+        }
+
+        .spinner {
+            width: 50px;
+            height: 50px;
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+
+        .loading-text {
+            margin-top: 20px;
+            color: #666;
+            font-size: 14px;
+        }
+
+        .status-bar {
+            padding: 10px 20px;
+            background: #fff;
+            border-top: 1px solid #e0e0e0;
+            font-size: 12px;
+            color: #666;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .status-message {
+            flex: 1;
+        }
+
+        .status-message.success {
+            color: #28a745;
+            font-weight: 500;
+        }
+
+        .status-message.error {
+            color: #dc3545;
+            font-weight: 500;
+        }
+
+        .tips {
+            padding: 15px 20px;
+            background: #fff3cd;
+            border-bottom: 1px solid #ffc107;
+            font-size: 13px;
+            color: #856404;
+            line-height: 1.6;
+        }
+
+        .tips strong {
+            display: block;
+            margin-bottom: 5px;
+        }
+    </style>
+</head>
+<body>
+    <div class="toolbar">
+        <h1>🔐 微博登录 - 自动获取Cookie</h1>
+        <div class="toolbar-buttons">
+            <button class="toolbar-btn primary" id="get-cookie-btn">获取Cookie</button>
+            <button class="toolbar-btn" id="close-btn">关闭</button>
+        </div>
+    </div>
+
+    <div class="tips" id="tips-section">
+        <strong>💡 使用说明：</strong>
+        点击下方"开始登录"按钮，将在本窗口加载微博登录页面。登录成功后会自动获取Cookie。
+    </div>
+
+    <div class="webview-container">
+        <div id="instructions" style="padding: 60px 40px; text-align: center;">
+            <div style="font-size: 64px; margin-bottom: 30px;">🔐</div>
+            <h2 style="color: #333; margin-bottom: 20px;">准备登录微博</h2>
+            <p style="color: #666; margin-bottom: 40px; line-height: 1.8;">
+                点击下方按钮将在本窗口加载微博登录页面。<br>
+                登录完成后，页面会自动检测并获取Cookie。
+            </p>
+            <button id="start-login-btn" style="
+                padding: 16px 48px;
+                background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-size: 18px;
+                font-weight: 600;
+                cursor: pointer;
+                box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+            ">🚀 开始登录</button>
+            
+            <div style="margin-top: 40px; padding: 20px; background: #f8f9fa; border-radius: 8px; text-align: left;">
+                <strong style="display: block; margin-bottom: 10px; color: #333;">⚠️ 重要说明：</strong>
+                <ul style="color: #666; line-height: 2; margin-left: 20px;">
+                    <li>登录页面将直接在本窗口加载</li>
+                    <li>支持微博所有官方登录方式（密码、验证码、扫码等）</li>
+                    <li>登录成功后会自动检测并保存Cookie</li>
+                    <li>整个过程在本地完成，安全可靠</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div class="status-message" id="status-message">
+            等待登录...
+        </div>
+    </div>
+
+    <script type="module" src="/src/login-webview.ts"></script>
+</body>
+</html>
+
