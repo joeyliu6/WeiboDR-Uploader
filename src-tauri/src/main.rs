@@ -57,7 +57,7 @@ fn main() {
     let system_tray = SystemTray::new().with_menu(tray_menu);
 
     tauri::Builder::default()
-        .invoke_handler(tauri::generate_handler![attempt_weibo_login])
+        .invoke_handler(tauri::generate_handler![attempt_weibo_login, save_cookie_from_login])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
         .on_menu_event(|event| {            // 5. 处理菜单栏事件
@@ -283,5 +283,32 @@ async fn attempt_weibo_login(username: String, password: String) -> Result<Strin
     eprintln!("[登录] ✓ Cookie 提取成功，长度: {} 字符", cookie_string.len());
     
     Ok(cookie_string)
+}
+
+#[tauri::command]
+async fn save_cookie_from_login(cookie: String, app: tauri::AppHandle) -> Result<(), String> {
+    eprintln!("[保存Cookie] 开始保存Cookie，长度: {}", cookie.len());
+    
+    // 输入验证
+    if cookie.trim().is_empty() {
+        return Err("Cookie不能为空".to_string());
+    }
+    
+    // 发送事件到主窗口
+    if let Some(main_window) = app.get_window("main") {
+        match main_window.emit("cookie-updated", cookie.clone()) {
+            Ok(_) => {
+                eprintln!("[保存Cookie] ✓ 已发送Cookie到主窗口");
+                Ok(())
+            }
+            Err(e) => {
+                eprintln!("[保存Cookie] 发送事件失败: {:?}", e);
+                Err(format!("发送Cookie事件失败: {}", e))
+            }
+        }
+    } else {
+        eprintln!("[保存Cookie] 错误: 找不到主窗口");
+        Err("找不到主窗口".to_string())
+    }
 }
 

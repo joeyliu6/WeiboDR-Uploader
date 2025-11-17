@@ -9,6 +9,7 @@ import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
 import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
+import { WebviewWindow } from '@tauri-apps/api/window';
 
 // --- GLOBAL ERROR HANDLERS ---
 window.addEventListener('error', (event) => {
@@ -69,6 +70,7 @@ const webdavPasswordEl = document.getElementById('webdav-password') as HTMLInput
 const webdavRemotePathEl = document.getElementById('webdav-remote-path') as HTMLInputElement;
 const saveBtn = document.getElementById('save-btn') as HTMLButtonElement;
 const saveStatusEl = document.getElementById('save-status')!;
+const loginWithAccountBtn = document.getElementById('login-with-account-btn') as HTMLButtonElement;
 
 // History View Elements
 const historyBody = document.getElementById('history-body')!;
@@ -185,6 +187,99 @@ async function initializeUpload() {
     }
 }
 
+
+// --- LOGIN WINDOW LOGIC ---
+async function openLoginWindow() {
+  try {
+    console.log('[登录窗口] 开始打开登录窗口');
+    
+    // 检查窗口是否已存在
+    const existingWindow = WebviewWindow.getByLabel('login');
+    if (existingWindow) {
+      console.log('[登录窗口] 窗口已存在，聚焦');
+      await existingWindow.setFocus();
+      return;
+    }
+    
+    // 创建新的登录窗口
+    const loginWindow = new WebviewWindow('login', {
+      url: '/login.html',
+      title: '微博登录',
+      width: 450,
+      height: 650,
+      resizable: false,
+      center: true,
+      alwaysOnTop: true,
+      decorations: true,
+      transparent: false,
+    });
+    
+    loginWindow.once('tauri://created', () => {
+      console.log('[登录窗口] 窗口创建成功');
+    });
+    
+    loginWindow.once('tauri://error', (e) => {
+      console.error('[登录窗口] 窗口创建失败:', e);
+      alert('打开登录窗口失败，请重试');
+    });
+    
+  } catch (error) {
+    console.error('[登录窗口] 打开窗口异常:', error);
+    alert(`打开登录窗口失败: ${error}`);
+  }
+}
+
+// 监听Cookie更新事件
+async function setupCookieListener() {
+  try {
+    await listen<string>('cookie-updated', async (event) => {
+      console.log('[Cookie更新] 收到Cookie更新事件，长度:', event.payload?.length || 0);
+      
+      const cookie = event.payload;
+      if (!cookie || cookie.trim().length === 0) {
+        console.error('[Cookie更新] Cookie为空');
+        return;
+      }
+      
+      try {
+        // 更新UI
+        if (weiboCookieEl) {
+          weiboCookieEl.value = cookie.trim();
+          console.log('[Cookie更新] UI已更新');
+        }
+        
+        // 保存到存储
+        const config = await configStore.get<UserConfig>('config') || DEFAULT_CONFIG;
+        config.weiboCookie = cookie.trim();
+        await configStore.set('config', config);
+        await configStore.save();
+        
+        console.log('[Cookie更新] ✓ Cookie已保存到存储');
+        
+        // 显示成功提示
+        if (cookieStatusEl) {
+          cookieStatusEl.textContent = '✅ 登录成功，Cookie已自动填充！';
+          cookieStatusEl.style.color = 'lightgreen';
+          
+          setTimeout(() => {
+            cookieStatusEl.textContent = '';
+          }, 3000);
+        }
+        
+      } catch (error) {
+        console.error('[Cookie更新] 保存Cookie失败:', error);
+        if (cookieStatusEl) {
+          cookieStatusEl.textContent = `❌ 保存失败: ${error}`;
+          cookieStatusEl.style.color = 'red';
+        }
+      }
+    });
+    
+    console.log('[Cookie更新] 监听器已设置');
+  } catch (error) {
+    console.error('[Cookie更新] 设置监听器失败:', error);
+  }
+}
 
 // --- SETTINGS LOGIC (from settings.ts) ---
 async function loadSettings() {
@@ -727,6 +822,7 @@ function initialize() {
     saveBtn.addEventListener('click', saveSettings);
     testCookieBtn.addEventListener('click', testWeiboConnection);
     weiboCookieEl.addEventListener('blur', saveSettings);
+    loginWithAccountBtn.addEventListener('click', openLoginWindow);
     
     // 账号密码复选框启用/禁用逻辑
     allowUserAccountEl.addEventListener('change', () => {
@@ -764,6 +860,9 @@ function initialize() {
     
     // 初始化失败队列角标
     loadFailedQueue();
+    
+    // 设置Cookie更新监听器
+    setupCookieListener();
 }
 
 document.addEventListener('DOMContentLoaded', initialize);

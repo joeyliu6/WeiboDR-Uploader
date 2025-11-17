@@ -66,8 +66,11 @@
             <div class="form-section">
                 <h2>微博 Cookie (必填)</h2>
                 <p>用于 m.weibo.cn 接口。这是项目成功的关键。</p>
-                <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串..."></textarea>
-                <button id="test-cookie-btn">测试连接</button>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="login-with-account-btn" style="flex: 1; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);">🔐 使用账号密码登录</button>
+                    <button id="test-cookie-btn" style="flex: 1;">测试连接</button>
+                </div>
+                <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串...或点击上方'使用账号密码登录'按钮自动获取"></textarea>
                 <span id="cookie-status"></span>
                 
                 <div class="form-section" style="margin-top: 20px; padding-top: 20px; border-top: 1px solid #444;">
