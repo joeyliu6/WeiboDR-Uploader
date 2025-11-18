@@ -16,15 +16,29 @@
       </div>
       <div class="content-area">
         <div id="upload-view" class="view active">
-          <div class="container">
-            <div id="drop-zone">
+          <div class="upload-container">
+            <!-- 顶部拖拽区域 -->
+            <div id="drop-zone-header">
               <div id="drop-message">
-                <p>拖拽文件到此处上传</p>
-                <span>(WeiboDR-Uploader)</span>
+                <p>📤 拖拽图片到此处上传</p>
+                <span>或点击选择文件</span>
               </div>
-              <div id="loading-spinner" class="hidden"></div>
+              <input type="file" id="file-input" multiple accept="image/*" style="display: none;" />
             </div>
-            <div id="status-message"></div>
+            
+            <!-- R2 备份开关 -->
+            <div class="upload-controls">
+              <label class="r2-toggle">
+                <input type="checkbox" id="upload-view-toggle-r2" checked />
+                <span>同时备份到 Cloudflare R2</span>
+              </label>
+            </div>
+            
+            <!-- 上传队列列表 -->
+            <div id="upload-queue-container">
+              <h3>上传队列</h3>
+              <div id="upload-queue-list"></div>
+            </div>
           </div>
         </div>
         <div id="history-view" class="view">

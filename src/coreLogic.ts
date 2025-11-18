@@ -11,6 +11,14 @@ import { basename } from '@tauri-apps/api/path';
 import { emit } from '@tauri-apps/api/event';
 
 /**
+ * 上传进度回调类型
+ */
+export type UploadProgressCallback = (progress: {
+  type: 'weibo_progress' | 'r2_progress' | 'weibo_success' | 'r2_success' | 'error' | 'complete';
+  payload: any;
+}) => void;
+
+/**
  * 验证 R2 配置
  * @param config R2 配置
  * @returns 配置是否完整
@@ -844,6 +852,212 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       await showNotification("上传失败", errorMessage);
       return { status: 'error', message: errorMessage };
     }
+  }
+}
+
+/**
+ * 处理单个文件上传（支持进度报告）
+ * v2.0 新增 - 用于上传队列管理器
+ * @param filePath 文件路径
+ * @param config 用户配置
+ * @param options 选项（是否上传到R2等）
+ * @param onProgress 进度回调函数
+ * @returns 上传结果
+ */
+export async function processUpload(
+  filePath: string,
+  config: UserConfig,
+  options: { uploadToR2: boolean },
+  onProgress: UploadProgressCallback
+): Promise<{ status: 'success' | 'error'; link?: string; message?: string }> {
+  try {
+    // 验证输入
+    validateFilePath(filePath);
+    validateUserConfig(config);
+
+    // 读取文件
+    let fileBytes: Uint8Array;
+    try {
+      console.log(`[processUpload] 开始读取文件: ${filePath}`);
+      
+      const readPromise = readBinaryFile(filePath);
+      const timeoutPromise = new Promise<never>((_, reject) => {
+        setTimeout(() => reject(new Error('文件读取超时（超过30秒）')), 30000);
+      });
+      
+      fileBytes = await Promise.race([readPromise, timeoutPromise]);
+      
+      if (!fileBytes || !(fileBytes instanceof Uint8Array)) {
+        throw new Error("文件读取失败：返回的数据格式不正确");
+      }
+      
+      if (fileBytes.length === 0) {
+        throw new Error("文件读取失败：文件为空");
+      }
+      
+      console.log(`[processUpload] 文件读取成功，大小: ${(fileBytes.length / 1024).toFixed(2)}KB`);
+      
+      // 验证文件类型
+      const fileType = detectFileType(fileBytes);
+      if (!fileType) {
+        console.warn(`[processUpload] 警告: 无法识别文件类型`);
+      } else {
+        console.log(`[processUpload] 检测到文件类型: ${fileType}`);
+      }
+      
+      if (fileBytes.length < 100) {
+        throw new Error("文件过小（小于100字节），可能是损坏的文件");
+      }
+    } catch (readError: any) {
+      const errorMsg = readError?.message || String(readError);
+      console.error("[processUpload] 文件读取失败:", errorMsg);
+      onProgress({ type: 'error', payload: errorMsg });
+      return { status: 'error', message: errorMsg };
+    }
+
+    // 步骤 1: 上传微博
+    let hashName: string;
+    let largeUrl: string;
+    let weiboPid: string;
+    
+    try {
+      console.log('[processUpload] 步骤 1: 开始上传到微博...');
+      
+      // 模拟进度更新（因为当前uploadToWeibo不支持进度回调）
+      // TODO: 未来可以修改uploadToWeibo以支持真实的上传进度
+      onProgress({ type: 'weibo_progress', payload: 10 });
+      
+      const uploadResult = await uploadToWeibo(fileBytes, config.weiboCookie);
+      hashName = uploadResult.hashName;
+      largeUrl = uploadResult.largeUrl;
+      weiboPid = hashName.replace(/\.jpg$/, '');
+      
+      onProgress({ type: 'weibo_progress', payload: 100 });
+      
+      // 生成百度代理链接
+      const baiduPrefix = config.baiduPrefix || 'https://image.baidu.com/search/down?thumburl=';
+      const baiduLink = `${baiduPrefix}${largeUrl}`;
+      
+      onProgress({
+        type: 'weibo_success',
+        payload: { pid: weiboPid, largeUrl, baiduLink }
+      });
+      
+      console.log(`[processUpload] ✓ 微博上传成功: ${hashName}`);
+    } catch (error: any) {
+      const errorMsg = error instanceof WeiboUploadError 
+        ? error.message 
+        : (error?.message || '微博上传失败');
+      console.error('[processUpload] 微博上传失败:', errorMsg);
+      onProgress({ type: 'error', payload: errorMsg });
+      return { status: 'error', message: errorMsg };
+    }
+
+    // 步骤 2: 上传 R2 (可选)
+    let finalR2Key: string | null = null;
+    let r2Link: string | null = null;
+    
+    if (options.uploadToR2) {
+      try {
+        console.log('[processUpload] 步骤 2: 开始上传到 R2...');
+        onProgress({ type: 'r2_progress', payload: 10 });
+        
+        finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
+        
+        if (finalR2Key) {
+          onProgress({ type: 'r2_progress', payload: 100 });
+          
+          // 生成 R2 公开链接
+          const publicDomain = config.r2?.publicDomain;
+          if (publicDomain && publicDomain.trim() && publicDomain.startsWith('http')) {
+            const domain = publicDomain.endsWith('/') ? publicDomain.slice(0, -1) : publicDomain;
+            r2Link = `${domain}/${finalR2Key}`;
+          }
+          
+          onProgress({
+            type: 'r2_success',
+            payload: { key: finalR2Key, r2Link }
+          });
+          
+          console.log(`[processUpload] ✓ R2 上传成功: ${finalR2Key}`);
+        } else {
+          console.log('[processUpload] R2 未配置，跳过上传');
+        }
+      } catch (r2Error: any) {
+        const r2ErrorMsg = r2Error?.message || String(r2Error);
+        console.warn('[processUpload] R2 上传失败（非阻塞）:', r2ErrorMsg);
+        // R2 失败不影响主流程，只记录日志
+        await showNotification("R2 备份失败", r2ErrorMsg);
+      }
+    }
+
+    // 步骤 3: 生成最终链接
+    const finalLink = await generateLink(largeUrl, hashName, config);
+
+    // 步骤 4: 保存历史记录
+    try {
+      const historyStore = new Store('.history.dat');
+      let items: HistoryItem[] = [];
+      
+      try {
+        items = await historyStore.get<HistoryItem[]>('uploads') || [];
+        if (!Array.isArray(items)) {
+          items = [];
+        }
+      } catch (readError: any) {
+        console.error("[processUpload] 读取历史记录失败:", readError?.message || String(readError));
+        items = [];
+      }
+      
+      // 获取本地文件名
+      let name: string;
+      try {
+        name = await basename(filePath);
+        if (!name || name.trim().length === 0) {
+          name = filePath.split(/[/\\]/).pop() || '未知文件';
+        }
+      } catch (nameError: any) {
+        name = filePath.split(/[/\\]/).pop() || '未知文件';
+      }
+      
+      const newItem: HistoryItem = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        timestamp: Date.now(),
+        localFileName: name,
+        weiboPid: weiboPid,
+        generatedLink: finalLink,
+        r2Key: finalR2Key
+      };
+
+      const newItems = [newItem, ...items];
+      
+      try {
+        await historyStore.set('uploads', newItems);
+        await historyStore.save();
+        console.log(`[processUpload] ✓ 历史记录已保存`);
+      } catch (saveError: any) {
+        console.error("[processUpload] 保存历史记录失败:", saveError?.message || String(saveError));
+      }
+
+      // 自动同步到 WebDAV
+      syncHistoryToWebDAV(newItems, config).catch(err => {
+        console.error("[processUpload] WebDAV 同步失败:", err?.message || String(err));
+      });
+    } catch (historyError: any) {
+      console.error("[processUpload] 历史记录处理失败:", historyError?.message || String(historyError));
+    }
+
+    // 完成
+    onProgress({ type: 'complete', payload: { link: finalLink } });
+    
+    console.log(`[processUpload] ✓ 上传完成: ${finalLink}`);
+    return { status: 'success', link: finalLink };
+
+  } catch (error: any) {
+    const errorMsg = error?.message || '未知错误';
+    console.error('[processUpload] 上传失败:', errorMsg);
+    onProgress({ type: 'error', payload: errorMsg });
+    return { status: 'error', message: errorMsg };
   }
 }
 

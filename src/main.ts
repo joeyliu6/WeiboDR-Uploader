@@ -1,16 +1,18 @@
 // src/main.ts
 import { listen } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/tauri';
+import { dialog } from '@tauri-apps/api';
 
 import { Store } from './store';
 import { UserConfig, HistoryItem, FailedItem, DEFAULT_CONFIG } from './config';
-import { handleFileUpload } from './coreLogic';
+import { handleFileUpload, processUpload } from './coreLogic';
 import { emit } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
 import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
 import { WebviewWindow } from '@tauri-apps/api/window';
+import { UploadQueueManager } from './uploadQueue';
 
 // --- GLOBAL ERROR HANDLERS ---
 window.addEventListener('error', (event) => {
@@ -29,6 +31,9 @@ window.addEventListener('unhandledrejection', (event) => {
 const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
 const retryStore = new Store('.retry.dat');
+
+// --- UPLOAD QUEUE MANAGER ---
+let uploadQueueManager: UploadQueueManager | null = null;
 
 /**
  * 获取 DOM 元素，带空值检查和类型断言
@@ -76,10 +81,11 @@ const navSettingsBtn = getElement<HTMLButtonElement>('nav-settings', '设置导�
 const navButtons = [navUploadBtn, navHistoryBtn, navFailedBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
 
 // Upload View Elements
-const dropZone = getElement<HTMLElement>('drop-zone', '拖放区域');
+const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
 const dropMessage = getElement<HTMLElement>('drop-message', '拖放消息');
-const statusMessage = getElement<HTMLElement>('status-message', '状态消息');
-const loadingSpinner = getElement<HTMLElement>('loading-spinner', '加载动画');
+const fileInput = getElement<HTMLInputElement>('file-input', '文件选择输入框');
+const uploadR2Toggle = getElement<HTMLInputElement>('upload-view-toggle-r2', 'R2上传开关');
+const uploadQueueList = getElement<HTMLElement>('upload-queue-list', '上传队列列表');
 
 // Settings View Elements
 const weiboCookieEl = getElement<HTMLTextAreaElement>('weibo-cookie', '微博Cookie输入框');
@@ -117,6 +123,106 @@ const retryAllBtn = getElement<HTMLButtonElement>('retry-all-btn', '重试全部
 const clearAllFailedBtn = getElement<HTMLButtonElement>('clear-all-failed-btn', '清空失败按钮');
 const badgeEl = getElement<HTMLElement>('badge', '失败角标');
 
+
+// --- FILE VALIDATION ---
+/**
+ * 验证文件类型（PRD 1.2）
+ * @param filePath 文件路径
+ * @returns 是否为有效的图片文件
+ */
+function validateFileType(filePath: string): boolean {
+  const validExtensions = ['.jpg', '.jpeg', '.png', '.gif', '.bmp', '.webp'];
+  const lowerPath = filePath.toLowerCase();
+  return validExtensions.some(ext => lowerPath.endsWith(ext));
+}
+
+/**
+ * 从文件路径列表中过滤出有效的图片文件
+ * @param filePaths 文件路径列表
+ * @returns 过滤后的有效文件路径和被拒绝的文件
+ */
+async function filterValidFiles(filePaths: string[]): Promise<{ valid: string[]; invalid: string[] }> {
+  const valid: string[] = [];
+  const invalid: string[] = [];
+
+  for (const path of filePaths) {
+    if (validateFileType(path)) {
+      valid.push(path);
+    } else {
+      invalid.push(path);
+    }
+  }
+
+  // 显示被拒绝文件的提示（PRD 1.2）
+  if (invalid.length > 0) {
+    for (const invalidPath of invalid) {
+      const fileName = invalidPath.split(/[/\\]/).pop() || invalidPath;
+      await dialog.message(
+        `文件类型不支持：${fileName} 不是一个有效的图片格式，已自动跳过。`,
+        { title: '文件类型验证', type: 'warning' }
+      );
+      console.warn(`[文件验证] 跳过不支持的文件类型: ${fileName}`);
+    }
+  }
+
+  return { valid, invalid };
+}
+
+/**
+ * 并发处理上传队列
+ * @param filePaths 文件路径列表
+ * @param config 用户配置
+ * @param uploadToR2 是否上传到R2
+ * @param maxConcurrent 最大并发数（默认3）
+ */
+async function processUploadQueue(
+  filePaths: string[],
+  config: UserConfig,
+  uploadToR2: boolean,
+  maxConcurrent: number = 3
+): Promise<void> {
+  if (!uploadQueueManager) {
+    console.error('[并发上传] 上传队列管理器未初始化');
+    return;
+  }
+
+  console.log(`[并发上传] 开始处理 ${filePaths.length} 个文件，最大并发数: ${maxConcurrent}`);
+
+  // 为每个文件创建队列项
+  const uploadTasks = filePaths.map(filePath => {
+    const fileName = filePath.split(/[/\\]/).pop() || filePath;
+    const itemId = uploadQueueManager!.addFile(filePath, fileName, uploadToR2);
+    
+    return async () => {
+      const onProgress = uploadQueueManager!.createProgressCallback(itemId);
+      try {
+        await processUpload(filePath, config, { uploadToR2 }, onProgress);
+      } catch (error) {
+        console.error(`[并发上传] 文件上传异常: ${fileName}`, error);
+      }
+    };
+  });
+
+  // 使用并发限制执行上传任务
+  const executing: Promise<void>[] = [];
+  
+  for (const task of uploadTasks) {
+    const promise = task().finally(() => {
+      executing.splice(executing.indexOf(promise), 1);
+    });
+    
+    executing.push(promise);
+    
+    if (executing.length >= maxConcurrent) {
+      await Promise.race(executing);
+    }
+  }
+  
+  // 等待所有剩余任务完成
+  await Promise.all(executing);
+  
+  console.log(`[并发上传] 所有文件处理完成`);
+}
 
 // --- VIEW ROUTING ---
 /**
@@ -195,29 +301,28 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed'): void 
   }
 }
 
-// --- UPLOAD LOGIC (from main.ts) ---
+// --- UPLOAD LOGIC (v2.0 - Queue Manager) ---
 /**
- * 初始化文件上传监听器（拖拽上传功能）
- * 监听 Tauri 文件拖拽事件并处理文件上传
+ * 初始化文件上传监听器（使用队列管理器）
+ * v2.0: 支持文件类型验证、实时进度、并发上传
  * @throws {Error} 如果初始化失败
  */
 async function initializeUpload(): Promise<void> {
     try {
-      // 监听文件拖拽事件
-      await listen('tauri://file-drop', async (event) => {
+      // 初始化队列管理器
+      uploadQueueManager = new UploadQueueManager('upload-queue-list');
+      console.log('[上传] 队列管理器初始化成功');
+      
+      // 处理文件上传的核心函数
+      const handleFiles = async (filePaths: string[]) => {
         try {
-          const filePaths = event.payload as string[];
-          
           // 验证输入
           if (!Array.isArray(filePaths) || filePaths.length === 0) {
-            console.warn('[上传] 无效的文件列表:', event.payload);
-            if (statusMessage) {
-              statusMessage.textContent = '⚠️ 无效的文件列表';
-            }
+            console.warn('[上传] 无效的文件列表:', filePaths);
             return;
           }
           
-          console.log('[上传] 接收到拖拽文件:', filePaths);
+          console.log('[上传] 接收到文件:', filePaths);
         
           // 获取配置
           let config: UserConfig | null = null;
@@ -225,114 +330,54 @@ async function initializeUpload(): Promise<void> {
             config = await configStore.get<UserConfig>('config');
           } catch (error) {
             console.error('[上传] 读取配置失败:', error);
-            if (statusMessage) {
-              statusMessage.textContent = '❌ 读取配置失败，请重试';
-            }
+            await dialog.message('读取配置失败，请重试', { title: '错误', type: 'error' });
             return;
           }
           
           // 验证配置
           if (!config || !config.weiboCookie || config.weiboCookie.trim().length === 0) {
             console.warn('[上传] 未配置微博 Cookie');
-            if (statusMessage) {
-              statusMessage.textContent = '⚠️ 请先在设置中配置微博 Cookie！';
-            }
+            await dialog.message('请先在设置中配置微博 Cookie！', { title: '配置缺失', type: 'warning' });
             navigateTo('settings');
             return;
           }
         
-          // 更新 UI 状态
-          if (dropMessage) {
-            dropMessage.classList.add('hidden');
-          }
-          if (loadingSpinner) {
-            loadingSpinner.classList.remove('hidden');
-          }
-          if (statusMessage) {
-            statusMessage.textContent = `开始上传 ${filePaths.length} 个文件...`;
-          }
-        
-          // 处理每个文件
-          let successCount = 0;
-          let failCount = 0;
+          // 文件类型验证（PRD 1.2）
+          const { valid, invalid } = await filterValidFiles(filePaths);
           
-          for (let i = 0; i < filePaths.length; i++) {
-            const path = filePaths[i];
-            
-            try {
-              // 验证路径
-              if (!path || typeof path !== 'string' || path.trim().length === 0) {
-                console.warn('[上传] 跳过无效路径:', path);
-                failCount++;
-                continue;
-              }
-              
-              // 更新进度
-              if (statusMessage) {
-                statusMessage.textContent = `正在上传 ${i + 1}/${filePaths.length}: ${path.split(/[/\\]/).pop() || path}`;
-              }
-              
-              const result = await handleFileUpload(path, config);
-              
-              if (result && result.status === 'success') {
-                successCount++;
-                console.log(`[上传] 文件上传成功 (${i + 1}/${filePaths.length}):`, path);
-              } else {
-                failCount++;
-                console.warn(`[上传] 文件上传失败 (${i + 1}/${filePaths.length}):`, path);
-              }
-            } catch (error) {
-              failCount++;
-              console.error('[上传] 文件上传异常:', path, error);
-              // 继续处理其他文件
-            }
-          }
-        
-          // 恢复 UI 状态
-          if (dropMessage) {
-            dropMessage.classList.remove('hidden');
-          }
-          if (loadingSpinner) {
-            loadingSpinner.classList.add('hidden');
+          if (valid.length === 0) {
+            console.warn('[上传] 没有有效的图片文件');
+            return;
           }
           
-          // 显示上传结果
-          if (statusMessage) {
-            if (failCount === 0) {
-              statusMessage.textContent = `✅ 成功上传 ${successCount} 个文件`;
-            } else if (successCount === 0) {
-              statusMessage.textContent = `❌ ${failCount} 个文件上传失败`;
-            } else {
-              statusMessage.textContent = `⚠️ 成功 ${successCount} 个，失败 ${failCount} 个`;
-            }
-            
-            // 3秒后恢复默认消息
-            setTimeout(() => {
-              if (statusMessage) {
-                statusMessage.textContent = '拖拽文件到此处上传';
-              }
-            }, 3000);
-          }
+          console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
+          
+          // 获取R2上传选项
+          const uploadToR2 = uploadR2Toggle?.checked ?? false;
+          console.log(`[上传] R2上传选项: ${uploadToR2 ? '启用' : '禁用'}`);
+          
+          // 并发处理上传队列
+          await processUploadQueue(valid, config, uploadToR2);
+          
+          console.log('[上传] 上传队列处理完成');
         } catch (error) {
-          console.error('[上传] 文件拖拽处理失败:', error);
-          if (dropMessage) {
-            dropMessage.classList.remove('hidden');
-          }
-          if (loadingSpinner) {
-            loadingSpinner.classList.add('hidden');
-          }
-          if (statusMessage) {
-            const errorMsg = error instanceof Error ? error.message : String(error);
-            statusMessage.textContent = `❌ 上传失败: ${errorMsg}`;
-          }
+          console.error('[上传] 文件处理失败:', error);
+          const errorMsg = error instanceof Error ? error.message : String(error);
+          await dialog.message(`上传失败: ${errorMsg}`, { title: '错误', type: 'error' });
         }
+      };
+      
+      // 监听文件拖拽事件
+      await listen('tauri://file-drop', async (event) => {
+        const filePaths = event.payload as string[];
+        await handleFiles(filePaths);
       });
       
       // 监听拖拽悬停事件
       await listen('tauri://file-drop-hover', () => {
         try {
-          if (dropZone) {
-            dropZone.classList.add('drag-over');
+          if (dropZoneHeader) {
+            dropZoneHeader.classList.add('drag-over');
           }
         } catch (error) {
           console.error('[上传] 拖拽悬停处理失败:', error);
@@ -342,13 +387,33 @@ async function initializeUpload(): Promise<void> {
       // 监听拖拽取消事件
       await listen('tauri://file-drop-cancelled', () => {
         try {
-          if (dropZone) {
-            dropZone.classList.remove('drag-over');
+          if (dropZoneHeader) {
+            dropZoneHeader.classList.remove('drag-over');
           }
         } catch (error) {
           console.error('[上传] 拖拽取消处理失败:', error);
         }
       });
+      
+      // 点击拖拽区域触发文件选择
+      if (dropZoneHeader) {
+        dropZoneHeader.addEventListener('click', () => {
+          fileInput?.click();
+        });
+      }
+      
+      // 文件输入框变化事件
+      if (fileInput) {
+        fileInput.addEventListener('change', async (event) => {
+          const target = event.target as HTMLInputElement;
+          if (target.files && target.files.length > 0) {
+            const filePaths = Array.from(target.files).map(file => file.path || '');
+            await handleFiles(filePaths);
+            // 清空输入框，允许重复选择同一文件
+            target.value = '';
+          }
+        });
+      }
       
       // 阻止默认的拖拽行为
       window.addEventListener('dragover', (e) => e.preventDefault());
@@ -357,10 +422,6 @@ async function initializeUpload(): Promise<void> {
       console.log('[上传] 上传监听器初始化成功');
     } catch (error) {
       console.error('[上传] 初始化上传监听器失败:', error);
-      if (statusMessage) {
-        const errorMsg = error instanceof Error ? error.message : String(error);
-        statusMessage.textContent = `❌ 初始化失败: ${errorMsg}`;
-      }
       throw error;
     }
 }

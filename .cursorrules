@@ -1,0 +1,189 @@
+# Cursor Rules for WeiboDR-Uploader
+
+## 项目概述
+这是一个基于 Tauri 的跨平台桌面应用，使用 TypeScript (前端) 和 Rust (后端) 开发。
+
+## 技术栈
+- **前端**: TypeScript, Vite, HTML/CSS
+- **后端**: Rust (Tauri)
+- **存储**: tauri-plugin-store (加密存储)
+- **HTTP 客户端**: @tauri-apps/api/http
+- **云存储**: Cloudflare R2 (AWS S3 兼容)
+
+## 代码风格规范
+
+### TypeScript/JavaScript
+- 使用 TypeScript 严格模式
+- 使用 ES6+ 语法
+- 函数使用 `async/await` 处理异步操作
+- 使用 `const` 和 `let`，避免 `var`
+- 函数和变量使用驼峰命名（camelCase）
+- 类型定义使用 PascalCase
+- 所有错误处理必须包含详细的错误信息
+- 使用 JSDoc 注释说明函数用途和参数
+
+### Rust
+- 遵循 Rust 官方代码风格（rustfmt）
+- 使用 `Result<T, E>` 进行错误处理
+- 函数名使用 snake_case
+- 结构体使用 PascalCase
+- 使用 `?` 操作符进行错误传播
+- 添加文档注释（`///`）
+
+## 错误处理规范
+
+### TypeScript
+- 所有异步函数必须使用 try-catch
+- 错误信息必须包含上下文（函数名、操作类型等）
+- 使用 `console.error` 记录错误，包含详细堆栈信息
+- 用户可见的错误消息使用中文，简洁明了
+- 非阻塞性错误（如备份失败）不应中断主流程
+
+### Rust
+- 使用 `Result<T, String>` 返回错误信息
+- 错误消息使用中文，便于前端显示
+- 使用 `?` 操作符传播错误
+- 在 Tauri 命令中返回 `Result<String, String>`
+
+## 注释规范
+
+### TypeScript
+```typescript
+/**
+ * 函数功能描述
+ * @param paramName 参数说明
+ * @returns 返回值说明
+ * @throws {Error} 可能抛出的错误
+ */
+```
+
+### Rust
+```rust
+/// 函数功能描述
+/// 
+/// # 参数
+/// * `param_name` - 参数说明
+/// 
+/// # 返回
+/// 返回 `Result<String, String>`，成功时返回消息，失败时返回错误信息
+```
+
+## 文件组织
+
+### 前端文件结构
+- `src/main.ts` - 主入口文件，UI 逻辑和事件处理
+- `src/coreLogic.ts` - 核心业务逻辑（上传、备份等）
+- `src/config.ts` - 配置类型定义和默认值
+- `src/store.ts` - 存储操作封装
+- `src/weiboUploader.ts` - 微博上传相关逻辑
+- `src/login-webview.ts` - 登录窗口逻辑
+
+### Rust 文件结构
+- `src-tauri/src/main.rs` - Tauri 应用入口和命令定义
+
+## 命名约定
+
+### 变量和函数
+- TypeScript: `camelCase` (例如: `handleFileUpload`, `configStore`)
+- Rust: `snake_case` (例如: `test_webdav_connection`, `webdav_config`)
+
+### 类型和接口
+- TypeScript: `PascalCase` (例如: `UserConfig`, `HistoryItem`)
+- Rust: `PascalCase` (例如: `WebDAVConfig`, `R2Config`)
+
+### DOM 元素 ID
+- 使用 kebab-case (例如: `webdav-url`, `test-cookie-btn`)
+
+## 特殊要求
+
+### 错误消息
+- **所有用户可见的错误消息必须使用中文**
+- 错误消息应简洁明了，包含解决建议
+- 控制台日志可以使用英文，但应包含中文说明
+
+### 配置验证
+- 所有配置项在保存前必须验证
+- 验证失败时提供清晰的错误提示
+- 使用测试按钮验证连接（R2、WebDAV）
+
+### 异步操作
+- 所有异步操作必须处理错误
+- 非阻塞性操作（如自动备份）不应影响主流程
+- 使用 Promise.catch() 处理非关键错误
+
+### UI 反馈
+- 所有用户操作必须有视觉反馈（加载状态、成功/失败消息）
+- 状态消息使用颜色区分（成功：绿色，失败：红色，进行中：橙色）
+- 自动保存功能应在用户修改配置后自动触发
+
+## 代码质量要求
+
+1. **空值检查**: 所有 DOM 元素访问前必须检查是否存在
+2. **类型安全**: 使用 TypeScript 类型定义，避免 `any`
+3. **错误边界**: 关键操作必须有错误处理
+4. **日志记录**: 重要操作和错误必须记录日志
+5. **用户体验**: 错误消息应友好，提供解决建议
+
+## 测试要求
+
+- 所有新功能应包含测试连接功能（如 R2、WebDAV）
+- 测试失败时应提供详细的错误信息
+- 测试成功时应显示明确的成功消息
+
+## 文档要求
+
+- 新功能应更新相应的用户指南（如 `SETTINGS_V2_USER_GUIDE.md`）
+- 技术实现细节应记录在实现文档中（如 `SETTINGS_V2_IMPLEMENTATION.md`）
+- 用户可见的功能变更应更新 CHANGELOG
+
+## 代码审查要点
+
+1. 错误处理是否完整
+2. 用户反馈是否清晰
+3. 日志记录是否充分
+4. 类型定义是否准确
+5. 注释是否清晰
+6. 是否符合项目代码风格
+
+## 常见模式
+
+### TypeScript 异步函数模式
+```typescript
+async function exampleFunction(): Promise<void> {
+  try {
+    // 操作逻辑
+    if (statusMessageEl) {
+      statusMessageEl.textContent = '操作成功';
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[模块名] 操作失败:', error);
+    if (statusMessageEl) {
+      statusMessageEl.textContent = `❌ 操作失败: ${errorMsg}`;
+    }
+  }
+}
+```
+
+### Rust Tauri 命令模式
+```rust
+#[tauri::command]
+async fn example_command(param: String) -> Result<String, String> {
+    if param.is_empty() {
+        return Err("参数不能为空".to_string());
+    }
+    
+    // 操作逻辑
+    
+    Ok("操作成功".to_string())
+}
+```
+
+## 注意事项
+
+- 不要硬编码敏感信息（密码、密钥等）
+- 使用环境变量或配置文件存储配置
+- 所有用户输入必须验证
+- 遵循最小权限原则
+- 保护用户隐私数据
+
