@@ -39,6 +39,14 @@ let uploadQueueManager: UploadQueueManager | null = null;
 // --- R2 MANAGER ---
 let r2Manager: R2Manager | null = null;
 
+// --- APP STATE (全局状态管理) ---
+/**
+ * 应用全局状态
+ */
+export const appState = {
+  isR2Dirty: true, // 默认为 true，确保应用启动后第一次点击能加载数据
+};
+
 /**
  * 获取 DOM 元素，带空值检查和类型断言
  * @param id 元素 ID
@@ -299,28 +307,39 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed' | 'r2-m
           console.error('[导航] 加载失败队列失败:', err);
         });
       } else if (viewId === 'r2-manager') {
-        // 初始化 R2 管理器（如果还未初始化）
-        if (!r2Manager) {
-          configStore.get<UserConfig>('config').then(config => {
-            const currentConfig = config || DEFAULT_CONFIG;
-            r2Manager = new R2Manager(currentConfig);
-            r2Manager.loadObjects().catch(err => {
-              console.error('[导航] 加载R2对象失败:', err);
+        // [v2.6 优化] 检查脏标记，只在需要时刷新
+        if (appState.isR2Dirty) {
+          console.log('[R2管理] 检测到数据变更，正在刷新 R2 列表...');
+          // 初始化 R2 管理器（如果还未初始化）
+          if (!r2Manager) {
+            configStore.get<UserConfig>('config').then(config => {
+              const currentConfig = config || DEFAULT_CONFIG;
+              r2Manager = new R2Manager(currentConfig);
+              r2Manager.loadObjects().then(() => {
+                appState.isR2Dirty = false; // 加载完成后，重置标记
+              }).catch(err => {
+                console.error('[导航] 加载R2对象失败:', err);
+              });
+            }).catch(err => {
+              console.error('[导航] 获取配置失败:', err);
             });
-          }).catch(err => {
-            console.error('[导航] 获取配置失败:', err);
-          });
+          } else {
+            // 如果已经初始化，刷新配置并重新加载
+            configStore.get<UserConfig>('config').then(config => {
+              const currentConfig = config || DEFAULT_CONFIG;
+              r2Manager!.updateConfig(currentConfig);
+              r2Manager!.loadObjects().then(() => {
+                appState.isR2Dirty = false; // 加载完成后，重置标记
+              }).catch(err => {
+                console.error('[导航] 加载R2对象失败:', err);
+              });
+            }).catch(err => {
+              console.error('[导航] 获取配置失败:', err);
+            });
+          }
         } else {
-          // 如果已经初始化，刷新配置并重新加载
-          configStore.get<UserConfig>('config').then(config => {
-            const currentConfig = config || DEFAULT_CONFIG;
-            r2Manager!.updateConfig(currentConfig);
-            r2Manager!.loadObjects().catch(err => {
-              console.error('[导航] 加载R2对象失败:', err);
-            });
-          }).catch(err => {
-            console.error('[导航] 获取配置失败:', err);
-          });
+          console.log('[R2管理] 数据未变更，使用现有视图缓存');
+          // 这里什么都不用做，保持 DOM 原样即可
         }
       }
     } catch (error) {

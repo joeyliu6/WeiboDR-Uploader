@@ -698,8 +698,9 @@ body, html {
 /* 网格容器 */
 .r2-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 20px;
+  /* [v2.6 优化] 调整网格尺寸为 160px，更紧凑美观 */
+  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
+  gap: 16px; /* 缩小间距 */
   padding: 30px;
   overflow-y: auto;
   flex-grow: 1;
@@ -726,6 +727,8 @@ body, html {
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
+  /* [v2.6 优化] 使用 aspect-ratio 保持 1:1 比例 */
+  aspect-ratio: 1 / 1;
 }
 
 .r2-item:hover {
@@ -911,9 +914,10 @@ body, html {
 /* 响应式调整 */
 @media (max-width: 768px) {
   .r2-grid {
-    grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
-    gap: 15px;
-    padding: 20px;
+    /* [v2.6 优化] 移动端使用更小的网格 */
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 12px;
+    padding: 15px;
   }
 
   .r2-manager-toolbar {

@@ -6,6 +6,7 @@
 
 import { writeText } from '@tauri-apps/api/clipboard';
 import { UserConfig } from './config';
+import { appState } from './main';
 
 /**
  * 上传进度回调类型
@@ -109,6 +110,8 @@ export class UploadQueueManager {
           item.r2Progress = 100;
           item.r2Status = '✓ 完成';
           item.r2Link = progress.payload.r2Link;
+          // [v2.6 优化] 标记 R2 数据已变更
+          appState.isR2Dirty = true;
           break;
 
         case 'error':
@@ -185,7 +188,11 @@ export class UploadQueueManager {
 
     itemEl.appendChild(actionsDiv);
 
-    this.queueListEl.appendChild(itemEl);
+    // [v2.6 优化] 使用 prepend 将新元素插入到最前面（最新在上）
+    this.queueListEl.prepend(itemEl);
+    
+    // 确保容器滚动条回到顶部，让用户看到最新的上传任务
+    this.queueListEl.scrollTop = 0;
   }
 
   /**

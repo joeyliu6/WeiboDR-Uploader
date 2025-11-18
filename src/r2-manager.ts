@@ -5,6 +5,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { dialog } from '@tauri-apps/api';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { UserConfig, R2Config } from './config';
+import { appState } from './main';
 
 /**
  * R2 对象接口（与 Rust 结构体匹配）
@@ -76,6 +77,8 @@ export class R2Manager {
   private initEventListeners(): void {
     // 刷新按钮
     this.refreshBtn.addEventListener('click', () => {
+      // [v2.6 优化] 用户手动刷新，标记为脏数据
+      appState.isR2Dirty = true;
       this.loadObjects();
     });
 
@@ -326,6 +329,9 @@ export class R2Manager {
       this.statsInfoEl.textContent = `共 ${this.objects.length} 个项目，${this.formatFileSize(totalSize)}`;
 
       this.showTemporaryMessage('✓ 删除成功');
+      
+      // [v2.6 优化] 删除后 DOM 已同步，不需要标记脏数据
+      // appState.isR2Dirty = false; // 保持缓存有效
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[R2管理] 删除对象失败:', error);
