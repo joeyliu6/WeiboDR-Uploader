@@ -550,8 +550,13 @@ async fn test_r2_connection(config: R2Config) -> Result<String, String> {
         config.access_key_id, credential_scope, signed_headers, signature
     );
     
-    // 发送请求
-    let client = reqwest::Client::new();
+    // 发送请求（带超时配置）
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))  // 30秒超时
+        .connect_timeout(std::time::Duration::from_secs(10))  // 10秒连接超时
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    
     match client
         .head(&endpoint_url)
         .header("Host", host)
@@ -664,7 +669,15 @@ async fn list_r2_objects(config: R2Config) -> Result<Vec<R2Object>, String> {
 
     let mut objects: Vec<R2Object> = Vec::new();
     let mut continuation_token: Option<String> = None;
-    let client = reqwest::Client::new();
+    
+    // 创建带超时配置的 HTTP 客户端
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(60))  // 60秒超时（列表操作可能较慢）
+        .connect_timeout(std::time::Duration::from_secs(10))  // 10秒连接超时
+        .pool_idle_timeout(std::time::Duration::from_secs(90))  // 连接池空闲超时
+        .pool_max_idle_per_host(10)  // 每个主机最多保持10个空闲连接
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 
     loop {
         // 构建请求 URL
@@ -836,6 +849,17 @@ async fn list_r2_objects(config: R2Config) -> Result<Vec<R2Object>, String> {
     Ok(objects)
 }
 
+/// 辅助函数：对路径进行 URI 编码（符合 AWS Signature V4 规范）
+/// 对每个路径段进行编码，但保留斜杠 /
+fn uri_encode_path(path: &str) -> String {
+    path.split('/')
+        .map(|segment| {
+            urlencoding::encode(segment).into_owned()
+        })
+        .collect::<Vec<_>>()
+        .join("/")
+}
+
 /// 删除 R2 存储桶中的指定对象
 /// 
 /// # 参数
@@ -858,10 +882,13 @@ async fn delete_r2_object(config: R2Config, key: String) -> Result<String, Strin
         return Err("对象 Key 不能为空。".to_string());
     }
 
+    // 对 key 进行路径编码（保留斜杠）
+    let encoded_key = uri_encode_path(&key);
+    
     // 构建请求 URL
     let url = format!(
         "https://{}.r2.cloudflarestorage.com/{}/{}",
-        config.account_id, config.bucket_name, urlencoding::encode(&key)
+        config.account_id, config.bucket_name, encoded_key
     );
 
     // 获取当前时间
@@ -873,11 +900,18 @@ async fn delete_r2_object(config: R2Config, key: String) -> Result<String, Strin
     let region = "auto";
     let service = "s3";
     let host = format!("{}.r2.cloudflarestorage.com", config.account_id);
-    let canonical_uri = format!("/{}/{}", config.bucket_name, urlencoding::encode(&key));
+    // canonical_uri 中也需要使用相同的编码方式
+    let canonical_uri = format!("/{}/{}", config.bucket_name, encoded_key);
     let canonical_querystring = "";
     let canonical_headers = format!("host:{}\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:{}\n", host, datetime_str);
     let signed_headers = "host;x-amz-content-sha256;x-amz-date";
     let payload_hash = "UNSIGNED-PAYLOAD";
+    
+    eprintln!("[R2删除] 调试信息:");
+    eprintln!("  原始 key: {}", key);
+    eprintln!("  编码后 key: {}", encoded_key);
+    eprintln!("  Canonical URI: {}", canonical_uri);
+    eprintln!("  URL: {}", url);
     
     // 创建规范请求
     let canonical_request = format!(
@@ -910,25 +944,69 @@ async fn delete_r2_object(config: R2Config, key: String) -> Result<String, Strin
         config.access_key_id, credential_scope, signed_headers, signature
     );
     
-    // 发送 DELETE 请求
-    let client = reqwest::Client::new();
-    let response = client
-        .delete(&url)
-        .header("Host", host)
-        .header("x-amz-date", datetime_str)
-        .header("x-amz-content-sha256", payload_hash)
-        .header("Authorization", authorization_header)
-        .send()
-        .await
-        .map_err(|e| format!("请求失败: {}", e))?;
-
-    if !response.status().is_success() {
-        let status = response.status();
-        let body = response.text().await.unwrap_or_default();
-        return Err(format!("删除对象失败 (HTTP {}): {}", status, body));
+    // 发送 DELETE 请求（带超时和重试）
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(30))  // 30秒超时
+        .connect_timeout(std::time::Duration::from_secs(10))  // 10秒连接超时
+        .pool_idle_timeout(std::time::Duration::from_secs(90))  // 连接池空闲超时
+        .pool_max_idle_per_host(10)  // 每个主机最多保持10个空闲连接
+        .build()
+        .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
+    
+    // 重试机制：最多尝试 3 次
+    let max_retries = 3;
+    let mut last_error = String::new();
+    
+    for attempt in 0..max_retries {
+        if attempt > 0 {
+            let delay = std::time::Duration::from_millis(500 * (1 << attempt)); // 指数退避：500ms, 1s, 2s
+            eprintln!("[R2删除] 第 {} 次重试，等待 {:?}...", attempt, delay);
+            tokio::time::sleep(delay).await;
+        }
+        
+        match client
+            .delete(&url)
+            .header("Host", &host)
+            .header("x-amz-date", &datetime_str)
+            .header("x-amz-content-sha256", payload_hash)
+            .header("Authorization", &authorization_header)
+            .send()
+            .await {
+                Ok(response) => {
+                    if !response.status().is_success() {
+                        let status = response.status();
+                        let body = response.text().await.unwrap_or_default();
+                        last_error = format!("删除对象失败 (HTTP {}): {}", status, body);
+                        
+                        // 如果是 4xx 错误（客户端错误），不重试
+                        if status.is_client_error() {
+                            eprintln!("[R2删除] 客户端错误，不重试: {}", last_error);
+                            return Err(last_error);
+                        }
+                        
+                        eprintln!("[R2删除] 服务器错误，将重试: {}", last_error);
+                        continue;
+                    }
+                    
+                    eprintln!("[R2管理] 成功删除对象: {}", key);
+                    return Ok(format!("成功删除: {}", key));
+                },
+                Err(e) => {
+                    last_error = format!("请求失败: {}", e);
+                    eprintln!("[R2删除] 网络错误 (尝试 {}/{}): {}", attempt + 1, max_retries, last_error);
+                    
+                    // 如果是超时错误或连接错误，继续重试
+                    if e.is_timeout() || e.is_connect() {
+                        continue;
+                    }
+                    
+                    // 其他错误也尝试重试
+                    continue;
+                }
+            }
     }
-
-    eprintln!("[R2管理] 成功删除对象: {}", key);
-    Ok(format!("成功删除: {}", key))
+    
+    // 所有重试都失败
+    Err(format!("删除失败（已重试 {} 次）: {}", max_retries, last_error))
 }
 

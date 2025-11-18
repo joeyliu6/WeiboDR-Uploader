@@ -719,7 +719,7 @@ body, html {
 .r2-item {
   position: relative;
   width: 100%;
-  padding-bottom: 100%; /* 1:1 正方形 */
+  aspect-ratio: 1 / 1; /* 保持 1:1 方形比例 */
   background-size: cover;
   background-position: center;
   background-color: #2a2a2a;
@@ -727,8 +727,6 @@ body, html {
   overflow: hidden;
   cursor: pointer;
   transition: transform 0.2s, box-shadow 0.2s;
-  /* [v2.6 优化] 使用 aspect-ratio 保持 1:1 比例 */
-  aspect-ratio: 1 / 1;
 }
 
 .r2-item:hover {

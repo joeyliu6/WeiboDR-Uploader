@@ -146,8 +146,12 @@
                 <label>WebDAV 密码</label>
                 <input type="password" id="webdav-password" placeholder="通常是应用的授权码" />
                 
-                <label>远程路径</label>
-                <input type="text" id="webdav-remote-path" placeholder="例如: /WeiboDR/history.json" value="/WeiboDR/history.json" />
+                <label>远程路径 <span style="color: #888; font-size: 0.9em;">(文件名会自动添加时间戳)</span></label>
+                <input type="text" id="webdav-remote-path" placeholder="例如: /WeiboDR/history.json (需先创建文件夹)" value="/WeiboDR/history.json" />
+                <p style="font-size: 0.85em; color: #888; margin-top: 5px;">
+                    💡 提示：每次同步会创建带时间戳的新文件（如 history_20251118_143025.json），不会覆盖旧文件。
+                    <a href="WEBDAV_PATH_GUIDE.md" style="color: #667eea;">查看详细配置指南</a>
+                </p>
                 
                 <button type="button" id="test-webdav-btn">测试 WebDAV 连接</button>
                 <span id="webdav-status-message"></span>

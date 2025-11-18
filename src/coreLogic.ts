@@ -141,12 +141,17 @@ async function backupToR2(
   const key = (path.endsWith('/') || path === '' ? path : path + '/') + hashName;
   console.log(`[步骤 B] 目标路径: ${key}`);
 
+  // 检测文件类型
+  const contentType = detectFileType(fileBytes) || 'application/octet-stream';
+  console.log(`[步骤 B] 检测到文件类型: ${contentType}`);
+
   try {
     // 使用超时保护包装上传操作
     const uploadPromise = r2Client.send(new PutObjectCommand({
       Bucket: bucketName.trim(),
       Key: key,
       Body: fileBytes, // 使用字节流
+      ContentType: contentType, // 设置正确的 MIME 类型
     }));
     
     const timeoutPromise = new Promise<never>((_, reject) => {
@@ -409,11 +414,32 @@ async function syncHistoryToWebDAV(items: HistoryItem[], config: UserConfig): Pr
       return;
     }
     
-    // 构建 WebDAV URL
+    // 构建 WebDAV URL，添加时间戳避免冲突
     let webdavUrl: string;
     try {
       const baseUrl = url.trim();
-      const path = remotePath.trim();
+      let path = remotePath.trim();
+      
+      // 在文件名后添加时间戳（格式：history_YYYYMMDD_HHMMSS.json）
+      const now = new Date();
+      const timestamp = now.getFullYear().toString() +
+        (now.getMonth() + 1).toString().padStart(2, '0') +
+        now.getDate().toString().padStart(2, '0') + '_' +
+        now.getHours().toString().padStart(2, '0') +
+        now.getMinutes().toString().padStart(2, '0') +
+        now.getSeconds().toString().padStart(2, '0');
+      
+      // 提取文件名和扩展名
+      const pathParts = path.split('/');
+      const fileName = pathParts.pop() || 'history.json';
+      const fileNameParts = fileName.split('.');
+      const extension = fileNameParts.length > 1 ? fileNameParts.pop() : 'json';
+      const baseName = fileNameParts.join('.');
+      
+      // 构建带时间戳的新文件名
+      const newFileName = `${baseName}_${timestamp}.${extension}`;
+      pathParts.push(newFileName);
+      path = pathParts.join('/');
       
       if (baseUrl.endsWith('/') && path.startsWith('/')) {
         webdavUrl = baseUrl + path.substring(1);
@@ -422,6 +448,8 @@ async function syncHistoryToWebDAV(items: HistoryItem[], config: UserConfig): Pr
       } else {
         webdavUrl = baseUrl + '/' + path;
       }
+      
+      console.log(`[WebDAV] 使用带时间戳的文件名: ${newFileName}`);
       
       // 验证最终 URL
       new URL(webdavUrl);
@@ -451,24 +479,24 @@ async function syncHistoryToWebDAV(items: HistoryItem[], config: UserConfig): Pr
       const response = await client.put(webdavUrl, Body.text(jsonContent), {
         headers: {
           'Content-Type': 'application/json',
-          'Authorization': `Basic ${auth}`,
-          'Overwrite': 'T'  // WebDAV 标准：允许覆盖现有文件
+          'Authorization': `Basic ${auth}`
+          // 不再需要 Overwrite 头，因为使用带时间戳的新文件名
         },
         timeout: 10000, // 10秒超时
       });
 
       if (response.ok) {
-        console.log(`[WebDAV] ✅ 已自动同步 ${items.length} 条记录到 WebDAV`);
+        console.log(`[WebDAV] ✅ 已自动同步 ${items.length} 条记录到 WebDAV (带时间戳备份)`);
       } else {
         const status = response.status;
         let errorMsg = `HTTP ${status}`;
         
-        if (status === 409) {
-          errorMsg = `文件冲突 (HTTP ${status})：文件已存在且无法覆盖，请检查 WebDAV 服务器设置`;
-        } else if (status === 401 || status === 403) {
+        if (status === 401 || status === 403) {
           errorMsg = `认证失败 (HTTP ${status})：请检查用户名和密码`;
         } else if (status === 404) {
           errorMsg = `路径不存在 (HTTP ${status})：请检查远程路径配置`;
+        } else if (status === 507) {
+          errorMsg = `存储空间不足 (HTTP ${status})：WebDAV 服务器空间已满`;
         } else if (status >= 500) {
           errorMsg = `服务器错误 (HTTP ${status})：WebDAV 服务器可能暂时不可用`;
         }
@@ -924,13 +952,28 @@ export async function processUpload(
       console.log('[processUpload] 步骤 1: 开始上传到微博...');
       
       // 模拟进度更新（因为当前uploadToWeibo不支持进度回调）
-      // TODO: 未来可以修改uploadToWeibo以支持真实的上传进度
-      onProgress({ type: 'weibo_progress', payload: 10 });
+      // 创建一个平滑的进度条更新
+      let currentProgress = 10;
+      onProgress({ type: 'weibo_progress', payload: currentProgress });
       
-      const uploadResult = await uploadToWeibo(fileBytes, config.weiboCookie);
-      hashName = uploadResult.hashName;
-      largeUrl = uploadResult.largeUrl;
-      weiboPid = hashName.replace(/\.jpg$/, '');
+      // 创建一个定时器，模拟上传进度
+      const progressInterval = setInterval(() => {
+        if (currentProgress < 90) {
+          // 每100ms增加5-15%的进度
+          currentProgress += Math.min(5 + Math.random() * 10, 90 - currentProgress);
+          onProgress({ type: 'weibo_progress', payload: Math.floor(currentProgress) });
+        }
+      }, 100);
+      
+      try {
+        const uploadResult = await uploadToWeibo(fileBytes, config.weiboCookie);
+        hashName = uploadResult.hashName;
+        largeUrl = uploadResult.largeUrl;
+        weiboPid = hashName.replace(/\.jpg$/, '');
+      } finally {
+        // 清除定时器
+        clearInterval(progressInterval);
+      }
       
       onProgress({ type: 'weibo_progress', payload: 100 });
       
@@ -960,9 +1003,26 @@ export async function processUpload(
     if (options.uploadToR2) {
       try {
         console.log('[processUpload] 步骤 2: 开始上传到 R2...');
-        onProgress({ type: 'r2_progress', payload: 10 });
         
-        finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
+        // 模拟R2上传进度
+        let r2Progress = 10;
+        onProgress({ type: 'r2_progress', payload: r2Progress });
+        
+        // 创建一个定时器，模拟R2上传进度
+        const r2ProgressInterval = setInterval(() => {
+          if (r2Progress < 90) {
+            // 每100ms增加5-15%的进度
+            r2Progress += Math.min(5 + Math.random() * 10, 90 - r2Progress);
+            onProgress({ type: 'r2_progress', payload: Math.floor(r2Progress) });
+          }
+        }, 100);
+        
+        try {
+          finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
+        } finally {
+          // 清除定时器
+          clearInterval(r2ProgressInterval);
+        }
         
         if (finalR2Key) {
           onProgress({ type: 'r2_progress', payload: 100 });
