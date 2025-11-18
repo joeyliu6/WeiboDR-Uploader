@@ -78,7 +78,9 @@ fn main() {
             start_cookie_monitoring,
             get_request_header_cookie,
             test_r2_connection,
-            test_webdav_connection
+            test_webdav_connection,
+            list_r2_objects,
+            delete_r2_object
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
@@ -468,6 +470,15 @@ struct R2Config {
     public_domain: String,
 }
 
+/// R2 对象结构体（返回给前端）
+#[derive(serde::Serialize, Clone)]
+struct R2Object {
+    key: String,
+    size: i64,
+    #[serde(rename = "lastModified")]
+    last_modified: String,
+}
+
 /// WebDAV 配置结构体（与 TypeScript 接口匹配）
 #[derive(serde::Deserialize, Clone)]
 struct WebDAVConfig {
@@ -629,5 +640,295 @@ async fn test_webdav_connection(config: WebDAVConfig) -> Result<String, String> 
             }
         }
     }
+}
+
+/// 列出 R2 存储桶中的所有对象
+/// 
+/// # 参数
+/// * `config` - R2 配置
+/// 
+/// # 返回
+/// 返回 `Result<Vec<R2Object>, String>`，成功时返回对象列表，失败时返回错误信息
+#[tauri::command]
+async fn list_r2_objects(config: R2Config) -> Result<Vec<R2Object>, String> {
+    use quick_xml::events::Event;
+    use quick_xml::Reader;
+
+    // 检查配置完整性
+    if config.account_id.is_empty() 
+        || config.access_key_id.is_empty() 
+        || config.secret_access_key.is_empty() 
+        || config.bucket_name.is_empty() {
+        return Err("R2 配置不完整，请先在设置中配置所有必填字段。".to_string());
+    }
+
+    let mut objects: Vec<R2Object> = Vec::new();
+    let mut continuation_token: Option<String> = None;
+    let client = reqwest::Client::new();
+
+    loop {
+        // 构建请求 URL
+        let mut url = format!(
+            "https://{}.r2.cloudflarestorage.com/{}?list-type=2",
+            config.account_id, config.bucket_name
+        );
+        
+        if let Some(token) = &continuation_token {
+            url.push_str(&format!("&continuation-token={}", urlencoding::encode(token)));
+        }
+
+        // 获取当前时间
+        let now = chrono::Utc::now();
+        let date_str = now.format("%Y%m%d").to_string();
+        let datetime_str = now.format("%Y%m%dT%H%M%SZ").to_string();
+        
+        // AWS Signature V4 签名
+        let region = "auto";
+        let service = "s3";
+        let host = format!("{}.r2.cloudflarestorage.com", config.account_id);
+        let canonical_uri = format!("/{}", config.bucket_name);
+        let mut canonical_querystring = "list-type=2".to_string();
+        
+        if let Some(token) = &continuation_token {
+            canonical_querystring.push_str(&format!("&continuation-token={}", urlencoding::encode(token)));
+        }
+        
+        let canonical_headers = format!("host:{}\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:{}\n", host, datetime_str);
+        let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+        let payload_hash = "UNSIGNED-PAYLOAD";
+        
+        // 创建规范请求
+        let canonical_request = format!(
+            "GET\n{}\n{}\n{}\n{}\n{}",
+            canonical_uri, canonical_querystring, canonical_headers, signed_headers, payload_hash
+        );
+        
+        // 计算规范请求的哈希
+        let mut hasher = Sha256::new();
+        hasher.update(canonical_request.as_bytes());
+        let canonical_request_hash = hex::encode(hasher.finalize());
+        
+        // 创建待签名字符串
+        let credential_scope = format!("{}/{}/{}/aws4_request", date_str, region, service);
+        let string_to_sign = format!(
+            "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+            datetime_str, credential_scope, canonical_request_hash
+        );
+        
+        // 计算签名
+        let k_date = hmac_sha256(format!("AWS4{}", config.secret_access_key).as_bytes(), date_str.as_bytes());
+        let k_region = hmac_sha256(&k_date, region.as_bytes());
+        let k_service = hmac_sha256(&k_region, service.as_bytes());
+        let k_signing = hmac_sha256(&k_service, b"aws4_request");
+        let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+        
+        // 构建 Authorization header
+        let authorization_header = format!(
+            "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+            config.access_key_id, credential_scope, signed_headers, signature
+        );
+        
+        // 发送请求
+        let response = client
+            .get(&url)
+            .header("Host", &host)
+            .header("x-amz-date", &datetime_str)
+            .header("x-amz-content-sha256", payload_hash)
+            .header("Authorization", &authorization_header)
+            .send()
+            .await
+            .map_err(|e| format!("请求失败: {}", e))?;
+
+        if !response.status().is_success() {
+            let status = response.status();
+            let body = response.text().await.unwrap_or_default();
+            return Err(format!("列出对象失败 (HTTP {}): {}", status, body));
+        }
+
+        let body = response.text().await.map_err(|e| format!("读取响应失败: {}", e))?;
+
+        // 解析 XML 响应
+        let mut reader = Reader::from_str(&body);
+        reader.config_mut().trim_text(true);
+        
+        let mut buf = Vec::new();
+        let mut current_key = String::new();
+        let mut current_size: i64 = 0;
+        let mut current_last_modified = String::new();
+        let mut in_contents = false;
+        let mut in_key = false;
+        let mut in_size = false;
+        let mut in_last_modified = false;
+        let mut in_is_truncated = false;
+        let mut in_next_continuation_token = false;
+        let mut is_truncated = false;
+        let mut next_token = String::new();
+
+        loop {
+            match reader.read_event_into(&mut buf) {
+                Ok(Event::Start(e)) => {
+                    match e.name().as_ref() {
+                        b"Contents" => in_contents = true,
+                        b"Key" if in_contents => in_key = true,
+                        b"Size" if in_contents => in_size = true,
+                        b"LastModified" if in_contents => in_last_modified = true,
+                        b"IsTruncated" => in_is_truncated = true,
+                        b"NextContinuationToken" => in_next_continuation_token = true,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Text(e)) => {
+                    let text = e.unescape().unwrap_or_default().to_string();
+                    if in_key {
+                        current_key = text;
+                    } else if in_size {
+                        current_size = text.parse().unwrap_or(0);
+                    } else if in_last_modified {
+                        current_last_modified = text;
+                    } else if in_is_truncated {
+                        is_truncated = text == "true";
+                    } else if in_next_continuation_token {
+                        next_token = text;
+                    }
+                }
+                Ok(Event::End(e)) => {
+                    match e.name().as_ref() {
+                        b"Contents" => {
+                            in_contents = false;
+                            if !current_key.is_empty() {
+                                objects.push(R2Object {
+                                    key: current_key.clone(),
+                                    size: current_size,
+                                    last_modified: current_last_modified.clone(),
+                                });
+                            }
+                            current_key.clear();
+                            current_size = 0;
+                            current_last_modified.clear();
+                        }
+                        b"Key" => in_key = false,
+                        b"Size" => in_size = false,
+                        b"LastModified" => in_last_modified = false,
+                        b"IsTruncated" => in_is_truncated = false,
+                        b"NextContinuationToken" => in_next_continuation_token = false,
+                        _ => {}
+                    }
+                }
+                Ok(Event::Eof) => break,
+                Err(e) => return Err(format!("解析 XML 失败: {}", e)),
+                _ => {}
+            }
+            buf.clear();
+        }
+
+        // 检查是否还有更多数据
+        if is_truncated && !next_token.is_empty() {
+            continuation_token = Some(next_token);
+        } else {
+            break;
+        }
+    }
+
+    // 按最后修改时间降序排序（最新的在前）
+    objects.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
+
+    eprintln!("[R2管理] 成功列出 {} 个对象", objects.len());
+    Ok(objects)
+}
+
+/// 删除 R2 存储桶中的指定对象
+/// 
+/// # 参数
+/// * `config` - R2 配置
+/// * `key` - 要删除的对象的 Key
+/// 
+/// # 返回
+/// 返回 `Result<String, String>`，成功时返回成功消息，失败时返回错误信息
+#[tauri::command]
+async fn delete_r2_object(config: R2Config, key: String) -> Result<String, String> {
+    // 检查配置完整性
+    if config.account_id.is_empty() 
+        || config.access_key_id.is_empty() 
+        || config.secret_access_key.is_empty() 
+        || config.bucket_name.is_empty() {
+        return Err("R2 配置不完整，请先在设置中配置所有必填字段。".to_string());
+    }
+
+    if key.is_empty() {
+        return Err("对象 Key 不能为空。".to_string());
+    }
+
+    // 构建请求 URL
+    let url = format!(
+        "https://{}.r2.cloudflarestorage.com/{}/{}",
+        config.account_id, config.bucket_name, urlencoding::encode(&key)
+    );
+
+    // 获取当前时间
+    let now = chrono::Utc::now();
+    let date_str = now.format("%Y%m%d").to_string();
+    let datetime_str = now.format("%Y%m%dT%H%M%SZ").to_string();
+    
+    // AWS Signature V4 签名
+    let region = "auto";
+    let service = "s3";
+    let host = format!("{}.r2.cloudflarestorage.com", config.account_id);
+    let canonical_uri = format!("/{}/{}", config.bucket_name, urlencoding::encode(&key));
+    let canonical_querystring = "";
+    let canonical_headers = format!("host:{}\nx-amz-content-sha256:UNSIGNED-PAYLOAD\nx-amz-date:{}\n", host, datetime_str);
+    let signed_headers = "host;x-amz-content-sha256;x-amz-date";
+    let payload_hash = "UNSIGNED-PAYLOAD";
+    
+    // 创建规范请求
+    let canonical_request = format!(
+        "DELETE\n{}\n{}\n{}\n{}\n{}",
+        canonical_uri, canonical_querystring, canonical_headers, signed_headers, payload_hash
+    );
+    
+    // 计算规范请求的哈希
+    let mut hasher = Sha256::new();
+    hasher.update(canonical_request.as_bytes());
+    let canonical_request_hash = hex::encode(hasher.finalize());
+    
+    // 创建待签名字符串
+    let credential_scope = format!("{}/{}/{}/aws4_request", date_str, region, service);
+    let string_to_sign = format!(
+        "AWS4-HMAC-SHA256\n{}\n{}\n{}",
+        datetime_str, credential_scope, canonical_request_hash
+    );
+    
+    // 计算签名
+    let k_date = hmac_sha256(format!("AWS4{}", config.secret_access_key).as_bytes(), date_str.as_bytes());
+    let k_region = hmac_sha256(&k_date, region.as_bytes());
+    let k_service = hmac_sha256(&k_region, service.as_bytes());
+    let k_signing = hmac_sha256(&k_service, b"aws4_request");
+    let signature = hex::encode(hmac_sha256(&k_signing, string_to_sign.as_bytes()));
+    
+    // 构建 Authorization header
+    let authorization_header = format!(
+        "AWS4-HMAC-SHA256 Credential={}/{}, SignedHeaders={}, Signature={}",
+        config.access_key_id, credential_scope, signed_headers, signature
+    );
+    
+    // 发送 DELETE 请求
+    let client = reqwest::Client::new();
+    let response = client
+        .delete(&url)
+        .header("Host", host)
+        .header("x-amz-date", datetime_str)
+        .header("x-amz-content-sha256", payload_hash)
+        .header("Authorization", authorization_header)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+
+    if !response.status().is_success() {
+        let status = response.status();
+        let body = response.text().await.unwrap_or_default();
+        return Err(format!("删除对象失败 (HTTP {}): {}", status, body));
+    }
+
+    eprintln!("[R2管理] 成功删除对象: {}", key);
+    Ok(format!("成功删除: {}", key))
 }
 

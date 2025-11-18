@@ -12,6 +12,7 @@
         <button id="nav-upload" class="nav-btn active">☁️</button>
         <button id="nav-history" class="nav-btn">📜</button>
         <button id="nav-failed" class="nav-btn">⚠️<span class="badge" id="badge" style="display: none;">0</span></button>
+        <button id="nav-r2-manager" class="nav-btn">🗂️</button>
         <button id="nav-settings" class="nav-btn">⚙️</button>
       </div>
       <div class="content-area">
@@ -178,6 +179,42 @@
                 </tbody>
             </table>
         </div>
+        </div>
+        <div id="r2-manager-view" class="view">
+          <div class="r2-manager-container">
+            <div class="r2-manager-toolbar">
+              <h1>📦 R2 存储管理</h1>
+              <div class="r2-toolbar-controls">
+                <span id="r2-bucket-info" class="r2-info-text"></span>
+                <span id="r2-stats-info" class="r2-stats-text"></span>
+                <button id="r2-refresh-btn" class="r2-btn">🔄 刷新</button>
+              </div>
+            </div>
+            <div id="r2-loading" class="r2-loading" style="display: none;">
+              <div class="r2-spinner"></div>
+              <p>加载中...</p>
+            </div>
+            <div id="r2-error-message" class="r2-error-message" style="display: none;"></div>
+            <div id="r2-grid-container" class="r2-grid"></div>
+          </div>
+          <!-- 预览模态框 -->
+          <div id="r2-modal" class="r2-modal" style="display: none;">
+            <div class="r2-modal-overlay"></div>
+            <div class="r2-modal-content">
+              <button class="r2-modal-close" id="r2-modal-close-btn">✕</button>
+              <img id="r2-modal-image" class="r2-modal-image" alt="预览图片" />
+              <div class="r2-modal-footer">
+                <div class="r2-modal-info">
+                  <p id="r2-modal-filename"></p>
+                  <p id="r2-modal-filesize"></p>
+                </div>
+                <div class="r2-modal-actions">
+                  <button id="r2-modal-copy-btn" class="r2-btn r2-btn-primary">📋 复制链接</button>
+                  <button id="r2-modal-delete-btn" class="r2-btn r2-btn-danger">🗑️ 删除</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>

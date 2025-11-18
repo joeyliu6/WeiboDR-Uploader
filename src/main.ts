@@ -13,6 +13,7 @@ import { writeTextFile } from '@tauri-apps/api/fs';
 import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
 import { WebviewWindow } from '@tauri-apps/api/window';
 import { UploadQueueManager } from './uploadQueue';
+import { R2Manager } from './r2-manager';
 
 // --- GLOBAL ERROR HANDLERS ---
 window.addEventListener('error', (event) => {
@@ -34,6 +35,9 @@ const retryStore = new Store('.retry.dat');
 
 // --- UPLOAD QUEUE MANAGER ---
 let uploadQueueManager: UploadQueueManager | null = null;
+
+// --- R2 MANAGER ---
+let r2Manager: R2Manager | null = null;
 
 /**
  * 获取 DOM 元素，带空值检查和类型断言
@@ -71,14 +75,16 @@ const uploadView = getElement<HTMLElement>('upload-view', '上传视图');
 const historyView = getElement<HTMLElement>('history-view', '历史视图');
 const settingsView = getElement<HTMLElement>('settings-view', '设置视图');
 const failedView = getElement<HTMLElement>('failed-view', '失败视图');
-const views = [uploadView, historyView, settingsView, failedView].filter((v): v is HTMLElement => v !== null);
+const r2ManagerView = getElement<HTMLElement>('r2-manager-view', 'R2管理视图');
+const views = [uploadView, historyView, settingsView, failedView, r2ManagerView].filter((v): v is HTMLElement => v !== null);
 
 // Navigation
 const navUploadBtn = getElement<HTMLButtonElement>('nav-upload', '上传导航按钮');
 const navHistoryBtn = getElement<HTMLButtonElement>('nav-history', '历史导航按钮');
 const navFailedBtn = getElement<HTMLButtonElement>('nav-failed', '失败导航按钮');
+const navR2ManagerBtn = getElement<HTMLButtonElement>('nav-r2-manager', 'R2管理导航按钮');
 const navSettingsBtn = getElement<HTMLButtonElement>('nav-settings', '设置导航按钮');
-const navButtons = [navUploadBtn, navHistoryBtn, navFailedBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
+const navButtons = [navUploadBtn, navHistoryBtn, navFailedBtn, navR2ManagerBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
 
 // Upload View Elements
 const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
@@ -229,7 +235,7 @@ async function processUploadQueue(
  * 导航到指定视图
  * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'failed')
  */
-function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed'): void {
+function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed' | 'r2-manager'): void {
   try {
     // Deactivate all views and buttons
     views.forEach(v => {
@@ -292,6 +298,30 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed'): void 
         loadFailedQueue().catch(err => {
           console.error('[导航] 加载失败队列失败:', err);
         });
+      } else if (viewId === 'r2-manager') {
+        // 初始化 R2 管理器（如果还未初始化）
+        if (!r2Manager) {
+          configStore.get<UserConfig>('config').then(config => {
+            const currentConfig = config || DEFAULT_CONFIG;
+            r2Manager = new R2Manager(currentConfig);
+            r2Manager.loadObjects().catch(err => {
+              console.error('[导航] 加载R2对象失败:', err);
+            });
+          }).catch(err => {
+            console.error('[导航] 获取配置失败:', err);
+          });
+        } else {
+          // 如果已经初始化，刷新配置并重新加载
+          configStore.get<UserConfig>('config').then(config => {
+            const currentConfig = config || DEFAULT_CONFIG;
+            r2Manager!.updateConfig(currentConfig);
+            r2Manager!.loadObjects().catch(err => {
+              console.error('[导航] 加载R2对象失败:', err);
+            });
+          }).catch(err => {
+            console.error('[导航] 获取配置失败:', err);
+          });
+        }
       }
     } catch (error) {
       console.error(`[导航] 加载视图数据失败 (${viewId}):`, error);
@@ -1576,6 +1606,12 @@ function initialize(): void {
       navFailedBtn.addEventListener('click', () => navigateTo('failed'));
     } else {
       console.warn('[初始化] 警告: 失败导航按钮不存在');
+    }
+    
+    if (navR2ManagerBtn) {
+      navR2ManagerBtn.addEventListener('click', () => navigateTo('r2-manager'));
+    } else {
+      console.warn('[初始化] 警告: R2管理导航按钮不存在');
     }
     
     if (navSettingsBtn) {
