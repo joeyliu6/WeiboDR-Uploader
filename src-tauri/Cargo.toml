@@ -16,7 +16,7 @@ tauri-build = { version = "1.5", features = [] }
 tauri = { version = "1.5", features = [ "dialog-confirm", "dialog-open", "dialog-ask", "dialog-message", "dialog-save", "fs-all", "notification-all", "path-all", "http-request", "clipboard-all", "shell-open", "window-all", "system-tray"] }
 serde = { version = "1.0", features = ["derive"] }
 serde_json = "1.0"
-reqwest = { version = "0.11", features = ["json", "cookies"] }
+reqwest = { version = "0.11", features = ["json", "cookies", "stream"] }
 tokio = { version = "1", features = ["full"] }
 base64 = "0.21"
 hmac = "0.12"
@@ -25,6 +25,7 @@ hex = "0.4"
 chrono = "0.4"
 quick-xml = "0.36"
 urlencoding = "2.1"
+tokio-util = { version = "0.7.17", features = ["codec"] }
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.39", features = ["Win32_System_Com"] }

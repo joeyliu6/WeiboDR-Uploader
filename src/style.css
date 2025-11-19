@@ -1287,7 +1287,7 @@ body, html {
   
   /* Adjust upload item for narrow screen */
   .upload-item {
-    flex-wrap: wrap; /* Allow wrapping if really needed or just squash? */
+    flex-wrap: wrap; /* Allow wrapping if really needed or just squeeze? */
     gap: 10px;
   }
   
@@ -1298,4 +1298,132 @@ body, html {
   }
   
   /* If < 500px, maybe stack actions */
+}
+
+/* Generic Modal Styles */
+.modal {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2000; /* Higher than r2 modal just in case */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.modal-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.7);
+  backdrop-filter: blur(2px);
+}
+
+.modal-content {
+  position: relative;
+  background-color: var(--bg-card);
+  border-radius: 12px;
+  width: 90%;
+  max-width: 400px;
+  box-shadow: var(--shadow-float);
+  z-index: 2001;
+  border: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-header {
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+}
+
+.modal-header h3 {
+  margin: 0;
+  font-size: var(--text-lg);
+  color: var(--text-primary);
+}
+
+.modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  cursor: pointer;
+  font-size: 1.2em;
+  padding: 4px;
+  line-height: 1;
+  border-radius: 4px;
+}
+
+.modal-close:hover {
+  background-color: rgba(255,255,255,0.1);
+  color: var(--text-primary);
+}
+
+.modal-body {
+  padding: 20px;
+  color: var(--text-primary);
+  font-size: var(--text-base);
+  line-height: 1.5;
+}
+
+.modal-footer {
+  padding: 16px 20px;
+  background-color: var(--bg-card);
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  justify-content: flex-end;
+  gap: 10px;
+  border-radius: 0 0 12px 12px;
+}
+
+.btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  cursor: pointer;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.btn-secondary {
+  background-color: transparent;
+  border-color: var(--border-subtle);
+  color: var(--text-primary);
+}
+
+.btn-secondary:hover {
+  background-color: rgba(255,255,255,0.05);
+  border-color: var(--text-secondary);
+}
+
+.btn-danger {
+  background-color: var(--error);
+  color: white;
+}
+
+.btn-danger:hover {
+  background-color: #dc2626;
+}
+
+.btn-primary {
+  background-color: var(--primary);
+  color: white;
+}
+
+.btn-primary:hover {
+  background-color: var(--primary-hover);
 }

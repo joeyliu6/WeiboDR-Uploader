@@ -271,6 +271,23 @@
         </div>
       </div>
     </div>
+    <!-- Generic Confirmation Modal -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+      <div class="modal-overlay"></div>
+      <div class="modal-content confirm-modal-content">
+        <div class="modal-header">
+          <h3 id="confirm-modal-title">确认</h3>
+          <button class="modal-close" id="confirm-modal-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-modal-message"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="confirm-modal-cancel" class="btn btn-secondary">取消</button>
+          <button id="confirm-modal-ok" class="btn btn-danger">确定</button>
+        </div>
+      </div>
+    </div>
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

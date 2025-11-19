@@ -5000,6 +5000,7 @@ dependencies = [
  "tauri",
  "tauri-build",
  "tokio",
+ "tokio-util",
  "urlencoding",
  "webview2-com",
  "window-shadows",

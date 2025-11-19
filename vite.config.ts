@@ -1,8 +1,10 @@
 import { defineConfig } from "vite";
 import { resolve } from "path";
 import { fileURLToPath, URL } from "node:url";
+import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
+  plugins: [vue()],
   // 防止 vite 警告
   clearScreen: false,
   // Tauri 期望固定端口

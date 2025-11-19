@@ -1173,6 +1173,79 @@ async function testWeiboConnection(): Promise<void> {
 let allHistoryItems: HistoryItem[] = [];
 
 /**
+ * 显示自定义确认模态框
+ * @param message 确认消息
+ * @param title 标题 (可选)
+ * @returns Promise<boolean> 用户点击确定返回 true，取消返回 false
+ */
+function showConfirmModal(message: string, title: string = '确认'): Promise<boolean> {
+  return new Promise((resolve) => {
+    const modal = document.getElementById('confirm-modal');
+    const titleEl = document.getElementById('confirm-modal-title');
+    const messageEl = document.getElementById('confirm-modal-message');
+    const okBtn = document.getElementById('confirm-modal-ok');
+    const cancelBtn = document.getElementById('confirm-modal-cancel');
+    const closeBtn = document.getElementById('confirm-modal-close');
+
+    if (!modal || !titleEl || !messageEl || !okBtn || !cancelBtn || !closeBtn) {
+      console.error('[模态框] 找不到模态框元素');
+      // Fallback to native dialog if elements are missing
+      dialog.ask(message, { title, type: 'warning' }).then(resolve);
+      return;
+    }
+
+    titleEl.textContent = title;
+    messageEl.textContent = message;
+    modal.style.display = 'flex';
+    
+    // Focus OK button for accessibility
+    okBtn.focus();
+
+    const cleanup = () => {
+      okBtn.removeEventListener('click', onOk);
+      cancelBtn.removeEventListener('click', onCancel);
+      closeBtn.removeEventListener('click', onCancel);
+      modal.removeEventListener('click', onOverlayClick);
+      window.removeEventListener('keydown', onEscKey);
+    };
+
+    const onOk = () => {
+      cleanup();
+      modal.style.display = 'none';
+      resolve(true);
+    };
+
+    const onCancel = () => {
+      cleanup();
+      modal.style.display = 'none';
+      resolve(false);
+    };
+
+    const onOverlayClick = (e: MouseEvent) => {
+        // Close when clicking on the overlay background
+        // e.target is the element that triggered the event (the overlay div if clicked directly)
+        // .modal container is the flex container, clicking outside content hits it
+        const target = e.target as HTMLElement;
+        if (target.classList.contains('modal-overlay') || target.id === 'confirm-modal') {
+            onCancel();
+        }
+    };
+    
+    const onEscKey = (e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+            onCancel();
+        }
+    };
+
+    okBtn.addEventListener('click', onOk);
+    cancelBtn.addEventListener('click', onCancel);
+    closeBtn.addEventListener('click', onCancel);
+    modal.addEventListener('click', onOverlayClick);
+    window.addEventListener('keydown', onEscKey);
+  });
+}
+
+/**
  * 删除单条历史记录
  * @param itemId 历史记录项的唯一 ID
  */
@@ -1186,7 +1259,11 @@ async function deleteHistoryItem(itemId: string): Promise<void> {
       return;
     }
     
-    const confirmed = confirm('您确定要从本地历史记录中删除此条目吗？此操作不会删除已上传到微博的图片。');
+    const confirmed = await showConfirmModal(
+      '您确定要从本地历史记录中删除此条目吗？此操作不会删除已上传到微博的图片。', 
+      '确认删除'
+    );
+    
     if (!confirmed) {
       console.log('[历史记录] 用户取消删除');
       return;
@@ -1425,7 +1502,11 @@ async function applySearchFilter() {
 }
 
 async function clearHistory() {
-    if (!confirm('确定要清空所有上传历史记录吗？此操作不可撤销。')) {
+    const confirmed = await showConfirmModal(
+      '确定要清空所有上传历史记录吗？此操作不可撤销。',
+      '确认清空'
+    );
+    if (!confirmed) {
       return;
     }
     try {
@@ -1691,7 +1772,11 @@ async function retryAllFailed() {
 }
 
 async function clearAllFailed() {
-  if (!confirm('确定要清除所有失败记录吗？')) {
+  const confirmed = await showConfirmModal(
+    '确定要清除所有失败记录吗？',
+    '确认清除'
+  );
+  if (!confirmed) {
     return;
   }
   try {

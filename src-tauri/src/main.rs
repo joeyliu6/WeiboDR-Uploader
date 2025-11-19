@@ -4,6 +4,9 @@
     windows_subsystem = "windows"
 )]
 
+mod error;
+mod commands;
+
 use tauri::{CustomMenuItem, Manager, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem, SystemTrayEvent};
 use window_shadows::set_shadow;
 use std::time::Duration;
@@ -94,7 +97,8 @@ fn main() {
             test_r2_connection,
             test_webdav_connection,
             list_r2_objects,
-            delete_r2_object
+            delete_r2_object,
+            commands::upload::upload_file_stream
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘

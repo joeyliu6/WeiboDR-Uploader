@@ -571,75 +571,20 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
     return { status: 'error', message: errorMsg };
   }
 
-  let fileBytes: Uint8Array;
-  try {
-    console.log(`[核心流程] 开始读取文件: ${filePath}`);
-    
-    // 添加读取超时保护（30秒）
-    const readPromise = readBinaryFile(filePath);
-    const timeoutPromise = new Promise<never>((_, reject) => {
-      setTimeout(() => reject(new Error('文件读取超时（超过30秒）')), 30000);
-    });
-    
-    fileBytes = await Promise.race([readPromise, timeoutPromise]);
-    
-    if (!fileBytes || !(fileBytes instanceof Uint8Array)) {
-      throw new Error("文件读取失败：返回的数据格式不正确");
-    }
-    
-    if (fileBytes.length === 0) {
-      throw new Error("文件读取失败：文件为空");
-    }
-    
-    console.log(`[核心流程] 文件读取成功，大小: ${(fileBytes.length / 1024).toFixed(2)}KB`);
-    
-    // 验证文件类型
-    const fileType = detectFileType(fileBytes);
-    if (!fileType) {
-      console.warn(`[核心流程] 警告: 无法识别文件类型，文件可能不是有效的图片`);
-    } else {
-      console.log(`[核心流程] 检测到文件类型: ${fileType}`);
-    }
-    
-    // 验证文件不是空文件或损坏文件
-    if (fileBytes.length < 100) {
-      throw new Error("文件过小（小于100字节），可能是损坏的文件");
-    }
-  } catch (readError: any) {
-    const errorMsg = readError?.message || String(readError);
-    const lowerError = errorMsg.toLowerCase();
-    
-    let userMessage = "无法读取文件";
-    
-    if (lowerError.includes('permission') || lowerError.includes('权限') || lowerError.includes('denied')) {
-      userMessage = "文件读取失败：权限不足，请检查文件权限设置";
-    } else if (lowerError.includes('not found') || lowerError.includes('不存在') || lowerError.includes('找不到')) {
-      userMessage = "文件读取失败：文件不存在或已被删除";
-    } else if (lowerError.includes('locked') || lowerError.includes('被占用') || lowerError.includes('正在使用')) {
-      userMessage = "文件读取失败：文件被其他程序占用，请关闭相关程序后重试";
-    } else if (lowerError.includes('path') || lowerError.includes('路径')) {
-      userMessage = `文件读取失败：路径无效 (${errorMsg})`;
-    } else {
-      userMessage = `文件读取失败: ${errorMsg}`;
-    }
-    
-    console.error("[核心流程] 文件读取失败:", {
-      filePath,
-      error: errorMsg,
-      details: readError
-    });
-    await showNotification("上传失败", userMessage);
-    return { status: 'error', message: userMessage };
-  }
+  // 验证文件存在性 (Rust 会处理，但这里可以做个简单的检查 if needed，或者直接跳过)
+  console.log(`[核心流程] 开始处理文件: ${filePath}`);
+
+  // fileBytes 延迟读取，仅用于 R2 备份
+  let fileBytes: Uint8Array | null = null;
 
   try {
     // --- [步骤 A - 上传微博] (串行) ---
-    // 使用新的、真实的上传器
+    // 使用新的、流式上传器 (传入路径)
     const { hashName, largeUrl } = await uploadToWeibo(
-      fileBytes, 
-      config.weiboCookie,
-      detectFileType(fileBytes) || 'image/jpeg'
+      filePath, 
+      config.weiboCookie
     );
+
 
     // --- 步骤 A 成功后 ---
 
@@ -695,17 +640,30 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       
       // [步骤 B - 备份R2] (并行 - 异步，但等待结果以保存 r2Key)
       let finalR2Key: string | null = null;
-      try {
-        finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
-        if (finalR2Key) {
-          console.log(`[历史记录] R2 备份成功，Key: ${finalR2Key}`);
+      
+      // 如果启用 R2，则在此处读取文件（为了微博上传性能优化，我们延迟到这里才读取）
+      if (!fileBytes && (config.r2.enabled || (config.r2 as any).enable)) { // check both just in case
+          try {
+             console.log(`[核心流程] 为 R2 备份读取文件: ${filePath}`);
+             fileBytes = await readBinaryFile(filePath);
+          } catch (e) {
+             console.warn(`[核心流程] R2 备份前读取文件失败: ${e}`);
+          }
+      }
+
+      if (fileBytes) {
+        try {
+            finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
+            if (finalR2Key) {
+            console.log(`[历史记录] R2 备份成功，Key: ${finalR2Key}`);
+            }
+        } catch (r2Error: any) {
+            // [非阻塞性错误通知]
+            const r2ErrorMsg = r2Error?.message || String(r2Error);
+            console.warn("[历史记录] R2 备份失败（非阻塞）:", r2ErrorMsg);
+            await showNotification("R2 备份失败", r2ErrorMsg);
+            finalR2Key = null; // 失败时保持为 null
         }
-      } catch (r2Error: any) {
-        // [非阻塞性错误通知]
-        const r2ErrorMsg = r2Error?.message || String(r2Error);
-        console.warn("[历史记录] R2 备份失败（非阻塞）:", r2ErrorMsg);
-        await showNotification("R2 备份失败", r2ErrorMsg);
-        finalR2Key = null; // 失败时保持为 null
       }
       
       const newItem: HistoryItem = { 
@@ -894,44 +852,8 @@ export async function processUpload(
     validateUserConfig(config);
 
     // 读取文件
-    let fileBytes: Uint8Array;
-    try {
-      console.log(`[processUpload] 开始读取文件: ${filePath}`);
-      
-      const readPromise = readBinaryFile(filePath);
-      const timeoutPromise = new Promise<never>((_, reject) => {
-        setTimeout(() => reject(new Error('文件读取超时（超过30秒）')), 30000);
-      });
-      
-      fileBytes = await Promise.race([readPromise, timeoutPromise]);
-      
-      if (!fileBytes || !(fileBytes instanceof Uint8Array)) {
-        throw new Error("文件读取失败：返回的数据格式不正确");
-      }
-      
-      if (fileBytes.length === 0) {
-        throw new Error("文件读取失败：文件为空");
-      }
-      
-      console.log(`[processUpload] 文件读取成功，大小: ${(fileBytes.length / 1024).toFixed(2)}KB`);
-      
-      // 验证文件类型
-      const fileType = detectFileType(fileBytes);
-      if (!fileType) {
-        console.warn(`[processUpload] 警告: 无法识别文件类型`);
-      } else {
-        console.log(`[processUpload] 检测到文件类型: ${fileType}`);
-      }
-      
-      if (fileBytes.length < 100) {
-        throw new Error("文件过小（小于100字节），可能是损坏的文件");
-      }
-    } catch (readError: any) {
-      const errorMsg = readError?.message || String(readError);
-      console.error("[processUpload] 文件读取失败:", errorMsg);
-      onProgress({ type: 'error', payload: errorMsg });
-      return { status: 'error', message: errorMsg };
-    }
+    // fileBytes 延迟读取
+    let fileBytes: Uint8Array | null = null;
 
     // 步骤 1: 上传微博
     let hashName: string;
@@ -941,15 +863,12 @@ export async function processUpload(
     try {
       console.log('[processUpload] 步骤 1: 开始上传到微博...');
       
-      // 模拟进度更新（因为当前uploadToWeibo不支持进度回调）
-      // 创建一个平滑的进度条更新
+      // 模拟进度更新
       let currentProgress = 10;
       onProgress({ type: 'weibo_progress', payload: currentProgress });
       
-      // 创建一个定时器，模拟上传进度
       const progressInterval = setInterval(() => {
         if (currentProgress < 90) {
-          // 每100ms增加5-15%的进度
           currentProgress += Math.min(5 + Math.random() * 10, 90 - currentProgress);
           onProgress({ type: 'weibo_progress', payload: Math.floor(currentProgress) });
         }
@@ -957,15 +876,13 @@ export async function processUpload(
       
       try {
         const uploadResult = await uploadToWeibo(
-          fileBytes, 
-          config.weiboCookie,
-          detectFileType(fileBytes) || 'image/jpeg'
+          filePath, 
+          config.weiboCookie
         );
         hashName = uploadResult.hashName;
         largeUrl = uploadResult.largeUrl;
         weiboPid = hashName.replace(/\.jpg$/, '');
       } finally {
-        // 清除定时器
         clearInterval(progressInterval);
       }
       
@@ -995,53 +912,61 @@ export async function processUpload(
     let r2Link: string | null = null;
     
     if (options.uploadToR2) {
-      try {
-        console.log('[processUpload] 步骤 2: 开始上传到 R2...');
-        
-        // 模拟R2上传进度
-        let r2Progress = 10;
-        onProgress({ type: 'r2_progress', payload: r2Progress });
-        
-        // 创建一个定时器，模拟R2上传进度
-        const r2ProgressInterval = setInterval(() => {
-          if (r2Progress < 90) {
-            // 每100ms增加5-15%的进度
-            r2Progress += Math.min(5 + Math.random() * 10, 90 - r2Progress);
-            onProgress({ type: 'r2_progress', payload: Math.floor(r2Progress) });
+      // 确保文件已读取
+      if (!fileBytes) {
+          try {
+            fileBytes = await readBinaryFile(filePath);
+          } catch (e) {
+            console.error("[processUpload] 读取文件失败 (R2):", e);
           }
-        }, 100);
-        
+      }
+
+      if (fileBytes) {
         try {
-          finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
-        } finally {
-          // 清除定时器
-          clearInterval(r2ProgressInterval);
+            console.log('[processUpload] 步骤 2: 开始上传到 R2...');
+            
+            // 模拟R2上传进度
+            let r2Progress = 10;
+            onProgress({ type: 'r2_progress', payload: r2Progress });
+            
+            const r2ProgressInterval = setInterval(() => {
+                if (r2Progress < 90) {
+                    r2Progress += Math.min(5 + Math.random() * 10, 90 - r2Progress);
+                    onProgress({ type: 'r2_progress', payload: Math.floor(r2Progress) });
+                }
+            }, 100);
+            
+            try {
+                finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
+            } finally {
+                clearInterval(r2ProgressInterval);
+            }
+            
+            if (finalR2Key) {
+                onProgress({ type: 'r2_progress', payload: 100 });
+                
+                // 生成 R2 公开链接
+                const publicDomain = config.r2?.publicDomain;
+                if (publicDomain && publicDomain.trim() && publicDomain.startsWith('http')) {
+                    const domain = publicDomain.endsWith('/') ? publicDomain.slice(0, -1) : publicDomain;
+                    r2Link = `${domain}/${finalR2Key}`;
+                }
+                
+                onProgress({
+                    type: 'r2_success',
+                    payload: { key: finalR2Key, r2Link }
+                });
+                
+                console.log(`[processUpload] ✓ R2 上传成功: ${finalR2Key}`);
+            } else {
+                console.log('[processUpload] R2 未配置，跳过上传');
+            }
+
+        } catch (r2Error: any) {
+             const r2ErrorMsg = r2Error?.message || String(r2Error);
+             console.warn('[processUpload] R2 上传失败:', r2ErrorMsg);
+             await showNotification("R2 备份失败", r2ErrorMsg);
         }
-        
-        if (finalR2Key) {
-          onProgress({ type: 'r2_progress', payload: 100 });
-          
-          // 生成 R2 公开链接
-          const publicDomain = config.r2?.publicDomain;
-          if (publicDomain && publicDomain.trim() && publicDomain.startsWith('http')) {
-            const domain = publicDomain.endsWith('/') ? publicDomain.slice(0, -1) : publicDomain;
-            r2Link = `${domain}/${finalR2Key}`;
-          }
-          
-          onProgress({
-            type: 'r2_success',
-            payload: { key: finalR2Key, r2Link }
-          });
-          
-          console.log(`[processUpload] ✓ R2 上传成功: ${finalR2Key}`);
-        } else {
-          console.log('[processUpload] R2 未配置，跳过上传');
-        }
-      } catch (r2Error: any) {
-        const r2ErrorMsg = r2Error?.message || String(r2Error);
-        console.warn('[processUpload] R2 上传失败（非阻塞）:', r2ErrorMsg);
-        // R2 失败不影响主流程，只记录日志
-        await showNotification("R2 备份失败", r2ErrorMsg);
       }
     }
 
