@@ -921,101 +921,124 @@ body, html {
   border-radius: 6px;
 }
 
-/* 网格容器 */
-.r2-grid {
+/* =========================================
+   R2 资源管理器 - 谷歌相册风格 (Google Photos Style)
+   ========================================= */
+
+/* 1. 网格容器 */
+#r2-grid-container {
   display: grid;
-  /* [v2.6 优化] 调整网格尺寸为 160px，更紧凑美观 */
+  /* 核心：自适应列宽 */
+  /* 最小 160px，最大自动填满，保证在任何窗口宽度下都铺满 */
   grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 16px; /* 缩小间距 */
-  padding: 30px;
+  gap: 10px; /* 间距不宜太大，Google Photos 间距很小 */
+  padding: 20px;
+  padding-bottom: 80px; /* 底部留白，防止被遮挡 */
   overflow-y: auto;
-  flex-grow: 1;
+  height: 100%;
+  flex-grow: 1; /* 确保占满父容器剩余空间 */
 }
 
-/* 空消息 */
-.r2-empty-message {
-  grid-column: 1 / -1;
-  text-align: center;
-  color: var(--text-secondary);
-  font-size: 1.2em;
-  padding: 60px 20px;
-}
-
-/* 网格项 */
+/* 2. 单个图片卡片 */
 .r2-item {
-  position: relative;
-  width: 100%;
-  aspect-ratio: 1 / 1; /* 保持 1:1 方形比例 */
-  background-size: cover;
-  background-position: center;
-  background-color: var(--bg-card);
-  border-radius: 8px;
-  overflow: hidden;
+  position: relative; /* 为绝对定位的子元素做参照 */
+  border-radius: 8px; /* 现代圆角 */
+  overflow: hidden;   /* 裁剪溢出的图片 */
+  background-color: #f0f0f0; /* 图片加载前的占位色 */
   cursor: pointer;
-  transition: transform 0.2s, box-shadow 0.2s;
-  border: 1px solid var(--border-subtle);
+  
+  /* 强制正方形 (1:1)，这是让排版整齐的关键 */
+  /* 如果想要 4:3，可以改为 4 / 3 */
+  aspect-ratio: 1 / 1; 
+  
+  /* 消除边框，用阴影代替层级 */
+  border: none;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+  
+  transition: transform 0.2s cubic-bezier(0.25, 0.8, 0.25, 1),
+              box-shadow 0.2s ease;
 }
 
+/* 暗色模式适配 */
+@media (prefers-color-scheme: dark) {
+  .r2-item {
+    background-color: #2c2c2e;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.3);
+  }
+}
+
+/* 3. 图片本体 */
+.r2-item-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover; /* 关键：裁剪图片填满格子，不变形 */
+  transition: transform 0.4s ease; /* 缓慢放大的动画 */
+  display: block;
+}
+
+/* 4. 悬停交互 (Hover Effects) */
 .r2-item:hover {
-  transform: translateY(-4px);
-  box-shadow: var(--shadow-float);
-  border-color: var(--primary);
+  transform: translateY(-2px); /* 微微上浮 */
+  box-shadow: 0 8px 16px rgba(0,0,0,0.15); /* 阴影加深 */
+  z-index: 1;
 }
 
-/* 网格项覆盖层 */
+.r2-item:hover .r2-item-img {
+  transform: scale(1.1); /* 图片内部缓慢放大，很有高级感 */
+}
+
+/* 5. 信息遮罩层 (平时隐藏，悬停显示) */
 .r2-item-overlay {
   position: absolute;
-  top: 0;
+  bottom: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background: linear-gradient(to bottom, rgba(0,0,0,0.7), rgba(0,0,0,0.9));
+  padding: 12px 10px;
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%); /* 渐变黑 */
+  
+  opacity: 0; /* 默认隐藏 */
+  transition: opacity 0.2s ease;
+  
   display: flex;
-  flex-direction: column;
   justify-content: space-between;
-  padding: 15px;
-  opacity: 0;
-  transition: opacity 0.2s;
+  align-items: flex-end;
 }
 
 .r2-item:hover .r2-item-overlay {
-  opacity: 1;
+  opacity: 1; /* 悬停显示 */
 }
 
-/* 3.4 R2 Item Overlay Text */
-.r2-item-filename {
-  font-size: var(--text-xs);
-  font-weight: var(--weight-medium);
-  color: #FFFFFF;
-  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
+/* 6. 文件名文字 */
+.r2-item-name {
+  color: #fff;
+  font-size: 12px;
+  font-weight: 500;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: block;
+  max-width: 70%; /* 给按钮留出空间 */
+  text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   font-family: var(--font-mono);
 }
 
-.r2-item-delete-btn {
-  background-color: rgba(15, 23, 42, 0.6); /* Slate 900 60% */
-  border: 1px solid var(--border-subtle);
-  color: var(--text-primary);
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
+/* 7. 删除按钮 (悬停在右下角) */
+.r2-item-delete {
+  background: rgba(255, 255, 255, 0.2);
+  backdrop-filter: blur(4px);
+  border: none;
+  border-radius: 4px;
+  color: #fff;
+  width: 28px;
+  height: 28px;
   display: flex;
   align-items: center;
   justify-content: center;
   cursor: pointer;
-  transition: all 0.2s ease;
-  align-self: flex-end;
-  backdrop-filter: blur(4px);
+  transition: background 0.2s;
 }
 
-.r2-item-delete-btn:hover {
-  background-color: var(--error);
-  border-color: var(--error);
-  color: white;
-  transform: scale(1.1);
+.r2-item-delete:hover {
+  background: #ff3b30; /* 警告红 */
 }
 
 /* 模态框 */
@@ -1144,9 +1167,18 @@ body, html {
   background-color: var(--error);
 }
 
+/* 空消息 */
+.r2-empty-message {
+  grid-column: 1 / -1;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 1.2em;
+  padding: 60px 20px;
+}
+
 /* 响应式调整 */
 @media (max-width: 768px) {
-  .r2-grid {
+  #r2-grid-container {
     /* [v2.6 优化] 移动端使用更小的网格 */
     grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
     gap: 12px;
@@ -1172,7 +1204,7 @@ body, html {
 }
 
 @media (min-width: 1600px) {
-  .r2-grid {
+  #r2-grid-container {
     grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   }
 }
