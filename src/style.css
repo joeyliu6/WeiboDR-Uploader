@@ -159,46 +159,67 @@ body, html {
 /* Dashboard Layout */
 .dashboard-container {
   display: flex;
-  width: 100%;
-  height: calc(100% - 32px); /* Subtract titlebar height */
+  width: 100vw;
+  height: calc(100vh - 32px); /* Subtract titlebar height */
   margin-top: 32px; /* Push down content */
+  overflow: hidden; /* Prevent full window scroll */
+  background-color: var(--bg-app);
+  transition: background-color 0.3s ease;
 }
 
+/* 2.2 侧边栏 (#sidebar) */
 .sidebar {
-  width: 60px;
+  width: 200px; /* Fixed width */
   background-color: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
-  align-items: center;
   padding-top: 20px;
-  flex-shrink: 0;
+  flex-shrink: 0; /* Prevent compression */
   border-right: 1px solid var(--border-subtle);
   
-  /* 3.1 侧边栏字体优化 */
+  /* Typography */
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
+  
+  overflow-y: auto;
+  overflow-x: hidden;
+  
+  /* [丝滑关键] 宽度变化过渡 */
+  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
 }
 
 .nav-btn {
   background: none;
   border: none;
   color: var(--text-secondary);
-  width: 40px;
-  height: 40px;
+  /* Full width style for 200px sidebar */
+  width: calc(100% - 20px);
+  margin: 0 10px 5px 10px;
+  height: 42px;
+  
   display: flex;
   align-items: center;
-  justify-content: center;
+  justify-content: flex-start; /* Left align content */
+  padding: 0 12px;
+  gap: 12px;
+  
   cursor: pointer;
-  margin-bottom: 15px;
   transition: all 0.2s;
   position: relative;
   border-radius: 8px;
 }
 
 .nav-btn svg {
-  width: 24px;
-  height: 24px;
+  width: 20px;
+  height: 20px;
   stroke-width: 2;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  white-space: nowrap;
+  opacity: 1;
+  transition: opacity 0.2s;
 }
 
 .nav-btn:hover {
@@ -209,14 +230,14 @@ body, html {
 .nav-btn.active {
   color: var(--primary);
   background-color: rgba(59, 130, 246, 0.1);
-  font-weight: var(--weight-bold); /* 选中时进一步加粗 */
-  letter-spacing: 0;
+  font-weight: var(--weight-bold);
 }
 
 .badge {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: 50%;
+  right: 10px;
+  transform: translateY(-50%);
   background-color: var(--error);
   color: white;
   border-radius: 10px;
@@ -233,17 +254,24 @@ body, html {
   margin-bottom: 20px;
 }
 
+/* 2.3 Content View Area */
 .content-area {
-  flex-grow: 1;
-  overflow-y: auto;
+  flex: 1;          /* Occupy remaining space */
   height: 100%;
+  overflow-y: auto; /* Vertical scroll only here */
+  overflow-x: hidden;
+  position: relative;
+  
+  /* Layout transition */
+  transition: padding 0.3s ease;
 }
 
 .view {
   display: none; /* Hidden by default */
-  padding: 20px;
+  padding: clamp(20px, 5vw, 40px); /* Responsive padding */
   box-sizing: border-box;
-  height: 100%;
+  height: auto;
+  min-height: 100%;
 }
 
 .view.active {
@@ -254,10 +282,9 @@ body, html {
 #upload-view .upload-container {
   max-width: 1200px;
   margin: 0 auto;
-  padding: 20px;
+  padding: 0; /* Padding handled by .view */
   box-sizing: border-box;
   height: 100%;
-  overflow-y: auto;
 }
 
 #drop-zone-header {
@@ -353,12 +380,13 @@ body, html {
   font-family: var(--font-sans);
 }
 
-/* 队列项目样式 - 优化版 (3.2 Upload List) */
+/* 3.1 队列项目样式 (Flex + Ellipsis) */
 .upload-item {
-  display: grid;
-  grid-template-columns: 80px 1fr 2fr 120px;
-  gap: 15px;
+  display: flex; /* Flexbox for responsive layout */
   align-items: center;
+  gap: 15px; /* Spacing */
+  width: 100%;
+  
   background-color: var(--bg-card);
   padding: 15px;
   border-radius: 8px;
@@ -367,6 +395,7 @@ body, html {
   transition: all 0.2s;
   position: relative;
   overflow: hidden;
+  box-sizing: border-box;
 }
 
 .upload-item:hover {
@@ -389,6 +418,8 @@ body, html {
 .upload-item .preview {
   width: 80px;
   height: 80px;
+  flex-shrink: 0; /* Fixed width */
+  
   border-radius: 6px;
   overflow: hidden;
   background-color: var(--bg-app);
@@ -416,22 +447,33 @@ body, html {
 
 /* 文件名列 */
 .upload-item .filename {
+  flex: 1; /* Occupy remaining space */
+  min-width: 0; /* [黑科技] Allow flex child to shrink below content size for ellipsis */
+  
   color: var(--text-primary);
   font-size: var(--text-base);
   font-weight: var(--weight-medium);
   font-family: var(--font-mono);
+  
+  /* Ellipsis Text */
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  white-space: nowrap;
+  
   margin-bottom: 2px;
 }
 
 /* 进度列 */
 .upload-item .progress-section {
+  flex: 1.5; /* Give progress slightly more space if available, or fit in flex layout */
+  min-width: 120px; /* Minimum width before wrapping or squeezing too much */
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
+/* Responsive: On very small screens, we might want to hide progress bar or adjust layout.
+   For now, flex layout handles it reasonably well. */
 
 .progress-row {
   display: grid;
@@ -470,7 +512,7 @@ body, html {
   border-radius: 10px;
 }
 
-/* Status Text (3.2 状态文本) */
+/* Status Text */
 .progress-row .status {
   color: var(--text-secondary);
   font-size: var(--text-xs);
@@ -493,12 +535,14 @@ body, html {
 
 /* 操作列 */
 .upload-item .actions {
+  flex-shrink: 0; /* Don't shrink */
+  width: auto;
+  
   display: flex;
   gap: 8px;
   justify-content: flex-end;
 }
 
-/* Link Buttons (3.2 成功状态链接按钮) */
 .upload-item .actions button {
   background: transparent;
   border: 1px solid var(--border-subtle);
@@ -547,11 +591,11 @@ body, html {
   100% { transform: rotate(360deg); }
 }
 
-/* Settings View Styles (3.3 设置页面) */
+/* Settings View Styles */
 #settings-view .container, #history-view .container {
   max-width: 720px;
   margin: 0 auto;
-  padding: 10px 20px 40px 20px;
+  padding: 0; /* Padding handled by .view */
 }
 
 #settings-view h1, #history-view h1 {
@@ -562,7 +606,14 @@ body, html {
   font-weight: var(--weight-bold);
 }
 
-/* 表单分组标题 (3.3) */
+/* 3.3 Settings Form Max Width */
+.form-section {
+  max-width: 600px; /* Reading comfort width */
+  width: 100%;
+  margin-right: auto; /* Left align with limit */
+  margin-bottom: 30px;
+}
+
 #settings-view h2 {
   font-size: var(--text-sm);
   font-weight: var(--weight-bold);
@@ -578,7 +629,6 @@ body, html {
   font-size: var(--text-sm);
 }
 
-/* 输入框标签 (3.3) */
 #settings-view label {
   font-size: var(--text-sm);
   font-weight: var(--weight-medium);
@@ -587,7 +637,6 @@ body, html {
   margin-top: 10px;
 }
 
-/* 输入框内的文字 (3.3) */
 #settings-view input[type="text"],
 #settings-view input[type="password"],
 #settings-view textarea {
@@ -598,15 +647,17 @@ body, html {
   border: 1px solid var(--border-subtle);
   border-radius: 4px;
   
-  font-family: var(--font-mono); /* Config keys require mono */
+  font-family: var(--font-mono);
   font-size: var(--text-sm);
-  color: var(--color-primary); /* Input content in blue */
+  color: var(--color-primary);
   
   margin-top: 5px;
   margin-bottom: 10px;
+  
+  /* Transitions */
+  transition: border-color 0.2s, box-shadow 0.2s;
 }
 
-/* 占位符 (3.3) */
 ::placeholder {
   font-family: var(--font-sans);
   font-style: italic;
@@ -647,7 +698,7 @@ body, html {
 #settings-view .radio-group label {
   margin-left: 5px;
   color: var(--text-secondary);
-  display: inline; /* Reset display block from general label rule */
+  display: inline;
 }
 
 /* History View Styles */
@@ -681,13 +732,13 @@ body, html {
 
 #history-view td:nth-child(2), #history-view td:nth-child(3) {
   max-width: 250px;
-  white-space: normal;      /* 允许换行 */
-  word-break: break-all;    /* 在任意字符处换行，适合长 URL */
-  overflow: visible;        /* 显示完整内容 */
-  text-overflow: clip;      /* 不需要省略号 */
+  white-space: normal;
+  word-break: break-all;
+  overflow: visible;
+  text-overflow: clip;
   font-family: var(--font-mono);
   color: var(--text-primary);
-  font-size: 0.85em;        /* 稍微调小字号适应长链接 */
+  font-size: 0.85em;
   line-height: 1.4;
 }
 
@@ -737,7 +788,7 @@ body, html {
 #failed-view .container {
   max-width: 720px;
   margin: 0 auto;
-  padding: 10px 20px 40px 20px;
+  padding: 0;
 }
 
 #failed-view h1 {
@@ -806,7 +857,6 @@ body, html {
 
 /* === R2 管理视图样式 === */
 
-/* 容器 */
 .r2-manager-container {
   display: flex;
   flex-direction: column;
@@ -815,7 +865,6 @@ body, html {
   overflow: hidden;
 }
 
-/* 工具栏 */
 .r2-manager-toolbar {
   display: flex;
   justify-content: space-between;
@@ -886,7 +935,6 @@ body, html {
   background-color: #dc2626; /* Red 600 */
 }
 
-/* 加载状态 */
 .r2-loading {
   display: flex;
   flex-direction: column;
@@ -910,7 +958,6 @@ body, html {
   to { transform: rotate(360deg); }
 }
 
-/* 错误消息 */
 .r2-error-message {
   padding: 20px 30px;
   background-color: var(--error);
@@ -922,36 +969,37 @@ body, html {
 }
 
 /* =========================================
-   R2 资源管理器 - 谷歌相册风格 (Google Photos Style)
+   3.2 R2 Grid (Auto Responsive)
    ========================================= */
 
-/* 1. 网格容器 */
 #r2-grid-container {
   display: grid;
-  /* 核心：自适应列宽 */
-  /* 最小 160px，最大自动填满，保证在任何窗口宽度下都铺满 */
-  grid-template-columns: repeat(auto-fill, minmax(160px, 1fr));
-  gap: 10px; /* 间距不宜太大，Google Photos 间距很小 */
+  /* Core: Auto calculation, min 140px (from 160px), max stretch */
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  
+  /* Gap using clamp */
+  gap: clamp(10px, 2vw, 20px);
+  
   padding: 20px;
-  padding-bottom: 80px; /* 底部留白，防止被遮挡 */
+  padding-bottom: 80px;
   overflow-y: auto;
   height: 100%;
-  flex-grow: 1; /* 确保占满父容器剩余空间 */
+  flex-grow: 1;
+  width: 100%;
+  box-sizing: border-box;
 }
 
-/* 2. 单个图片卡片 */
 .r2-item {
-  position: relative; /* 为绝对定位的子元素做参照 */
-  border-radius: 8px; /* 现代圆角 */
-  overflow: hidden;   /* 裁剪溢出的图片 */
-  background-color: #f0f0f0; /* 图片加载前的占位色 */
+  position: relative;
+  border-radius: 8px;
+  overflow: hidden;
+  background-color: #f0f0f0;
   cursor: pointer;
   
-  /* 强制正方形 (1:1)，这是让排版整齐的关键 */
-  /* 如果想要 4:3，可以改为 4 / 3 */
+  /* Force Square */
   aspect-ratio: 1 / 1; 
+  width: 100%;
   
-  /* 消除边框，用阴影代替层级 */
   border: none;
   box-shadow: 0 1px 3px rgba(0,0,0,0.1);
   
@@ -959,7 +1007,6 @@ body, html {
               box-shadow 0.2s ease;
 }
 
-/* 暗色模式适配 */
 @media (prefers-color-scheme: dark) {
   .r2-item {
     background-color: #2c2c2e;
@@ -967,36 +1014,33 @@ body, html {
   }
 }
 
-/* 3. 图片本体 */
 .r2-item-img {
   width: 100%;
   height: 100%;
-  object-fit: cover; /* 关键：裁剪图片填满格子，不变形 */
-  transition: transform 0.4s ease; /* 缓慢放大的动画 */
+  object-fit: cover;
+  transition: transform 0.4s ease;
   display: block;
 }
 
-/* 4. 悬停交互 (Hover Effects) */
 .r2-item:hover {
-  transform: translateY(-2px); /* 微微上浮 */
-  box-shadow: 0 8px 16px rgba(0,0,0,0.15); /* 阴影加深 */
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(0,0,0,0.15);
   z-index: 1;
 }
 
 .r2-item:hover .r2-item-img {
-  transform: scale(1.1); /* 图片内部缓慢放大，很有高级感 */
+  transform: scale(1.1);
 }
 
-/* 5. 信息遮罩层 (平时隐藏，悬停显示) */
 .r2-item-overlay {
   position: absolute;
   bottom: 0;
   left: 0;
   right: 0;
   padding: 12px 10px;
-  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%); /* 渐变黑 */
+  background: linear-gradient(to top, rgba(0,0,0,0.8) 0%, rgba(0,0,0,0) 100%);
   
-  opacity: 0; /* 默认隐藏 */
+  opacity: 0;
   transition: opacity 0.2s ease;
   
   display: flex;
@@ -1005,10 +1049,9 @@ body, html {
 }
 
 .r2-item:hover .r2-item-overlay {
-  opacity: 1; /* 悬停显示 */
+  opacity: 1;
 }
 
-/* 6. 文件名文字 */
 .r2-item-name {
   color: #fff;
   font-size: 12px;
@@ -1016,12 +1059,11 @@ body, html {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 70%; /* 给按钮留出空间 */
+  max-width: 70%;
   text-shadow: 0 1px 2px rgba(0,0,0,0.5);
   font-family: var(--font-mono);
 }
 
-/* 7. 删除按钮 (悬停在右下角) */
 .r2-item-delete {
   background: rgba(255, 255, 255, 0.2);
   backdrop-filter: blur(4px);
@@ -1038,10 +1080,10 @@ body, html {
 }
 
 .r2-item-delete:hover {
-  background: #ff3b30; /* 警告红 */
+  background: #ff3b30;
 }
 
-/* 模态框 */
+/* Modals and Toasts remain largely the same */
 .r2-modal {
   position: fixed;
   top: 0;
@@ -1141,7 +1183,6 @@ body, html {
   flex: 1;
 }
 
-/* Toast 通知 */
 .r2-toast {
   position: fixed;
   bottom: 30px;
@@ -1167,7 +1208,6 @@ body, html {
   background-color: var(--error);
 }
 
-/* 空消息 */
 .r2-empty-message {
   grid-column: 1 / -1;
   text-align: center;
@@ -1176,75 +1216,86 @@ body, html {
   padding: 60px 20px;
 }
 
-/* 响应式调整 */
-@media (max-width: 768px) {
-  #r2-grid-container {
-    /* [v2.6 优化] 移动端使用更小的网格 */
-    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
-    gap: 12px;
-    padding: 15px;
-  }
-
-  .r2-manager-toolbar {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 15px;
-  }
-
-  .r2-toolbar-controls {
-    width: 100%;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-  
-  .r2-modal-content {
-    max-width: 95%;
-    max-height: 95%;
-  }
-}
-
-@media (min-width: 1600px) {
-  #r2-grid-container {
-    grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
-  }
-}
-
-/* =========================================
-   方案 B: 现代化微型滚动条 (Apple Style)
-   ========================================= */
-
-/* 1. 滚动条整体宽度 */
+/* Scrollbar Styles */
 ::-webkit-scrollbar {
-  width: 6px;  /* 极细宽度，仅为默认的 1/3 */
-  height: 6px; /* 横向滚动条高度 */
+  width: 6px;
+  height: 6px;
 }
 
-/* 2. 滚动条轨道 (背景) */
 ::-webkit-scrollbar-track {
-  background: transparent; /* 完全透明，不显示灰色背景条 */
+  background: transparent;
   margin-top: 4px;
   margin-bottom: 4px;
 }
 
-/* 3. 滚动条滑块 (Thumb) */
 ::-webkit-scrollbar-thumb {
-  background-color: rgba(0, 0, 0, 0.2); /* 默认极淡的半透明黑 */
-  border-radius: 10px; /* 完全圆角 */
-  border: 1px solid transparent; /* 增加一点边距感 */
-  background-clip: content-box; /* 让颜色只在内容区，配合border实现留白 */
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 10px;
+  border: 1px solid transparent;
+  background-clip: content-box;
 }
 
-/* 4. 滑块悬停状态 (Hover) */
 ::-webkit-scrollbar-thumb:hover {
-  background-color: rgba(0, 0, 0, 0.4); /* 悬停时稍微加深，提示可拖拽 */
+  background-color: rgba(0, 0, 0, 0.4);
 }
 
-/* --- Dark Mode 适配 --- */
 @media (prefers-color-scheme: dark) {
   ::-webkit-scrollbar-thumb {
-    background-color: rgba(255, 255, 255, 0.2); /* 深色模式下用半透明白 */
+    background-color: rgba(255, 255, 255, 0.2);
   }
   ::-webkit-scrollbar-thumb:hover {
     background-color: rgba(255, 255, 255, 0.4);
   }
+}
+
+/* =========================================
+   4. Media Queries (Extreme Narrow Support)
+   ========================================= */
+
+/* When window is smaller than 700px */
+@media (max-width: 700px) {
+  /* Option A: Sidebar shrinks to icons */
+  .sidebar {
+    width: 64px;
+    align-items: center; /* Center icons */
+  }
+  
+  .nav-btn {
+    justify-content: center; /* Center icon in button */
+    padding: 0; /* Remove padding */
+    margin: 0 0 5px 0; /* Adjust margins */
+    width: 44px; /* Square-ish button */
+  }
+  
+  .nav-text {
+    display: none; /* Hide text */
+  }
+  
+  .nav-btn svg {
+    margin: 0; /* Remove implicit margin if any */
+  }
+  
+  /* Option B: Reduce content padding */
+  .view {
+    padding: 16px;
+  }
+  
+  #r2-grid-container {
+      grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
+      gap: 10px;
+  }
+  
+  /* Adjust upload item for narrow screen */
+  .upload-item {
+    flex-wrap: wrap; /* Allow wrapping if really needed or just squash? */
+    gap: 10px;
+  }
+  
+  .upload-item .progress-section {
+      display: none; /* Hide progress bar on very narrow screens? Or just squeeze. 
+                        Let's keep it but squeeze. */
+      flex: 1;
+  }
+  
+  /* If < 500px, maybe stack actions */
 }
