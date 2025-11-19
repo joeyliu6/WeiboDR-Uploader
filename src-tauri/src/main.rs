@@ -5,6 +5,7 @@
 )]
 
 use tauri::{CustomMenuItem, Manager, Menu, MenuItem, Submenu, SystemTray, SystemTrayMenu, SystemTrayMenuItem, SystemTrayEvent};
+use window_shadows::set_shadow;
 use std::time::Duration;
 #[cfg(target_os = "windows")]
 use std::{collections::BTreeMap, sync::mpsc};
@@ -97,6 +98,12 @@ fn main() {
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
+        .setup(|app| {
+            let window = app.get_window("main").unwrap();
+            #[cfg(any(windows, target_os = "macos"))]
+            set_shadow(&window, true).unwrap();
+            Ok(())
+        })
         .on_menu_event(|event| {            // 5. 处理菜单栏事件
             let app = event.window().app_handle();
             let menu_id = event.menu_item_id().to_string();

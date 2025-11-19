@@ -7,6 +7,22 @@
     <title>WeiboDR-Uploader (微博灾备上传器)</title>
   </head>
   <body>
+    <div id="titlebar" data-tauri-drag-region>
+      <div class="titlebar-drag-region" data-tauri-drag-region>
+        <span class="app-title">WeiboDR</span>
+      </div>
+      <div class="titlebar-controls">
+        <div class="titlebar-button" id="titlebar-minimize">
+          <img src="https://api.iconify.design/mdi:window-minimize.svg" alt="minimize" />
+        </div>
+        <div class="titlebar-button" id="titlebar-maximize">
+          <img src="https://api.iconify.design/mdi:window-maximize.svg" alt="maximize" />
+        </div>
+        <div class="titlebar-button close" id="titlebar-close">
+          <img src="https://api.iconify.design/mdi:close.svg" alt="close" />
+        </div>
+      </div>
+    </div>
     <div class="dashboard-container">
       <div class="sidebar">
         <button id="nav-upload" class="nav-btn active" title="上传">

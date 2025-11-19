@@ -11,7 +11,7 @@ import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
 import { getClient, ResponseType, Body } from '@tauri-apps/api/http';
-import { WebviewWindow } from '@tauri-apps/api/window';
+import { WebviewWindow, appWindow } from '@tauri-apps/api/window';
 import { UploadQueueManager } from './uploadQueue';
 import { R2Manager } from './r2-manager';
 
@@ -38,6 +38,19 @@ let uploadQueueManager: UploadQueueManager | null = null;
 
 // --- R2 MANAGER ---
 let r2Manager: R2Manager | null = null;
+
+// --- TITLE BAR LOGIC ---
+function initTitleBar() {
+  document.getElementById('titlebar-minimize')?.addEventListener('click', () => {
+    appWindow.minimize();
+  });
+  document.getElementById('titlebar-maximize')?.addEventListener('click', () => {
+    appWindow.toggleMaximize();
+  });
+  document.getElementById('titlebar-close')?.addEventListener('click', () => {
+    appWindow.close();
+  });
+}
 
 // --- APP STATE (全局状态管理) ---
 /**
@@ -1897,6 +1910,9 @@ function initialize(): void {
       console.error('[初始化] 设置Cookie监听器失败:', err);
     });
     
+    // 初始化自定义标题栏
+    initTitleBar();
+
     console.log('[初始化] ✓ 应用初始化完成');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);

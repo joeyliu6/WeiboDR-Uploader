@@ -29,6 +29,7 @@ urlencoding = "2.1"
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.39", features = ["Win32_System_Com"] }
 webview2-com = "0.19.1"
+window-shadows = "0.2"
 
 [features]
 # This feature is used for production builds or when `devPath` points to the filesystem
