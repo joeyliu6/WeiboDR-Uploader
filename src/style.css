@@ -850,20 +850,25 @@ body, html {
 }
 
 .r2-item-delete-btn {
-  background-color: rgba(239, 68, 68, 0.9); /* Red 500 90% */
-  border: none;
-  color: white;
-  width: 40px;
-  height: 40px;
+  background-color: rgba(15, 23, 42, 0.6); /* Slate 900 60% */
+  border: 1px solid var(--border-subtle);
+  color: var(--text-main);
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
-  font-size: 1.2em;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   cursor: pointer;
-  transition: background-color 0.2s, transform 0.1s;
+  transition: all 0.2s ease;
   align-self: flex-end;
+  backdrop-filter: blur(4px);
 }
 
 .r2-item-delete-btn:hover {
   background-color: var(--error);
+  border-color: var(--error);
+  color: white;
   transform: scale(1.1);
 }
 
