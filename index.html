@@ -224,25 +224,26 @@
         <div id="r2-manager-view" class="view">
           <div class="r2-manager-container">
             <div class="r2-manager-toolbar">
-              <h1 style="display: flex; align-items: center; gap: 10px;">
-                <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
-                R2 存储管理
-              </h1>
+              <div class="r2-toolbar-title">
+                <svg class="r2-toolbar-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                <span class="r2-toolbar-title-text">R2 存储管理</span>
+              </div>
               <div class="r2-toolbar-controls">
-                <label class="r2-select-all" style="display: flex; align-items: center; gap: 6px; font-size: 14px; margin-right: 10px; cursor: pointer;">
+                <label class="r2-select-all">
                   <input type="checkbox" id="r2-select-all" />
-                  <span style="color: var(--text-secondary);">全选</span>
+                  <span>全选</span>
                 </label>
-
-                <button id="r2-batch-delete-btn" class="r2-btn r2-btn-danger" style="display: none; margin-right: 10px;">
-                  批量删除 <span id="r2-batch-count">(0)</span>
+                <button id="r2-batch-delete-btn" class="r2-btn r2-btn-danger r2-btn-compact">
+                  <span class="r2-btn-text">删除</span>
+                  <span id="r2-batch-count" class="r2-btn-badge">(0)</span>
                 </button>
-
-                <span id="r2-bucket-info" class="r2-info-text"></span>
-                <span id="r2-stats-info" class="r2-stats-text"></span>
-                <button id="r2-refresh-btn" class="r2-btn">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
-                  刷新
+                <div class="r2-toolbar-info">
+                  <span id="r2-bucket-info" class="r2-info-text"></span>
+                  <span id="r2-stats-info" class="r2-stats-text"></span>
+                </div>
+                <button id="r2-refresh-btn" class="r2-btn r2-btn-icon-text">
+                  <svg class="r2-btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                  <span class="r2-btn-text">刷新</span>
                 </button>
               </div>
             </div>

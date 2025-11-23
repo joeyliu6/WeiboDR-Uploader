@@ -867,49 +867,124 @@ body, html {
   overflow: hidden;
 }
 
+/* === R2 管理器工具栏样式 === */
 .r2-manager-toolbar {
   display: flex;
   justify-content: space-between;
   align-items: center;
-  padding: 20px 30px;
+  padding: 16px 24px;
   background-color: var(--bg-card);
   border-bottom: 1px solid var(--border-subtle);
   flex-shrink: 0;
+  min-height: 56px;
+  gap: 16px;
+  overflow: hidden; /* 防止内容溢出 */
 }
 
-.r2-manager-toolbar h1 {
-  margin: 0;
-  font-size: var(--text-xl);
+/* 工具栏标题区域 */
+.r2-toolbar-title {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
+  min-width: 0; /* 允许 flex 子元素缩小 */
+}
+
+.r2-toolbar-icon {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  color: var(--primary);
+}
+
+.r2-toolbar-title-text {
+  font-size: var(--text-lg);
   font-weight: var(--weight-bold);
   color: var(--text-primary);
+  white-space: nowrap;
 }
 
+/* 工具栏控制区域 */
 .r2-toolbar-controls {
   display: flex;
   align-items: center;
-  gap: 20px;
+  gap: 12px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden; /* 防止内容溢出导致换行 */
+}
+
+/* 全选标签 */
+.r2-select-all {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  flex-shrink: 0;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.r2-select-all input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  accent-color: var(--primary);
+  flex-shrink: 0;
+}
+
+.r2-select-all span {
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 工具栏信息区域 */
+.r2-toolbar-info {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-shrink: 1;
+  min-width: 0;
+  overflow: hidden;
 }
 
 .r2-info-text {
   color: var(--text-secondary);
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
 .r2-stats-text {
   color: var(--text-secondary);
   font-size: var(--text-sm);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  min-width: 0;
 }
 
+/* R2 工具栏按钮基础样式 */
 .r2-btn {
   background-color: var(--primary);
   border: none;
   color: white;
-  padding: 10px 20px;
+  padding: 8px 16px;
   border-radius: 6px;
-  font-size: var(--text-base);
+  font-size: var(--text-sm);
   cursor: pointer;
   transition: background-color 0.2s, transform 0.1s;
   font-weight: var(--weight-medium);
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  white-space: nowrap;
+  height: 32px;
+  line-height: 1;
 }
 
 .r2-btn:hover {
@@ -919,6 +994,37 @@ body, html {
 
 .r2-btn:active {
   transform: translateY(0);
+}
+
+/* 图标+文字按钮 */
+.r2-btn-icon-text {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.r2-btn-icon {
+  width: 16px;
+  height: 16px;
+  flex-shrink: 0;
+}
+
+.r2-btn-text {
+  white-space: nowrap;
+}
+
+/* 紧凑按钮（批量删除） */
+.r2-btn-compact {
+  padding: 8px 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.r2-btn-badge {
+  font-size: var(--text-xs);
+  opacity: 0.9;
 }
 
 .r2-btn-primary {
@@ -1142,11 +1248,21 @@ body, html {
   accent-color: var(--primary);
 }
 
-/* 批量删除按钮样式调整 */
+/* 批量删除按钮显示/隐藏动画 */
 #r2-batch-delete-btn {
-  font-size: 13px;
-  padding: 6px 12px;
+  display: none; /* 默认隐藏，JavaScript 会在有选中项时设置为 inline-flex */
   animation: fade-in 0.2s ease-out;
+}
+
+@keyframes fade-in {
+  from {
+    opacity: 0;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
 }
 
 /* Modals and Toasts remain largely the same */
@@ -1349,6 +1465,51 @@ body, html {
   #r2-grid-container {
       grid-template-columns: repeat(auto-fill, minmax(110px, 1fr));
       gap: 10px;
+  }
+  
+  /* R2 工具栏响应式优化 */
+  .r2-manager-toolbar {
+    padding: 12px 16px;
+    gap: 10px;
+    flex-wrap: nowrap;
+  }
+  
+  .r2-toolbar-title-text {
+    font-size: var(--text-base);
+  }
+  
+  .r2-toolbar-controls {
+    gap: 8px;
+  }
+  
+  .r2-toolbar-info {
+    gap: 8px;
+  }
+  
+  /* 在极小屏幕下，隐藏次要信息，只保留关键信息 */
+  @media (max-width: 650px) {
+    .r2-stats-text {
+      display: none;
+    }
+  }
+  
+  @media (max-width: 550px) {
+    .r2-bucket-info {
+      display: none;
+    }
+    
+    .r2-btn-text {
+      display: none;
+    }
+    
+    .r2-btn {
+      padding: 8px;
+      min-width: 32px;
+    }
+    
+    .r2-select-all span {
+      display: none;
+    }
   }
   
   /* Adjust upload item for narrow screen */
