@@ -72,8 +72,10 @@ export class UploadQueueManager {
 
       switch (progress.type) {
         case 'weibo_progress':
-          updates.weiboProgress = progress.payload;
-          updates.weiboStatus = `${progress.payload}%`;
+          // 确保 payload 是数字，并限制在 0-100 范围内
+          const weiboPercent = Math.max(0, Math.min(100, Number(progress.payload) || 0));
+          updates.weiboProgress = weiboPercent;
+          updates.weiboStatus = `${weiboPercent}%`;
           updates.status = 'uploading';
           break;
 
@@ -86,8 +88,10 @@ export class UploadQueueManager {
           break;
 
         case 'r2_progress':
-          updates.r2Progress = progress.payload;
-          updates.r2Status = `${progress.payload}%`;
+          // 确保 payload 是数字，并限制在 0-100 范围内
+          const r2Percent = Math.max(0, Math.min(100, Number(progress.payload) || 0));
+          updates.r2Progress = r2Percent;
+          updates.r2Status = `${r2Percent}%`;
           break;
 
         case 'r2_success':

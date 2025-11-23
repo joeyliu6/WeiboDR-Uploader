@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@aws-sdk/client-s3": "^3.490.0",
+    "@aws-sdk/lib-storage": "^3.937.0",
     "@tauri-apps/api": "^1.5.3",
     "@vitejs/plugin-vue": "^6.0.2",
     "@vueuse/core": "^14.0.0",
@@ -20,6 +21,7 @@
     "@tauri-apps/cli": "^1.5.9",
     "@types/node": "^20.10.6",
     "typescript": "^5.3.3",
+    "util": "^0.12.5",
     "vite": "^5.0.8"
   }
 }

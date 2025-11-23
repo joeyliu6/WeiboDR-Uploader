@@ -6,6 +6,9 @@ use reqwest::header;
 use std::path::Path;
 use quick_xml::events::Event;
 use quick_xml::Reader;
+use tauri::Window;
+use futures::StreamExt;
+use std::sync::{Arc, Mutex};
 
 #[derive(Serialize)]
 pub struct UploadResponse {
@@ -13,6 +16,14 @@ pub struct UploadResponse {
     pub width: i32,
     pub height: i32,
     pub size: i32,
+}
+
+/// 定义进度事件的载荷
+#[derive(Serialize, Clone)]
+struct ProgressPayload {
+    id: String,
+    progress: u64,
+    total: u64,
 }
 
 /// 使用 quick-xml 进行健壮的 XML 解析
@@ -155,6 +166,8 @@ use crate::HttpClient;
 
 #[tauri::command]
 pub async fn upload_file_stream(
+    window: Window,
+    id: String,
     file_path: String, 
     weibo_cookie: String,
     http_client: tauri::State<'_, HttpClient>
@@ -166,17 +179,43 @@ pub async fn upload_file_stream(
     
     let file = File::open(&file_path).await?;
     let metadata = file.metadata().await?;
-    let len = metadata.len();
+    let total_len = metadata.len();
 
+    // 使用 FramedRead 读取文件流
     let stream = FramedRead::new(file, BytesCodec::new());
-    let body = reqwest::Body::wrap_stream(stream);
+    
+    // 关键优化：通过 map 包装流，在此处注入进度监控
+    let uploaded = Arc::new(Mutex::new(0u64));
+    let uploaded_clone = Arc::clone(&uploaded);
+    let window_clone = window.clone();
+    let id_clone = id.clone();
+    let total_len_clone = total_len;
+    
+    let progress_stream = stream.map(move |chunk| {
+        if let Ok(bytes) = &chunk {
+            let mut uploaded = uploaded_clone.lock().unwrap();
+            *uploaded += bytes.len() as u64;
+            let current_progress = *uploaded;
+            
+            // 发送进度事件到前端
+            // 注意：为了性能，可以加个判断，比如每 1% 或每 100KB 发送一次，这里为了简单每次 chunk 都发
+            let _ = window_clone.emit("upload://progress", ProgressPayload {
+                id: id_clone.clone(),
+                progress: current_progress,
+                total: total_len_clone,
+            });
+        }
+        chunk
+    });
+
+    let body = reqwest::Body::wrap_stream(progress_stream);
 
     let url = "https://picupload.weibo.com/interface/pic_upload.php?s=xml&ori=1&data=1&rotate=0&wm=&app=miniblog&mime=image/jpeg";
 
     // 使用全局 HTTP 客户端（带连接池配置），而不是创建新客户端
     let res = http_client.0.post(url)
         .header(header::COOKIE, weibo_cookie)
-        .header(header::CONTENT_LENGTH, len)
+        .header(header::CONTENT_LENGTH, total_len) // 必须显式设置长度，否则流式上传可能无法计算总长
         .header(header::CONTENT_TYPE, "application/octet-stream")
         .header(header::REFERER, "https://photo.weibo.com/")
         .header(header::ORIGIN, "https://photo.weibo.com")
@@ -186,6 +225,13 @@ pub async fn upload_file_stream(
         .await?;
 
     let text = res.text().await?;
+    
+    // 上传完成，发送 100% 事件
+    let _ = window.emit("upload://progress", ProgressPayload {
+        id: id.clone(),
+        progress: total_len,
+        total: total_len,
+    });
     
     parse_weibo_response(&text)
 }

@@ -1,5 +1,6 @@
 // src/coreLogic.ts
 import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { Upload } from "@aws-sdk/lib-storage";
 import { writeText as writeToClipboard } from "@tauri-apps/api/clipboard";
 import { sendNotification, isPermissionGranted, requestPermission } from "@tauri-apps/api/notification";
 import { readBinaryFile } from '@tauri-apps/api/fs';
@@ -91,6 +92,11 @@ function detectFileType(bytes: Uint8Array): string | null {
 
 /**
  * 步骤 B: 备份 R2 (并行, 非阻塞性, 带超时保护)
+ * @param fileBytes 文件字节流
+ * @param hashName 文件名
+ * @param config R2 配置
+ * @param timeoutMs 超时时间（毫秒）
+ * @param onProgress 进度回调函数（可选）
  * @returns {Promise<string | null>} 成功返回 r2Key，失败或未配置返回 null
  * @throws {Error} 非阻塞性错误 "R2 备份失败"
  */
@@ -98,7 +104,8 @@ async function backupToR2(
   fileBytes: Uint8Array, // 接受字节流
   hashName: string, 
   config: R2Config,
-  timeoutMs: number = 60000 // 默认60秒超时
+  timeoutMs: number = 60000, // 默认60秒超时
+  onProgress?: (percent: number) => void // 新增：进度回调
 ): Promise<string | null> {
   console.log(`[步骤 B] 开始异步备份 ${hashName} 到 R2... (文件大小: ${(fileBytes.length / 1024).toFixed(2)}KB)`);
   
@@ -159,13 +166,40 @@ async function backupToR2(
   console.log(`[步骤 B] 检测到文件类型: ${contentType}`);
 
   try {
+    // 使用 Upload 类支持进度回调
+    const upload = new Upload({
+      client: r2Client,
+      params: {
+        Bucket: bucketName.trim(),
+        Key: key,
+        Body: fileBytes, // 使用字节流
+        ContentType: contentType, // 设置正确的 MIME 类型
+      },
+    });
+
+    // 如果有进度回调，监听上传进度
+    if (onProgress) {
+      const totalSize = fileBytes.length;
+      let lastReportedPercent = 0;
+      
+      upload.on("httpUploadProgress", (progress) => {
+        // 使用文件总大小作为 total，如果 progress.total 不存在
+        const total = progress.total || totalSize;
+        const loaded = progress.loaded || 0;
+        
+        if (total > 0) {
+          const percent = Math.min(100, Math.round((loaded / total) * 100));
+          // 只在进度变化时报告，避免频繁更新
+          if (percent !== lastReportedPercent) {
+            lastReportedPercent = percent;
+            onProgress(percent);
+          }
+        }
+      });
+    }
+
     // 使用超时保护包装上传操作
-    const uploadPromise = r2Client.send(new PutObjectCommand({
-      Bucket: bucketName.trim(),
-      Key: key,
-      Body: fileBytes, // 使用字节流
-      ContentType: contentType, // 设置正确的 MIME 类型
-    }));
+    const uploadPromise = upload.done();
     
     const timeoutPromise = new Promise<never>((_, reject) => {
       setTimeout(() => reject(new Error(`上传超时（超过${timeoutMs / 1000}秒）`)), timeoutMs);
@@ -863,30 +897,19 @@ export async function processUpload(
     try {
       console.log('[processUpload] 步骤 1: 开始上传到微博...');
       
-      // 模拟进度更新
-      let currentProgress = 10;
-      onProgress({ type: 'weibo_progress', payload: currentProgress });
-      
-      const progressInterval = setInterval(() => {
-        if (currentProgress < 90) {
-          currentProgress += Math.min(5 + Math.random() * 10, 90 - currentProgress);
-          onProgress({ type: 'weibo_progress', payload: Math.floor(currentProgress) });
+      // 直接传入回调，使用真实进度
+      const uploadResult = await uploadToWeibo(
+        filePath, 
+        config.weiboCookie,
+        (percent) => {
+            // 将 0-100 的进度转发给队列管理器
+            onProgress({ type: 'weibo_progress', payload: percent });
         }
-      }, 100);
+      );
       
-      try {
-        const uploadResult = await uploadToWeibo(
-          filePath, 
-          config.weiboCookie
-        );
-        hashName = uploadResult.hashName;
-        largeUrl = uploadResult.largeUrl;
-        weiboPid = hashName.replace(/\.jpg$/, '');
-      } finally {
-        clearInterval(progressInterval);
-      }
-      
-      onProgress({ type: 'weibo_progress', payload: 100 });
+      hashName = uploadResult.hashName;
+      largeUrl = uploadResult.largeUrl;
+      weiboPid = hashName.replace(/\.jpg$/, '');
       
       // 生成百度代理链接
       const baiduPrefix = config.baiduPrefix || 'https://image.baidu.com/search/down?thumburl=';
@@ -925,25 +948,19 @@ export async function processUpload(
         try {
             console.log('[processUpload] 步骤 2: 开始上传到 R2...');
             
-            // 模拟R2上传进度
-            let r2Progress = 10;
-            onProgress({ type: 'r2_progress', payload: r2Progress });
-            
-            const r2ProgressInterval = setInterval(() => {
-                if (r2Progress < 90) {
-                    r2Progress += Math.min(5 + Math.random() * 10, 90 - r2Progress);
-                    onProgress({ type: 'r2_progress', payload: Math.floor(r2Progress) });
+            // 使用真实的 R2 上传进度
+            finalR2Key = await backupToR2(
+                fileBytes, 
+                hashName, 
+                config.r2,
+                60000, // 超时时间
+                (percent) => {
+                    // 将 0-100 的进度转发给队列管理器
+                    onProgress({ type: 'r2_progress', payload: percent });
                 }
-            }, 100);
-            
-            try {
-                finalR2Key = await backupToR2(fileBytes, hashName, config.r2);
-            } finally {
-                clearInterval(r2ProgressInterval);
-            }
+            );
             
             if (finalR2Key) {
-                onProgress({ type: 'r2_progress', payload: 100 });
                 
                 // 生成 R2 公开链接
                 const publicDomain = config.r2?.publicDomain;

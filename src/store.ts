@@ -373,37 +373,12 @@ class SimpleStore {
         );
       }
 
-      // [v2.7 优化] 原子性写入：先写入临时文件，然后重命名
-      // 这样可以避免写入中断导致文件损坏
-      const tempPath = `${dataPath}.tmp.${Date.now()}`;
+      // [v2.7 优化] 原子性写入：直接写入目标文件
+      // Tauri 的 writeTextFile 本身是原子性的，可以直接覆盖原文件
       try {
-        // 先写入临时文件
-        await writeTextFile(tempPath, jsonContent);
-        
-        // 如果原文件存在，先删除（在某些系统上，重命名可能失败如果目标文件已存在）
-        if (fileExists) {
-          try {
-            const { removeFile } = await import('@tauri-apps/api/fs');
-            await removeFile(dataPath);
-          } catch (removeError: any) {
-            // 如果删除失败，尝试继续重命名（某些系统允许覆盖）
-            console.warn(`[Store] 删除原文件失败，尝试直接重命名: ${removeError?.message || String(removeError)}`);
-          }
-        }
-        
-        // 重命名临时文件为目标文件（原子操作）
-        const { rename } = await import('@tauri-apps/api/fs');
-        await rename(tempPath, dataPath);
-        
+        await writeTextFile(dataPath, jsonContent);
         console.log(`[Store] 成功保存数据到键 "${key}" (${this.filePath})`);
       } catch (writeError: any) {
-        // 如果写入失败，尝试清理临时文件
-        try {
-          const { removeFile } = await import('@tauri-apps/api/fs');
-          await removeFile(tempPath).catch(() => {}); // 忽略清理错误
-        } catch {
-          // 忽略清理错误
-        }
         
         const errorMsg = writeError?.message || String(writeError);
         if (errorMsg.includes('Permission') || errorMsg.includes('permission')) {

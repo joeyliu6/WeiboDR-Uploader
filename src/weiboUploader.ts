@@ -1,5 +1,6 @@
 // src/weiboUploader.ts
 import { invoke } from '@tauri-apps/api/tauri';
+import { listen } from '@tauri-apps/api/event';
 
 /**
  * 自定义错误类，用于微博上传操作
@@ -49,18 +50,28 @@ interface UploadResponse {
     size: number;
 }
 
+interface ProgressEvent {
+    id: string;
+    progress: number;
+    total: number;
+}
+
 /**
- * 步骤 A: 上传微博（带重试机制 - 流式上传）
+ * 步骤 A: 上传微博（带真实进度）
  * @param filePath 文件路径
- * @param cookie 用户的 Cookie 字符串
- * @returns {Promise<{hashName: string, largeUrl: string}>} "主键"
+ * @param cookie Cookie
+ * @param onProgress 进度回调 (0-100)
  */
 export async function uploadToWeibo(
   filePath: string, 
-  cookie: string
+  cookie: string,
+  onProgress?: (percent: number) => void
 ): Promise<{ hashName: string; largeUrl: string }> {
   
-  console.log(`[步骤 A] 开始上传到微博... (路径: ${filePath})`);
+  // 生成一个临时 ID 用于匹配事件
+  const uploadId = `up_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+
+  console.log(`[步骤 A] 开始上传到微博... (ID: ${uploadId})`);
 
   // 输入验证
   try {
@@ -78,19 +89,40 @@ export async function uploadToWeibo(
   }
 
   try {
-      // 调用 Rust 命令进行流式上传
-      const response = await invoke<UploadResponse>('upload_file_stream', {
-          filePath,
-          weiboCookie: cookie
-      });
+    // 1. 设置监听器
+    let unlisten: (() => void) | undefined;
+    
+    if (onProgress) {
+        unlisten = await listen<ProgressEvent>('upload://progress', (event) => {
+            // 只处理当前任务 ID 的进度
+            if (event.payload.id === uploadId) {
+                const percent = Math.round((event.payload.progress / event.payload.total) * 100);
+                onProgress(percent);
+            }
+        });
+    }
 
-      const pid = response.pid;
-      const hashName = `${pid}.jpg`;
-      // 硬编码使用 tvax 和 large
-      const largeUrl = `https://tvax1.sinaimg.cn/large/${hashName}`;
+    try {
+        // 2. 调用 Rust 命令 (传入 id)
+        const response = await invoke<UploadResponse>('upload_file_stream', {
+            id: uploadId, // 传入 ID
+            filePath,
+            weiboCookie: cookie
+        });
 
-      console.log(`[步骤 A] 微博上传成功: ${hashName} (链接: ${largeUrl})`);
-      return { hashName, largeUrl };
+        const pid = response.pid;
+        const hashName = `${pid}.jpg`;
+        // 硬编码使用 tvax 和 large
+        const largeUrl = `https://tvax1.sinaimg.cn/large/${hashName}`;
+
+        console.log(`[步骤 A] 微博上传成功: ${hashName} (链接: ${largeUrl})`);
+        return { hashName, largeUrl };
+    } finally {
+        // 3. 清理监听器，防止内存泄漏
+        if (unlisten) {
+            unlisten();
+        }
+    }
 
   } catch (error: any) {
       console.error('[步骤 A] 微博上传失败:', error);
