@@ -370,14 +370,16 @@ body, html {
   gap: 12px;
 }
 
+/* 空状态提示已移至 Vue 组件中，此规则保留作为后备 */
 #upload-queue-list:empty::after {
-  content: "暂无上传任务";
+  content: "暂无上传队列";
   display: block;
   text-align: center;
-  color: #666;
+  color: var(--text-secondary);
   padding: 40px 0;
   font-style: italic;
   font-family: var(--font-sans);
+  opacity: 0.7;
 }
 
 /* 3.1 队列项目样式 (Flex + Ellipsis) */

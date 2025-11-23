@@ -63,6 +63,12 @@ defineExpose({
 
 <template>
   <div class="upload-queue-vue">
+    <!-- 空状态提示 -->
+    <div v-if="items.length === 0" class="upload-queue-empty">
+      <span class="empty-text">暂无上传队列</span>
+    </div>
+    
+    <!-- 队列项列表 -->
     <div v-for="item in items" :key="item.id" class="upload-item" :class="[item.status, { 'upload-success': item.status === 'success', 'upload-error': item.status === 'error' }]">
       
       <!-- Preview Column -->
@@ -121,6 +127,22 @@ defineExpose({
     display: flex;
     flex-direction: column;
     gap: 10px;
+}
+
+/* 空状态样式 */
+.upload-queue-empty {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 0;
+    text-align: center;
+}
+
+.empty-text {
+    color: var(--text-secondary);
+    font-size: var(--text-base);
+    font-style: italic;
+    opacity: 0.7;
 }
 
 .upload-item {
