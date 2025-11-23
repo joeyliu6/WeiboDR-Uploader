@@ -30,7 +30,7 @@ type HmacSha256 = Hmac<Sha256>;
 
 /// 全局 HTTP 客户端状态
 /// 使用单例模式复用 HTTP 客户端，提升性能
-struct HttpClient(reqwest::Client);
+pub struct HttpClient(pub reqwest::Client);
 
 fn main() {
     // 创建全局 HTTP 客户端（带连接池配置）

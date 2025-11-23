@@ -4,6 +4,8 @@ use crate::error::AppError;
 use serde::Serialize;
 use reqwest::header;
 use std::path::Path;
+use quick_xml::events::Event;
+use quick_xml::Reader;
 
 #[derive(Serialize)]
 pub struct UploadResponse {
@@ -13,39 +15,149 @@ pub struct UploadResponse {
     pub size: i32,
 }
 
+/// 使用 quick-xml 进行健壮的 XML 解析
+/// 能够处理格式变化（如空格、换行符等）
 fn parse_weibo_response(xml: &str) -> Result<UploadResponse, AppError> {
+    // 首先检查认证错误
     if xml.contains("<data>100006</data>") {
          return Err(AppError::AuthError("Cookie expired (code 100006)".to_string()));
     }
     
-    let pid = xml.find("<pid>").and_then(|start| {
-        xml.find("</pid>").map(|end| &xml[start+5..end])
-    }).ok_or_else(|| AppError::WeiboApiError { code: -1, msg: "Failed to parse PID".to_string() })?;
-
-    let width = xml.find("<width>").and_then(|start| {
-        xml.find("</width>").map(|end| &xml[start+7..end])
-    }).and_then(|s| s.parse().ok()).unwrap_or(0);
-
-    let height = xml.find("<height>").and_then(|start| {
-        xml.find("</height>").map(|end| &xml[start+8..end])
-    }).and_then(|s| s.parse().ok()).unwrap_or(0);
-
-    let size = xml.find("<size>").and_then(|start| {
-        xml.find("</size>").map(|end| &xml[start+6..end])
-    }).and_then(|s| s.parse().ok()).unwrap_or(0);
-
+    let mut reader = Reader::from_str(xml);
+    reader.config_mut().trim_text(true); // 自动修剪文本内容
+    
+    let mut buf = Vec::new();
+    let mut pid: Option<String> = None;
+    let mut width: i32 = 0;
+    let mut height: i32 = 0;
+    let mut size: i32 = 0;
+    let mut in_pid = false;
+    let mut in_width = false;
+    let mut in_height = false;
+    let mut in_size = false;
+    
+    loop {
+        match reader.read_event_into(&mut buf) {
+            Ok(Event::Start(e)) => {
+                match e.name().as_ref() {
+                    b"pid" => in_pid = true,
+                    b"width" => in_width = true,
+                    b"height" => in_height = true,
+                    b"size" => in_size = true,
+                    _ => {}
+                }
+            }
+            Ok(Event::Text(e)) => {
+                let text = e.unescape().unwrap_or_default().to_string();
+                if in_pid {
+                    pid = Some(text);
+                } else if in_width {
+                    width = text.parse().unwrap_or(0);
+                } else if in_height {
+                    height = text.parse().unwrap_or(0);
+                } else if in_size {
+                    size = text.parse().unwrap_or(0);
+                }
+            }
+            Ok(Event::End(e)) => {
+                match e.name().as_ref() {
+                    b"pid" => in_pid = false,
+                    b"width" => in_width = false,
+                    b"height" => in_height = false,
+                    b"size" => in_size = false,
+                    _ => {}
+                }
+            }
+            Ok(Event::Eof) => break,
+            Err(e) => {
+                // XML 解析失败，尝试回退到正则匹配
+                eprintln!("[上传] XML 解析失败，尝试正则匹配: {}", e);
+                return parse_weibo_response_fallback(xml);
+            }
+            _ => {}
+        }
+        buf.clear();
+    }
+    
+    // 验证必需字段
+    let pid = pid.ok_or_else(|| AppError::WeiboApiError { 
+        code: -1, 
+        msg: "Failed to parse PID from XML response".to_string() 
+    })?;
+    
     Ok(UploadResponse {
-        pid: pid.to_string(),
+        pid,
         width,
         height,
         size,
     })
 }
 
+/// 回退解析方法：使用更宽松的字符串匹配
+/// 作为 XML 解析失败时的备用方案
+fn parse_weibo_response_fallback(xml: &str) -> Result<UploadResponse, AppError> {
+    // 使用更宽松的匹配，允许标签前后有空白字符
+    // 查找 <pid> 或 <pid > 等变体
+    let pid = find_xml_tag_content(xml, "pid")
+        .ok_or_else(|| AppError::WeiboApiError { 
+            code: -1, 
+            msg: "Failed to parse PID (fallback)".to_string() 
+        })?;
+    
+    let width = find_xml_tag_content(xml, "width")
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    
+    let height = find_xml_tag_content(xml, "height")
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    
+    let size = find_xml_tag_content(xml, "size")
+        .and_then(|s| s.trim().parse().ok())
+        .unwrap_or(0);
+    
+    Ok(UploadResponse {
+        pid,
+        width,
+        height,
+        size,
+    })
+}
+
+/// 辅助函数：查找 XML 标签内容，支持多种格式变体
+fn find_xml_tag_content(xml: &str, tag: &str) -> Option<String> {
+    // 尝试多种格式：<tag>、<tag >、<tag\n> 等
+    let patterns = [
+        format!("<{}>", tag),
+        format!("<{} >", tag),
+        format!("<{}\n>", tag),
+        format!("<{}\r\n>", tag),
+    ];
+    
+    let closing_tag = format!("</{}>", tag);
+    
+    for pattern in &patterns {
+        if let Some(start) = xml.find(pattern) {
+            let content_start = start + pattern.len();
+            if let Some(end) = xml[content_start..].find(&closing_tag) {
+                let content = &xml[content_start..content_start + end];
+                return Some(content.trim().to_string());
+            }
+        }
+    }
+    
+    None
+}
+
+
+// HttpClient 在 main.rs 中定义，这里直接使用
+use crate::HttpClient;
+
 #[tauri::command]
 pub async fn upload_file_stream(
     file_path: String, 
-    weibo_cookie: String
+    weibo_cookie: String,
+    http_client: tauri::State<'_, HttpClient>
 ) -> Result<UploadResponse, AppError> {
     
     let path = Path::new(&file_path);
@@ -61,8 +173,8 @@ pub async fn upload_file_stream(
 
     let url = "https://picupload.weibo.com/interface/pic_upload.php?s=xml&ori=1&data=1&rotate=0&wm=&app=miniblog&mime=image/jpeg";
 
-    let client = reqwest::Client::new();
-    let res = client.post(url)
+    // 使用全局 HTTP 客户端（带连接池配置），而不是创建新客户端
+    let res = http_client.0.post(url)
         .header(header::COOKIE, weibo_cookie)
         .header(header::CONTENT_LENGTH, len)
         .header(header::CONTENT_TYPE, "application/octet-stream")

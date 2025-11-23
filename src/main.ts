@@ -338,7 +338,9 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed' | 'r2-m
               console.error('[导航] 获取配置失败:', err);
             });
           } else {
-            // 如果已经初始化，刷新配置并重新加载
+            // [v2.7 优化] 如果已经初始化，先清理旧实例的事件监听器
+            // 然后刷新配置并重新加载
+            r2Manager.cleanup();
             configStore.get<UserConfig>('config').then(config => {
               const currentConfig = config || DEFAULT_CONFIG;
               r2Manager!.updateConfig(currentConfig);
@@ -1278,6 +1280,10 @@ async function getPreviewUrl(weiboPid: string): Promise<string> {
     }
 }
 
+/**
+ * 渲染历史记录表格
+ * [v2.7 优化] 使用 DocumentFragment 批量插入，减少 DOM 重排
+ */
 async function renderHistoryTable(items: HistoryItem[]) {
     if (!historyBody) {
       console.error('[历史记录] historyBody 不存在，无法渲染表格');
@@ -1291,6 +1297,9 @@ async function renderHistoryTable(items: HistoryItem[]) {
       return;
     }
   
+    // [v2.7 优化] 使用 DocumentFragment 进行批量插入
+    const fragment = document.createDocumentFragment();
+    
     for (const item of items) {
       const tr = document.createElement('tr');
       tr.setAttribute('data-id', item.id);
@@ -1388,10 +1397,12 @@ async function renderHistoryTable(items: HistoryItem[]) {
       tdDelete.appendChild(deleteBtn);
       tr.appendChild(tdDelete);
   
-      if (historyBody) {
-        historyBody.appendChild(tr);
-      }
+      // 添加到 DocumentFragment 而不是直接添加到 DOM
+      fragment.appendChild(tr);
     }
+    
+    // 一次性插入所有行，只触发一次重排
+    historyBody.appendChild(fragment);
 }
 
 async function loadHistory() {

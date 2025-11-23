@@ -44,6 +44,9 @@ export class R2Manager {
   private batchDeleteBtn: HTMLButtonElement;
   private selectAllCheckbox: HTMLInputElement;
   private batchCountSpan: HTMLElement;
+  
+  // [v2.7 优化] 存储事件监听器引用，用于清理
+  private keydownHandler: ((e: KeyboardEvent) => void) | null = null;
 
   constructor(config: UserConfig) {
     this.config = config;
@@ -119,11 +122,13 @@ export class R2Manager {
     });
 
     // ESC 键关闭模态框
-    document.addEventListener('keydown', (e) => {
+    // [v2.7 优化] 保存事件处理器引用，以便后续清理
+    this.keydownHandler = (e: KeyboardEvent) => {
       if (e.key === 'Escape' && this.modal.style.display === 'flex') {
         this.closeModal();
       }
-    });
+    };
+    document.addEventListener('keydown', this.keydownHandler);
 
     // 批量删除按钮
     if (this.batchDeleteBtn) {
@@ -146,6 +151,23 @@ export class R2Manager {
    */
   public updateConfig(config: UserConfig): void {
     this.config = config;
+  }
+
+  /**
+   * [v2.7 优化] 清理事件监听器，防止内存泄漏
+   * 在组件销毁或重新初始化时调用
+   */
+  public cleanup(): void {
+    // 清理全局键盘事件监听器
+    if (this.keydownHandler) {
+      document.removeEventListener('keydown', this.keydownHandler);
+      this.keydownHandler = null;
+    }
+    
+    // 清理 IntersectionObserver（如果存在）
+    // 注意：IntersectionObserver 在 observe 时已经 unobserve，这里主要是预防性清理
+    
+    console.log('[R2管理] 已清理事件监听器');
   }
 
   /**
@@ -215,6 +237,7 @@ export class R2Manager {
 
   /**
    * 渲染网格
+   * [v2.7 优化] 使用 DocumentFragment 批量插入，减少 DOM 重排
    */
   private renderGrid(): void {
     this.clearGrid();
@@ -224,10 +247,15 @@ export class R2Manager {
       return;
     }
 
+    // 使用 DocumentFragment 进行批量插入，避免频繁触发重排
+    const fragment = document.createDocumentFragment();
     this.objects.forEach((obj) => {
       const item = this.createGridItem(obj);
-      this.gridContainer.appendChild(item);
+      fragment.appendChild(item);
     });
+    
+    // 一次性插入所有元素，只触发一次重排
+    this.gridContainer.appendChild(fragment);
     
     // 更新 UI 状态（全选框等）
     this.updateBatchUI();
@@ -235,6 +263,7 @@ export class R2Manager {
 
   /**
    * 创建网格项
+   * [v2.7 优化] 增强图片懒加载，使用 IntersectionObserver 显示占位符
    */
   private createGridItem(obj: R2Object): HTMLElement {
     const item = document.createElement('div');
@@ -246,12 +275,101 @@ export class R2Manager {
       item.classList.add('selected');
     }
 
-    // 1. Image
+    // 1. Image Container (用于占位符)
+    const imgContainer = document.createElement('div');
+    imgContainer.className = 'r2-item-img-container';
+    imgContainer.style.position = 'relative';
+    imgContainer.style.width = '100%';
+    imgContainer.style.height = '100%';
+    imgContainer.style.backgroundColor = 'var(--bg-secondary, #f0f0f0)';
+    imgContainer.style.overflow = 'hidden';
+    
+    // 占位符（在图片加载前显示）
+    const placeholder = document.createElement('div');
+    placeholder.className = 'r2-item-placeholder';
+    placeholder.style.position = 'absolute';
+    placeholder.style.top = '0';
+    placeholder.style.left = '0';
+    placeholder.style.width = '100%';
+    placeholder.style.height = '100%';
+    placeholder.style.background = 'linear-gradient(90deg, #f0f0f0 25%, #e0e0e0 50%, #f0f0f0 75%)';
+    placeholder.style.backgroundSize = '200% 100%';
+    placeholder.style.animation = 'shimmer 1.5s infinite';
+    placeholder.style.zIndex = '1';
+    imgContainer.appendChild(placeholder);
+    
+    // 2. Image
     const img = document.createElement('img');
-    img.src = this.buildImageUrl(obj.key);
     img.className = 'r2-item-img';
     img.loading = 'lazy';
     img.alt = obj.key;
+    img.style.position = 'absolute';
+    img.style.top = '0';
+    img.style.left = '0';
+    img.style.width = '100%';
+    img.style.height = '100%';
+    img.style.objectFit = 'cover';
+    img.style.opacity = '0'; // 初始透明，等待加载完成
+    img.style.transition = 'opacity 0.3s ease';
+    img.style.zIndex = '2';
+    
+    // 显示图片的函数
+    const showImage = () => {
+      img.style.opacity = '1';
+      placeholder.style.opacity = '0';
+      placeholder.style.pointerEvents = 'none';
+    };
+    
+    // 隐藏占位符的函数
+    const hidePlaceholder = () => {
+      setTimeout(() => {
+        placeholder.style.display = 'none';
+      }, 300); // 等待淡出动画完成
+    };
+    
+    // [v2.7 优化] 使用 IntersectionObserver 实现更精确的懒加载
+    const imageUrl = this.buildImageUrl(obj.key);
+    const observer = new IntersectionObserver((entries) => {
+      entries.forEach(entry => {
+        if (entry.isIntersecting) {
+          // 图片进入视口，开始加载
+          img.src = imageUrl;
+          
+          // 检查图片是否已经加载完成（可能来自缓存）
+          if (img.complete && img.naturalHeight !== 0) {
+            // 图片已经加载完成（可能是缓存），直接显示
+            showImage();
+            hidePlaceholder();
+          } else {
+            // 图片需要加载，设置加载回调
+            img.onload = () => {
+              // 图片加载完成后显示，隐藏占位符
+              showImage();
+              hidePlaceholder();
+            };
+          }
+          
+          img.onerror = () => {
+            // 加载失败，显示错误占位符
+            placeholder.style.background = 'var(--error, #ff4444)';
+            placeholder.style.animation = 'none';
+            placeholder.textContent = '加载失败';
+            placeholder.style.color = 'white';
+            placeholder.style.display = 'flex';
+            placeholder.style.alignItems = 'center';
+            placeholder.style.justifyContent = 'center';
+            placeholder.style.zIndex = '3';
+          };
+          
+          observer.unobserve(item); // 不再需要观察
+        }
+      });
+    }, {
+      rootMargin: '50px' // 提前 50px 开始加载
+    });
+    
+    observer.observe(item);
+    imgContainer.appendChild(img);
 
     // 2. Checkbox Container (新增)
     const checkboxContainer = document.createElement('div');
@@ -294,7 +412,7 @@ export class R2Manager {
     // Assemble
     overlay.appendChild(nameSpan);
     overlay.appendChild(deleteBtn);
-    item.appendChild(img);
+    item.appendChild(imgContainer); // 使用 imgContainer 而不是直接使用 img
     item.appendChild(checkboxContainer); // Add Checkbox
     item.appendChild(overlay);
     

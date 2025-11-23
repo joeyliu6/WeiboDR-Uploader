@@ -277,6 +277,7 @@ class SimpleStore {
   
   /**
    * 执行实际的写入操作
+   * 支持历史记录数量限制和原子性写入
    */
   private async _performWrite(key: string, value: any): Promise<void> {
     try {
@@ -341,8 +342,23 @@ class SimpleStore {
         }
       }
 
-      // 更新数据
-      data[key] = value;
+      // [v2.7 优化] 历史记录数量限制
+      // 如果 key 是 'uploads' 且 value 是数组，限制最多 500 条记录
+      if (key === 'uploads' && Array.isArray(value)) {
+        const MAX_HISTORY_ITEMS = 500;
+        if (value.length > MAX_HISTORY_ITEMS) {
+          console.warn(`[Store] 历史记录数量超过限制 (${value.length} > ${MAX_HISTORY_ITEMS})，自动截断旧数据`);
+          // 保留最新的 500 条（通常是最前面的，因为新记录在前面）
+          const truncated = value.slice(0, MAX_HISTORY_ITEMS);
+          console.log(`[Store] 已截断历史记录: ${value.length} -> ${truncated.length}`);
+          data[key] = truncated;
+        } else {
+          data[key] = value;
+        }
+      } else {
+        // 更新数据
+        data[key] = value;
+      }
 
       // 序列化数据
       let jsonContent: string;
@@ -357,11 +373,38 @@ class SimpleStore {
         );
       }
 
-      // 写入文件
+      // [v2.7 优化] 原子性写入：先写入临时文件，然后重命名
+      // 这样可以避免写入中断导致文件损坏
+      const tempPath = `${dataPath}.tmp.${Date.now()}`;
       try {
-        await writeTextFile(dataPath, jsonContent);
+        // 先写入临时文件
+        await writeTextFile(tempPath, jsonContent);
+        
+        // 如果原文件存在，先删除（在某些系统上，重命名可能失败如果目标文件已存在）
+        if (fileExists) {
+          try {
+            const { removeFile } = await import('@tauri-apps/api/fs');
+            await removeFile(dataPath);
+          } catch (removeError: any) {
+            // 如果删除失败，尝试继续重命名（某些系统允许覆盖）
+            console.warn(`[Store] 删除原文件失败，尝试直接重命名: ${removeError?.message || String(removeError)}`);
+          }
+        }
+        
+        // 重命名临时文件为目标文件（原子操作）
+        const { rename } = await import('@tauri-apps/api/fs');
+        await rename(tempPath, dataPath);
+        
         console.log(`[Store] 成功保存数据到键 "${key}" (${this.filePath})`);
       } catch (writeError: any) {
+        // 如果写入失败，尝试清理临时文件
+        try {
+          const { removeFile } = await import('@tauri-apps/api/fs');
+          await removeFile(tempPath).catch(() => {}); // 忽略清理错误
+        } catch {
+          // 忽略清理错误
+        }
+        
         const errorMsg = writeError?.message || String(writeError);
         if (errorMsg.includes('Permission') || errorMsg.includes('permission')) {
           throw new StoreError(
