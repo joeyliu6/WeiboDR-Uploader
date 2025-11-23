@@ -28,6 +28,15 @@ use hmac::{Hmac, Mac};
 use sha2::{Digest, Sha256};
 type HmacSha256 = Hmac<Sha256>;
 
+// 用于密钥管理
+use keyring::Entry;
+use rand::Rng;
+use base64::{Engine as _, engine::general_purpose};
+
+// 定义服务名，防止与其他应用冲突
+const SERVICE_NAME: &str = "com.weibodr.uploader.secure";
+const KEY_NAME: &str = "config_encryption_key";
+
 /// 全局 HTTP 客户端状态
 /// 使用单例模式复用 HTTP 客户端，提升性能
 pub struct HttpClient(pub reqwest::Client);
@@ -98,7 +107,8 @@ fn main() {
             test_webdav_connection,
             list_r2_objects,
             delete_r2_object,
-            commands::upload::upload_file_stream
+            commands::upload::upload_file_stream,
+            get_or_create_secure_key
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
         .system_tray(system_tray)            // 4. 添加系统托盘
@@ -1076,5 +1086,40 @@ async fn delete_r2_object(
     
     // 所有重试都失败
     Err(format!("删除失败（已重试 {} 次）: {}", max_retries, last_error))
+}
+
+/// 获取或创建加密密钥
+/// 
+/// 从系统钥匙串中获取加密密钥，如果不存在则生成一个新的 32 字节 (256 位) 随机密钥
+/// 
+/// # 返回
+/// 返回 `Result<String, String>`，成功时返回 Base64 编码的密钥，失败时返回错误信息
+#[tauri::command]
+fn get_or_create_secure_key() -> Result<String, String> {
+    let entry = Entry::new(SERVICE_NAME, KEY_NAME).map_err(|e| {
+        format!("无法访问系统钥匙串: {}", e)
+    })?;
+
+    match entry.get_password() {
+        Ok(key) => {
+            eprintln!("[密钥管理] 从钥匙串读取现有密钥");
+            Ok(key)
+        },
+        Err(_) => {
+            // 如果不存在，生成一个新的 32 字节 (256 位) 随机密钥
+            eprintln!("[密钥管理] 生成新的加密密钥");
+            let mut key_bytes = [0u8; 32];
+            rand::thread_rng().fill(&mut key_bytes);
+            let new_key = general_purpose::STANDARD.encode(key_bytes);
+            
+            // 存入系统钥匙串
+            entry.set_password(&new_key).map_err(|e| {
+                format!("无法保存密钥到系统钥匙串: {}", e)
+            })?;
+            
+            eprintln!("[密钥管理] ✓ 新密钥已保存到系统钥匙串");
+            Ok(new_key)
+        }
+    }
 }
 

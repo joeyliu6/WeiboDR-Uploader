@@ -1,7 +1,9 @@
 // src/store.ts
 // 简单的存储工具，使用 Tauri 的 fs API 替代 tauri-plugin-store-api
+// v2.8: 支持加密存储，使用 AES-GCM 加密敏感数据
 import { readTextFile, writeTextFile, exists, createDir } from '@tauri-apps/api/fs';
 import { appDataDir, join } from '@tauri-apps/api/path';
+import { secureStorage } from './crypto';
 
 /**
  * 自定义错误类，用于存储操作
@@ -165,10 +167,28 @@ class SimpleStore {
         return null;
       }
 
+      // 【v2.8 加密存储】尝试解密
+      // 为了兼容旧版本（明文），先尝试 JSON.parse，如果失败或看起来是加密串，再尝试解密
+      let decryptedContent = content;
+      try {
+        // 简单的启发式检查：如果不是以 { 或 [ 开头，可能是加密后的 Base64
+        if (!content.trim().startsWith('{') && !content.trim().startsWith('[')) {
+          console.log(`[Store] 检测到加密数据，尝试解密...`);
+          decryptedContent = await secureStorage.decrypt(content);
+          console.log(`[Store] ✓ 解密成功`);
+        }
+      } catch (decryptError: any) {
+        // 如果解密失败，可能本来就是明文（旧版本），忽略错误尝试直接解析
+        const errorMsg = decryptError?.message || String(decryptError);
+        console.warn(`[Store] 解密失败，尝试按明文解析: ${errorMsg}`);
+        // 继续使用原始 content
+        decryptedContent = content;
+      }
+
       // 解析 JSON
       let data: Record<string, any>;
       try {
-        data = JSON.parse(content);
+        data = JSON.parse(decryptedContent);
       } catch (parseError: any) {
         // JSON 解析失败，文件可能损坏
         const errorMsg = parseError?.message || String(parseError);
@@ -305,15 +325,32 @@ class SimpleStore {
         );
       }
 
-      // 读取现有数据
+      // 读取现有数据（并尝试解密）
       let data: Record<string, any> = {};
       const fileExists = await exists(dataPath);
       if (fileExists) {
         try {
-          const content = await readTextFile(dataPath);
-          if (content && content.trim().length > 0) {
+          const oldFileContent = await readTextFile(dataPath);
+          if (oldFileContent && oldFileContent.trim().length > 0) {
             try {
-              data = JSON.parse(content);
+              // 【v2.8 加密存储】尝试解密旧数据
+              let oldContent = oldFileContent;
+              // 简单的启发式检查：如果不是以 { 或 [ 开头，可能是加密后的 Base64
+              if (!oldContent.trim().startsWith('{') && !oldContent.trim().startsWith('[')) {
+                try {
+                  console.log(`[Store] 检测到加密数据，尝试解密...`);
+                  oldContent = await secureStorage.decrypt(oldFileContent);
+                  console.log(`[Store] ✓ 解密成功`);
+                } catch (decryptError: any) {
+                  // 如果解密失败，可能本来就是明文（旧版本），忽略错误尝试直接解析
+                  const errorMsg = decryptError?.message || String(decryptError);
+                  console.warn(`[Store] 解密失败，尝试按明文解析: ${errorMsg}`);
+                  // 继续使用原始内容
+                  oldContent = oldFileContent;
+                }
+              }
+              
+              data = JSON.parse(oldContent);
               // 验证解析后的数据是对象
               if (typeof data !== 'object' || data === null || Array.isArray(data)) {
                 console.warn('[Store] 警告: 现有数据格式不正确，将重置为空对象');
@@ -373,10 +410,27 @@ class SimpleStore {
         );
       }
 
+      // 【v2.8 加密存储】加密数据
+      let encryptedContent: string;
+      try {
+        encryptedContent = await secureStorage.encrypt(jsonContent);
+        console.log(`[Store] ✓ 数据加密成功`);
+      } catch (encryptError: any) {
+        const errorMsg = encryptError?.message || String(encryptError);
+        console.error(`[Store] 加密失败: ${errorMsg}`);
+        throw new StoreError(
+          `加密数据失败: ${errorMsg}`,
+          'write',
+          key,
+          encryptError
+        );
+      }
+
       // [v2.7 优化] 原子性写入：直接写入目标文件
       // Tauri 的 writeTextFile 本身是原子性的，可以直接覆盖原文件
+      // 【v2.8】写入加密后的内容
       try {
-        await writeTextFile(dataPath, jsonContent);
+        await writeTextFile(dataPath, encryptedContent);
         console.log(`[Store] 成功保存数据到键 "${key}" (${this.filePath})`);
       } catch (writeError: any) {
         
@@ -447,7 +501,10 @@ class SimpleStore {
       }
 
       try {
-        await writeTextFile(dataPath, JSON.stringify({}, null, 2));
+        // 【v2.8 加密存储】清空时也加密写入
+        const emptyJson = JSON.stringify({}, null, 2);
+        const encryptedContent = await secureStorage.encrypt(emptyJson);
+        await writeTextFile(dataPath, encryptedContent);
         console.log(`[Store] 成功清空数据文件: ${this.filePath}`);
       } catch (writeError: any) {
         const errorMsg = writeError?.message || String(writeError);
