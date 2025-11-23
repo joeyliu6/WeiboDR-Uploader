@@ -6,7 +6,7 @@ import { sendNotification, isPermissionGranted, requestPermission } from "@tauri
 import { readBinaryFile } from '@tauri-apps/api/fs';
 import { getClient, Body } from '@tauri-apps/api/http';
 import { uploadToWeibo, WeiboUploadError } from './weiboUploader';
-import { UserConfig, R2Config, HistoryItem, FailedItem } from './config';
+import { UserConfig, R2Config, HistoryItem } from './config';
 import { Store, StoreError } from './store';
 import { basename } from '@tauri-apps/api/path';
 import { emit } from '@tauri-apps/api/event';
@@ -19,7 +19,6 @@ import {
   R2Error,
   WebDAVError,
   convertWeiboError,
-  isRetryableError,
   isCookieError,
   isNetworkError
 } from './errors';
@@ -787,81 +786,9 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       return { status: 'error', message: cookieErrorMessage };
     }
     
-    // v2.1: 失败重试队列逻辑
-    // 使用 isRetryableError 函数判断是否可重试
-    const retryable = isRetryableError(convertedError);
-    
-    if (retryable) {
-      // 可重试错误：添加到失败队列
-      try {
-        const retryStore = new Store('.retry.dat');
-        let items: FailedItem[] = [];
-        
-        try {
-          items = await retryStore.get<FailedItem[]>('failed') || [];
-          if (!Array.isArray(items)) {
-            items = [];
-          }
-        } catch (readError: any) {
-          console.warn("[失败队列] 读取失败队列失败，使用空数组:", readError?.message || String(readError));
-          items = [];
-        }
-        
-        let name: string;
-        try {
-          name = await basename(filePath);
-          if (!name || name.trim().length === 0) {
-            name = filePath.split(/[/\\]/).pop() || '未知文件';
-          }
-        } catch (nameError: any) {
-          name = filePath.split(/[/\\]/).pop() || '未知文件';
-        }
-        
-        const newItem: FailedItem = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          filePath: filePath,
-          configSnapshot: { ...config }, // 保存配置快照
-          errorMessage: errorMessage,
-        };
-        
-        const newItems = [newItem, ...items];
-        
-        try {
-          await retryStore.set('failed', newItems);
-          await retryStore.save();
-          console.log(`[失败队列] ✅ 已添加到失败队列，共 ${newItems.length} 项`);
-        } catch (saveError: any) {
-          if (saveError instanceof StoreError) {
-            console.error(`[失败队列] 保存失败 (${saveError.operation}):`, saveError.message);
-          } else {
-            console.error("[失败队列] 保存失败:", saveError?.message || String(saveError));
-          }
-          throw saveError;
-        }
-        
-        // 发出事件通知侧边栏更新角标
-        try {
-          await emit('update-failed-count', newItems.length);
-        } catch (emitError: any) {
-          console.warn("[失败队列] 发送事件失败:", emitError?.message || String(emitError));
-        }
-        
-        // 发送非阻塞通知
-        await showNotification("文件上传失败", `已将 ${name} 添加到重试队列。`);
-        
-        return { status: 'failed', message: errorMessage };
-      } catch (retryError: any) {
-        const retryErrorMsg = retryError?.message || String(retryError);
-        console.error("[失败队列] 保存失败项失败:", retryErrorMsg);
-        // 如果保存失败，按原样通知用户
-        await showNotification("上传失败", `${errorMessage}（且无法保存到重试队列）`);
-        return { status: 'error', message: errorMessage };
-      }
-    } else {
-      // 不可重试错误：直接通知用户
-      await showNotification("上传失败", errorMessage);
-      return { status: 'error', message: errorMessage };
-    }
+    // 错误处理：直接通知用户
+    await showNotification("上传失败", errorMessage);
+    return { status: 'error', message: errorMessage };
   }
 }
 

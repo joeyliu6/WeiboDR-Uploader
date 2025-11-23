@@ -34,13 +34,6 @@ export interface HistoryItem {
   r2Key: string | null;          // 如果 R2 备份成功，存储 R2 上的 Key；否则为 null
 }
 
-export interface FailedItem {
-  id: string;                   // 时间戳或UUID
-  filePath: string;              // 文件的本地绝对路径
-  configSnapshot: UserConfig;    // 失败当时的用户配置
-  errorMessage: string;          // 失败原因
-}
-
 // 默认配置
 export const DEFAULT_CONFIG: UserConfig = {
   weiboCookie: '',

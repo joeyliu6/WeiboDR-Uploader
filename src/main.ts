@@ -4,7 +4,7 @@ import { invoke } from '@tauri-apps/api/tauri';
 import { dialog } from '@tauri-apps/api';
 
 import { Store } from './store';
-import { UserConfig, HistoryItem, FailedItem, DEFAULT_CONFIG } from './config';
+import { UserConfig, HistoryItem, DEFAULT_CONFIG } from './config';
 import { handleFileUpload, processUpload } from './coreLogic';
 import { emit } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/api/clipboard';
@@ -32,7 +32,6 @@ window.addEventListener('unhandledrejection', (event) => {
 // --- STORES ---
 const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
-const retryStore = new Store('.retry.dat');
 
 // --- UPLOAD QUEUE MANAGER ---
 let uploadQueueManager: UploadQueueManager | null = null;
@@ -96,17 +95,15 @@ function queryElement<T extends HTMLElement>(selector: string, elementType: stri
 const uploadView = getElement<HTMLElement>('upload-view', '上传视图');
 const historyView = getElement<HTMLElement>('history-view', '历史视图');
 const settingsView = getElement<HTMLElement>('settings-view', '设置视图');
-const failedView = getElement<HTMLElement>('failed-view', '失败视图');
 const r2ManagerView = getElement<HTMLElement>('r2-manager-view', 'R2管理视图');
-const views = [uploadView, historyView, settingsView, failedView, r2ManagerView].filter((v): v is HTMLElement => v !== null);
+const views = [uploadView, historyView, settingsView, r2ManagerView].filter((v): v is HTMLElement => v !== null);
 
 // Navigation
 const navUploadBtn = getElement<HTMLButtonElement>('nav-upload', '上传导航按钮');
 const navHistoryBtn = getElement<HTMLButtonElement>('nav-history', '历史导航按钮');
-const navFailedBtn = getElement<HTMLButtonElement>('nav-failed', '失败导航按钮');
 const navR2ManagerBtn = getElement<HTMLButtonElement>('nav-r2-manager', 'R2管理导航按钮');
 const navSettingsBtn = getElement<HTMLButtonElement>('nav-settings', '设置导航按钮');
-const navButtons = [navUploadBtn, navHistoryBtn, navFailedBtn, navR2ManagerBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
+const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
 
 // Upload View Elements
 const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
@@ -145,11 +142,6 @@ const syncWebdavBtn = getElement<HTMLButtonElement>('sync-webdav-btn', '同步We
 const searchInput = getElement<HTMLInputElement>('search-input', '搜索输入框');
 const historyStatusMessageEl = queryElement<HTMLElement>('#history-view #status-message', '历史状态消息');
 
-// Failed View Elements
-const failedBody = getElement<HTMLElement>('failed-body', '失败记录表格体');
-const retryAllBtn = getElement<HTMLButtonElement>('retry-all-btn', '重试全部按钮');
-const clearAllFailedBtn = getElement<HTMLButtonElement>('clear-all-failed-btn', '清空失败按钮');
-const badgeEl = getElement<HTMLElement>('badge', '失败角标');
 
 
 // --- FILE VALIDATION ---
@@ -257,7 +249,7 @@ async function processUploadQueue(
  * 导航到指定视图
  * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'failed')
  */
-function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed' | 'r2-manager'): void {
+function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager'): void {
   try {
     // Deactivate all views and buttons
     views.forEach(v => {
@@ -315,10 +307,6 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'failed' | 'r2-m
           if (saveStatusEl) {
             saveStatusEl.textContent = `❌ 加载失败: ${err instanceof Error ? err.message : String(err)}`;
           }
-        });
-      } else if (viewId === 'failed') {
-        loadFailedQueue().catch(err => {
-          console.error('[导航] 加载失败队列失败:', err);
         });
       } else if (viewId === 'r2-manager') {
         // [v2.6 优化] 检查脏标记，只在需要时刷新
@@ -1612,162 +1600,6 @@ async function syncToWebDAV() {
     }
 }
 
-// --- FAILED QUEUE LOGIC (v2.1) ---
-async function loadFailedQueue() {
-  try {
-    const items = await retryStore.get<FailedItem[]>('failed') || [];
-    renderFailedTable(items);
-    updateFailedBadge(items.length);
-  } catch (err) {
-    console.error('加载失败队列失败:', err);
-    renderFailedTable([]);
-  }
-}
-
-async function renderFailedTable(items: FailedItem[]) {
-  if (!failedBody) {
-    console.error('[失败队列] failedBody 不存在，无法渲染表格');
-    return;
-  }
-  
-  failedBody.innerHTML = '';
-  
-  if (items.length === 0) {
-    failedBody.innerHTML = '<tr><td colspan="3" style="text-align: center; color: #888;">暂无失败记录</td></tr>';
-    return;
-  }
-  
-  for (const item of items) {
-    const tr = document.createElement('tr');
-    tr.setAttribute('data-id', item.id);
-    
-    const tdName = document.createElement('td');
-    const name = item.filePath.split(/[/\\]/).pop() || item.filePath;
-    tdName.textContent = name;
-    tdName.title = item.filePath;
-    tr.appendChild(tdName);
-    
-    const tdError = document.createElement('td');
-    tdError.textContent = item.errorMessage;
-    tdError.title = item.errorMessage;
-    tr.appendChild(tdError);
-    
-    const tdAction = document.createElement('td');
-    const retryBtn = document.createElement('button');
-    retryBtn.textContent = '重试';
-    retryBtn.addEventListener('click', async () => {
-      await retryFailedItem(item.id);
-    });
-    tdAction.appendChild(retryBtn);
-    
-    const removeBtn = document.createElement('button');
-    removeBtn.textContent = '移除';
-    removeBtn.style.marginLeft = '10px';
-    removeBtn.addEventListener('click', async () => {
-      await removeFailedItem(item.id);
-    });
-    tdAction.appendChild(removeBtn);
-    
-    tr.appendChild(tdAction);
-    if (failedBody) {
-      failedBody.appendChild(tr);
-    }
-  }
-}
-
-async function updateFailedBadge(count: number) {
-  if (!badgeEl) {
-    console.warn('[失败队列] badgeEl 不存在，无法更新角标');
-    return;
-  }
-  
-  if (count > 0) {
-    badgeEl.textContent = count.toString();
-    badgeEl.style.display = 'inline-block';
-  } else {
-    badgeEl.style.display = 'none';
-  }
-}
-
-async function retryFailedItem(itemId: string) {
-  try {
-    const items = await retryStore.get<FailedItem[]>('failed') || [];
-    const item = items.find(i => i.id === itemId);
-    if (!item) {
-      return;
-    }
-    
-    const result = await handleFileUpload(item.filePath, item.configSnapshot);
-    if (result.status === 'success') {
-      // 从失败队列中移除
-      const newItems = items.filter(i => i.id !== itemId);
-      await retryStore.set('failed', newItems);
-      await retryStore.save();
-      await loadFailedQueue();
-      await emit('update-failed-count', newItems.length);
-    }
-  } catch (err) {
-    console.error('重试失败:', err);
-  }
-}
-
-async function removeFailedItem(itemId: string) {
-  try {
-    const items = await retryStore.get<FailedItem[]>('failed') || [];
-    const newItems = items.filter(i => i.id !== itemId);
-    await retryStore.set('failed', newItems);
-    await retryStore.save();
-    await loadFailedQueue();
-    await emit('update-failed-count', newItems.length);
-  } catch (err) {
-    console.error('移除失败项失败:', err);
-  }
-}
-
-async function retryAllFailed() {
-  try {
-    const items = await retryStore.get<FailedItem[]>('failed') || [];
-    if (items.length === 0) {
-      return;
-    }
-    
-    for (const item of items) {
-      const result = await handleFileUpload(item.filePath, item.configSnapshot);
-      if (result.status === 'success') {
-        // 从失败队列中移除
-        const currentItems = await retryStore.get<FailedItem[]>('failed') || [];
-        const newItems = currentItems.filter(i => i.id !== item.id);
-        await retryStore.set('failed', newItems);
-        await retryStore.save();
-      }
-    }
-    
-    await loadFailedQueue();
-    const remainingItems = await retryStore.get<FailedItem[]>('failed') || [];
-    await emit('update-failed-count', remainingItems.length);
-  } catch (err) {
-    console.error('全部重试失败:', err);
-  }
-}
-
-async function clearAllFailed() {
-  const confirmed = await showConfirmModal(
-    '确定要清除所有失败记录吗？',
-    '确认清除'
-  );
-  if (!confirmed) {
-    return;
-  }
-  try {
-    await retryStore.clear();
-    await retryStore.save();
-    await loadFailedQueue();
-    await emit('update-failed-count', 0);
-  } catch (err) {
-    console.error('清除失败队列失败:', err);
-  }
-}
-
 // --- INITIALIZATION ---
 /**
  * 初始化应用
@@ -1788,12 +1620,6 @@ function initialize(): void {
       navHistoryBtn.addEventListener('click', () => navigateTo('history'));
     } else {
       console.warn('[初始化] 警告: 历史导航按钮不存在');
-    }
-    
-    if (navFailedBtn) {
-      navFailedBtn.addEventListener('click', () => navigateTo('failed'));
-    } else {
-      console.warn('[初始化] 警告: 失败导航按钮不存在');
     }
     
     if (navR2ManagerBtn) {
@@ -1920,27 +1746,6 @@ function initialize(): void {
     } else {
       console.warn('[初始化] 警告: 搜索输入框不存在');
     }
-    
-    // Bind failed queue events (带空值检查)
-    if (retryAllBtn) {
-      retryAllBtn.addEventListener('click', () => {
-        retryAllFailed().catch(err => {
-          console.error('[初始化] 重试全部失败:', err);
-        });
-      });
-    } else {
-      console.warn('[初始化] 警告: 重试全部按钮不存在');
-    }
-    
-    if (clearAllFailedBtn) {
-      clearAllFailedBtn.addEventListener('click', () => {
-        clearAllFailed().catch(err => {
-          console.error('[初始化] 清空失败队列失败:', err);
-        });
-      });
-    } else {
-      console.warn('[初始化] 警告: 清空失败按钮不存在');
-    }
 
     // Initialize file drop listeners
     initializeUpload().catch(err => {
@@ -1959,27 +1764,9 @@ function initialize(): void {
     }).catch(err => {
       console.error('[初始化] 设置导航监听器失败:', err);
     });
-    
-    // Listen for failed count updates
-    listen('update-failed-count', async (event) => {
-      try {
-        const count = event.payload as number;
-        console.log('[初始化] 收到失败计数更新:', count);
-        await updateFailedBadge(count);
-      } catch (error) {
-        console.error('[初始化] 更新失败角标失败:', error);
-      }
-    }).catch(err => {
-      console.error('[初始化] 设置失败计数监听器失败:', err);
-    });
 
     // Start on the upload view
     navigateTo('upload');
-    
-    // 初始化失败队列角标
-    loadFailedQueue().catch(err => {
-      console.error('[初始化] 加载失败队列失败:', err);
-    });
     
     // 设置Cookie更新监听器
     setupCookieListener().catch(err => {

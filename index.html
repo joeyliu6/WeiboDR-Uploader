@@ -40,11 +40,6 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
           <span class="nav-text">历史</span>
         </button>
-        <button id="nav-failed" class="nav-btn" title="失败列表">
-          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-          <span class="nav-text">失败</span>
-          <span class="badge" id="badge" style="display: none;">0</span>
-        </button>
         <button id="nav-r2-manager" class="nav-btn" title="R2 管理">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
           <span class="nav-text">R2 管理</span>
@@ -190,28 +185,6 @@
             <div class="footer">
                 <span id="save-status"></span>
             </div>
-        </div>
-        </div>
-        <div id="failed-view" class="view">
-          <div class="container">
-            <h1>失败队列</h1>
-            
-            <div class="footer" style="margin-bottom: 20px;">
-                <button id="retry-all-btn">全部重试</button>
-                <button id="clear-all-failed-btn">全部清除</button>
-            </div>
-            
-            <table id="failed-table">
-                <thead>
-                    <tr>
-                        <th>本地文件名</th>
-                        <th>失败原因</th>
-                        <th>操作</th>
-                    </tr>
-                </thead>
-                <tbody id="failed-body">
-                </tbody>
-            </table>
         </div>
         </div>
         <div id="r2-manager-view" class="view">
