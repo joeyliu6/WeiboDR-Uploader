@@ -5,7 +5,8 @@ import { dialog } from '@tauri-apps/api';
 
 import { Store } from './store';
 import { UserConfig, HistoryItem, DEFAULT_CONFIG } from './config';
-import { processUpload } from './coreLogic';
+import { handleFileUpload, processUpload } from './coreLogic';
+import { emit } from '@tauri-apps/api/event';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
@@ -106,8 +107,10 @@ const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navSettingsBtn
 
 // Upload View Elements
 const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
+const dropMessage = getElement<HTMLElement>('drop-message', '拖放消息');
 const fileInput = getElement<HTMLInputElement>('file-input', '文件选择输入框');
 const uploadR2Toggle = getElement<HTMLInputElement>('upload-view-toggle-r2', 'R2上传开关');
+const uploadQueueList = getElement<HTMLElement>('upload-queue-list', '上传队列列表');
 
 // Settings View Elements
 const weiboCookieEl = getElement<HTMLTextAreaElement>('weibo-cookie', '微博Cookie输入框');
@@ -503,10 +506,8 @@ async function initializeUpload(): Promise<void> {
         fileInput.addEventListener('change', async (event) => {
           const target = event.target as HTMLInputElement;
           if (target.files && target.files.length > 0) {
-            // 在 Tauri 环境中，需要通过 dialog.open 选择文件，而不是使用 HTML input
-            // 这里应该使用 Tauri 的文件选择 API
-            // 但为了兼容性，我们暂时跳过这个处理，因为文件选择应该通过拖放或按钮触发
-            console.warn('[上传] HTML input 文件选择在 Tauri 中不支持，请使用拖放或选择文件按钮');
+            const filePaths = Array.from(target.files).map(file => file.path || '');
+            await handleFiles(filePaths);
             // 清空输入框，允许重复选择同一文件
             target.value = '';
           }
@@ -759,7 +760,6 @@ async function loadSettings(): Promise<void> {
  * 此函数保留以备将来需要手动触发保存的场景
  */
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
-// @ts-ignore - 保留此函数以备将来使用
 async function saveSettings(): Promise<void> {
   try {
     console.log('[设置] 开始保存设置...');
