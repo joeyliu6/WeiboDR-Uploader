@@ -128,7 +128,7 @@
             </div>
     
             <div class="form-section">
-                <h2>Cloudflare R2 备份 (可选)</h2>
+                <h2>Cloudflare R2 配置 (可选)</h2>
                 <p>步骤 A 成功后，将图片异步备份到 R2。</p>
                 <label>R2 账户 ID (Account ID)</label>
                 <input type="text" id="r2-account-id" />
@@ -153,27 +153,13 @@
             </div>
     
             <div class="form-section">
-                <h2>输出格式 (PRD 3.2)</h2>
+                <h2>链接配置</h2>
                 <label>百度代理前缀</label>
                 <input type="text" id="baidu-prefix" value="https://image.baidu.com/search/down?thumburl=" />
-                
-                <label>链接格式选项</label>
-                <div class="radio-group">
-                    <input type="radio" id="format-baidu" name="output-format" value="baidu" checked>
-                    <label for="format-baidu">百度代理链接 (用于发布)</label>
-                </div>
-                <div class="radio-group">
-                    <input type="radio" id="format-weibo" name="output-format" value="weibo">
-                    <label for="format-weibo">large 微博原始链接 (用于调试)</label>
-                </div>
-                <div class="radio-group">
-                    <input type="radio" id="format-r2" name="output-format" value="r2">
-                    <label for="format-r2">R2 公开访问链接 (用于切换灾备)</label>
-                </div>
             </div>
     
             <div class="form-section">
-                <h2>WebDAV 自动备份 (可选) (v1.2)</h2>
+                <h2>WebDAV 配置</h2>
                 <p>配置后，每次上传成功会自动将历史记录同步到 WebDAV（例如：坚果云）。</p>
                 <label>WebDAV URL</label>
                 <input type="text" id="webdav-url" placeholder="例如: https://dav.jianguoyun.com/dav/" />

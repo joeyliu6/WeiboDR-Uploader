@@ -701,14 +701,7 @@ async function loadSettings(): Promise<void> {
         if (webdavRemotePathEl) webdavRemotePathEl.value = DEFAULT_CONFIG.webdav.remotePath;
       }
       
-      // 输出格式
-      const format = config.outputFormat || 'baidu';
-      const formatRadio = getElement<HTMLInputElement>(`format-${format}`, `输出格式单选按钮(${format})`);
-      if (formatRadio) {
-        formatRadio.checked = true;
-      } else {
-        console.warn(`[设置] 警告: 找不到格式单选按钮: format-${format}`);
-      }
+      // 输出格式（不再需要设置单选按钮，因为已删除）
       
       console.log('[设置] ✓ 设置已填充到UI');
     } catch (error) {
@@ -742,14 +735,14 @@ async function saveSettings(): Promise<void> {
       saveStatusEl.textContent = '保存中...';
     }
     
-    // 读取输出格式
-    let format: string = 'baidu';
+    // 从已保存的配置中读取输出格式，或使用默认值
+    let savedConfig: UserConfig | null = null;
     try {
-      const formatRadio = document.querySelector('input[name="output-format"]:checked') as HTMLInputElement;
-      format = formatRadio?.value || 'baidu';
+      savedConfig = await configStore.get<UserConfig>('config', DEFAULT_CONFIG);
     } catch (error) {
-      console.warn('[设置] 读取输出格式失败，使用默认值 baidu:', error);
+      console.warn('[设置] 读取已保存配置失败，使用默认值:', error);
     }
+    const format: string = savedConfig?.outputFormat || 'baidu';
   
     // 验证必填字段
     if (format === 'r2' && r2PublicDomainEl && !r2PublicDomainEl.value.trim()) {
@@ -828,14 +821,14 @@ async function handleAutoSave(): Promise<void> {
       saveStatusEl.style.color = 'orange';
     }
     
-    // 读取输出格式
-    let format: string = 'baidu';
+    // 从已保存的配置中读取输出格式，或使用默认值
+    let savedConfig: UserConfig | null = null;
     try {
-      const formatRadio = document.querySelector('input[name="output-format"]:checked') as HTMLInputElement;
-      format = formatRadio?.value || 'baidu';
+      savedConfig = await configStore.get<UserConfig>('config', DEFAULT_CONFIG);
     } catch (error) {
-      console.warn('[自动保存] 读取输出格式失败，使用默认值 baidu:', error);
+      console.warn('[自动保存] 读取已保存配置失败，使用默认值:', error);
     }
+    const format: string = savedConfig?.outputFormat || 'baidu';
   
     // 验证必填字段
     if (format === 'r2' && r2PublicDomainEl && !r2PublicDomainEl.value.trim()) {
@@ -1799,15 +1792,7 @@ function initialize(): void {
       }
     });
     
-    // 为输出格式单选按钮绑定自动保存事件
-    const formatRadios = document.querySelectorAll('input[name="output-format"]');
-    formatRadios.forEach(radio => {
-      radio.addEventListener('change', () => {
-        handleAutoSave().catch(err => {
-          console.error('[初始化] 自动保存失败:', err);
-        });
-      });
-    });
+    // 输出格式单选按钮已删除，不再需要绑定事件
     
     if (testCookieBtn) {
       testCookieBtn.addEventListener('click', () => {
