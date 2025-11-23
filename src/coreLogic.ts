@@ -1,5 +1,5 @@
 // src/coreLogic.ts
-import { S3Client, PutObjectCommand } from "@aws-sdk/client-s3";
+import { S3Client } from "@aws-sdk/client-s3";
 import { Upload } from "@aws-sdk/lib-storage";
 import { writeText as writeToClipboard } from "@tauri-apps/api/clipboard";
 import { sendNotification, isPermissionGranted, requestPermission } from "@tauri-apps/api/notification";
@@ -12,15 +12,8 @@ import { basename } from '@tauri-apps/api/path';
 import { emit } from '@tauri-apps/api/event';
 import { 
   CookieExpiredError, 
-  InvalidCookieError, 
-  NetworkError, 
-  TimeoutError,
-  FileReadError,
-  R2Error,
-  WebDAVError,
   convertWeiboError,
-  isCookieError,
-  isNetworkError
+  isCookieError
 } from './errors';
 
 /**
@@ -675,7 +668,7 @@ export async function handleFileUpload(filePath: string, config: UserConfig) {
       let finalR2Key: string | null = null;
       
       // 如果启用 R2，则在此处读取文件（为了微博上传性能优化，我们延迟到这里才读取）
-      if (!fileBytes && (config.r2.enabled || (config.r2 as any).enable)) { // check both just in case
+      if (!fileBytes && validateR2Config(config.r2).valid) {
           try {
              console.log(`[核心流程] 为 R2 备份读取文件: ${filePath}`);
              fileBytes = await readBinaryFile(filePath);

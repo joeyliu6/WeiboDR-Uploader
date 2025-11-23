@@ -50,9 +50,10 @@ export class SecureStorage {
       const keyBytes = base64ToBytes(keyB64);
 
       // 导入为 Web Crypto API 密钥对象
+      // Uint8Array 是 BufferSource 的子类型，直接使用即可
       this.key = await window.crypto.subtle.importKey(
         "raw",
-        keyBytes,
+        keyBytes as BufferSource,
         { name: "AES-GCM" },
         false,
         ["encrypt", "decrypt"]
@@ -145,4 +146,5 @@ export class SecureStorage {
  * 全局使用同一个 SecureStorage 实例，避免重复初始化密钥
  */
 export const secureStorage = new SecureStorage();
+
 
