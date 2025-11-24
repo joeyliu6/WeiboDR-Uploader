@@ -448,23 +448,22 @@ async function initializeUpload(): Promise<void> {
           console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
           
           // 获取R2上传选项
-          let uploadToR2 = uploadR2Toggle?.checked ?? false;
+          const uploadToR2 = uploadR2Toggle?.checked ?? false;
           
-          // 检查R2配置：如果用户勾选了R2上传但R2未配置，提示用户并自动取消勾选
+          // [强校验] 如果用户勾选了R2上传但R2配置不完整，直接终止上传流程
           if (uploadToR2) {
             const r2Validation = validateR2Config(config.r2 || {});
             if (!r2Validation.valid) {
               const missingFields = r2Validation.missingFields.join('、');
+              const errorMsg = `上传已终止：您勾选了"同时备份到 R2"，但 R2 配置不完整。\n缺少项：${missingFields}。\n请在设置中补全配置，或取消勾选 R2 备份。`;
+              console.error('[上传] R2 配置前置校验失败:', errorMsg);
               await showAlertModal(
-                `R2 配置不完整，缺少：${missingFields}。\n\n请先在设置中配置 R2，或取消勾选"同时备份到 Cloudflare R2"。`,
-                'R2 配置缺失'
+                errorMsg,
+                '上传已终止',
+                'error'
               );
-              // 自动取消勾选复选框
-              if (uploadR2Toggle) {
-                uploadR2Toggle.checked = false;
-              }
-              uploadToR2 = false;
-              console.log('[上传] R2 未配置，已自动取消勾选 R2 上传选项');
+              // 直接返回，不执行上传
+              return;
             }
           }
           

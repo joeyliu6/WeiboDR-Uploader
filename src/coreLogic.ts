@@ -801,9 +801,22 @@ export async function processUpload(
   onProgress: UploadProgressCallback
 ): Promise<{ status: 'success' | 'error'; link?: string; message?: string }> {
   try {
-    // 验证输入
+    // 1. 基础验证
     validateFilePath(filePath);
     validateUserConfig(config);
+
+    // 2. [新增] R2 配置前置强校验
+    // 如果用户要求备份到 R2，必须确保配置完整，否则连微博都不传
+    if (options.uploadToR2) {
+      const r2Validation = validateR2Config(config.r2 || {});
+      if (!r2Validation.valid) {
+        const missing = r2Validation.missingFields.join('、');
+        const errorMsg = `上传已终止：您勾选了"同时备份到 R2"，但 R2 配置不完整。\n缺少项：${missing}。\n请在设置中补全配置，或取消勾选 R2 备份。`;
+        console.error('[processUpload] R2 配置前置校验失败:', errorMsg);
+        onProgress({ type: 'error', payload: errorMsg });
+        return { status: 'error', message: errorMsg };
+      }
+    }
 
     // 读取文件
     // fileBytes 延迟读取
