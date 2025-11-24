@@ -130,6 +130,11 @@ const r2StatusMessageEl = getElement<HTMLElement>('r2-status-message', 'R2状态
 const testWebdavBtn = getElement<HTMLButtonElement>('test-webdav-btn', 'WebDAV测试按钮');
 const webdavStatusMessageEl = getElement<HTMLElement>('webdav-status-message', 'WebDAV状态消息');
 
+// Toast Elements
+const globalToastEl = getElement<HTMLElement>('global-toast', '全局Toast容器');
+const toastIconEl = getElement<HTMLElement>('toast-icon', 'Toast图标');
+const toastMessageEl = getElement<HTMLElement>('toast-message', 'Toast消息');
+
 // History View Elements
 const historyBody = getElement<HTMLElement>('history-body', '历史记录表格体');
 const clearHistoryBtn = getElement<HTMLButtonElement>('clear-history-btn', '清空历史按钮');
@@ -300,9 +305,8 @@ function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager'): v
       } else if (viewId === 'settings') {
         loadSettings().catch(err => {
           console.error('[导航] 加载设置失败:', err);
-          if (saveStatusEl) {
-            saveStatusEl.textContent = `❌ 加载失败: ${err instanceof Error ? err.message : String(err)}`;
-          }
+          const errorMsg = err instanceof Error ? err.message : String(err);
+          showToast(`加载设置失败: ${errorMsg}`, 'error', 3000);
         });
       } else if (viewId === 'r2-manager') {
         // [v2.6 优化] 检查脏标记，只在需要时刷新
@@ -722,9 +726,7 @@ async function loadSettings(): Promise<void> {
     } catch (error) {
       console.error('[设置] 读取配置失败，使用默认配置:', error);
       config = DEFAULT_CONFIG;
-      if (saveStatusEl) {
-        saveStatusEl.textContent = '⚠️ 读取配置失败，已使用默认值';
-      }
+      showToast('读取配置失败，已使用默认值', 'error', 3000);
     }
   
     // 填充表单元素（带空值检查）
@@ -757,16 +759,12 @@ async function loadSettings(): Promise<void> {
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
       console.error('[设置] 填充UI失败:', error);
-      if (saveStatusEl) {
-        saveStatusEl.textContent = `❌ 加载失败: ${errorMsg}`;
-      }
+      showToast(`加载失败: ${errorMsg}`, 'error', 3000);
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[设置] 加载设置失败:', error);
-    if (saveStatusEl) {
-      saveStatusEl.textContent = `❌ 加载失败: ${errorMsg}`;
-    }
+    showToast(`加载失败: ${errorMsg}`, 'error', 3000);
   }
 }
   
@@ -859,19 +857,64 @@ async function saveSettings(): Promise<void> {
 }
 
 /**
+ * 显示全局 Toast 通知
+ * @param message 消息内容
+ * @param type 类型: 'success' | 'error' | 'loading'
+ * @param duration 持续时间 (ms)，默认 2000ms，0 表示不自动隐藏
+ */
+let toastTimeout: ReturnType<typeof setTimeout> | null = null;
+
+function showToast(message: string, type: 'success' | 'error' | 'loading' = 'success', duration: number = 2000): void {
+  if (!globalToastEl || !toastIconEl || !toastMessageEl) {
+    console.warn('[Toast] Toast 元素不存在，无法显示通知');
+    return;
+  }
+
+  // 1. 清除上一次的定时器
+  if (toastTimeout) {
+    clearTimeout(toastTimeout);
+    toastTimeout = null;
+  }
+
+  // 2. 设置内容和图标
+  toastMessageEl.textContent = message;
+
+  let icon = '';
+  if (type === 'success') {
+    icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--success)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+  } else if (type === 'error') {
+    icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--error)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="15" y1="9" x2="9" y2="15"/><line x1="9" y1="9" x2="15" y2="15"/></svg>';
+  } else if (type === 'loading') {
+    icon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--warning)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="animation: spin 1s linear infinite;"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg>';
+  }
+
+  toastIconEl.innerHTML = icon;
+
+  // 3. 重置样式类
+  globalToastEl.className = 'app-toast show'; // 基础类 + 显示类
+  globalToastEl.classList.add(type); // 添加类型类 (success/error/loading)
+
+  // 4. 设置自动隐藏 (loading 状态通常不自动隐藏，由调用者手动更新)
+  if (type !== 'loading' && duration > 0) {
+    toastTimeout = setTimeout(() => {
+      if (globalToastEl) {
+        globalToastEl.classList.remove('show');
+      }
+    }, duration);
+  }
+}
+
+/**
  * 自动保存设置（无需手动点击保存按钮）
  * 在用户修改表单后自动触发
  */
 async function handleAutoSave(): Promise<void> {
   try {
     console.log('[自动保存] 触发自动保存...');
-    
-    // 显示保存状态
-    if (saveStatusEl) {
-      saveStatusEl.textContent = '保存中...';
-      saveStatusEl.style.color = 'orange';
-    }
-    
+
+    // 1. 显示保存中状态
+    showToast('正在保存设置...', 'loading', 0);
+
     // 从已保存的配置中读取输出格式，或使用默认值
     let savedConfig: UserConfig | null = null;
     try {
@@ -883,17 +926,9 @@ async function handleAutoSave(): Promise<void> {
   
     // 验证必填字段
     if (format === 'r2' && r2PublicDomainEl && !r2PublicDomainEl.value.trim()) {
-      const errorMsg = '⚠️ 当输出格式为 R2 时，公开访问域名不能为空！';
+      const errorMsg = '当输出格式为 R2 时，公开访问域名不能为空！';
       console.warn('[自动保存] 验证失败:', errorMsg);
-      if (saveStatusEl) {
-        saveStatusEl.textContent = errorMsg;
-        saveStatusEl.style.color = 'red';
-        setTimeout(() => {
-          if (saveStatusEl) {
-            saveStatusEl.textContent = '';
-          }
-        }, 3000);
-      }
+      showToast(errorMsg, 'error', 4000);
       return;
     }
   
@@ -923,33 +958,21 @@ async function handleAutoSave(): Promise<void> {
       await configStore.set('config', config);
       await configStore.save();
       console.log('[自动保存] ✓ 配置自动保存成功');
-      
-      if (saveStatusEl) {
-        saveStatusEl.textContent = '✓ 已自动保存';
-        saveStatusEl.style.color = 'lightgreen';
-        
-        setTimeout(() => {
-          if (saveStatusEl) {
-            saveStatusEl.textContent = '';
-          }
-        }, 2000);
-      }
+
+      // 3. 显示成功状态
+      showToast('设置已自动保存', 'success', 2000);
     } catch (saveError) {
       const errorMsg = saveError instanceof Error ? saveError.message : String(saveError);
       console.error('[自动保存] 保存配置失败:', saveError);
-      if (saveStatusEl) {
-        saveStatusEl.textContent = `✗ 保存失败: ${errorMsg}`;
-        saveStatusEl.style.color = 'red';
-      }
+
+      // 4. 显示失败状态
+      showToast(`保存失败: ${errorMsg}`, 'error', 4000);
       throw saveError;
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[自动保存] 自动保存失败:', error);
-    if (saveStatusEl) {
-      saveStatusEl.textContent = `✗ 保存失败: ${errorMsg}`;
-      saveStatusEl.style.color = 'red';
-    }
+    showToast(`自动保存失败: ${errorMsg}`, 'error', 4000);
   }
 }
 

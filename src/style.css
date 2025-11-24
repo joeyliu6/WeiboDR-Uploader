@@ -1510,6 +1510,72 @@ body, html {
   background-color: var(--error);
 }
 
+/* --- Global Toast Notification (右上角) --- */
+.app-toast {
+  position: fixed;
+  top: 50px; /* 避开 32px 的标题栏 */
+  right: 20px;
+  z-index: 9999; /* 确保在最顶层 */
+  
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  
+  padding: 10px 16px;
+  border-radius: 6px;
+  background-color: var(--bg-card); /* 使用卡片背景色 */
+  border: 1px solid var(--border-subtle);
+  color: var(--text-primary);
+  font-size: var(--text-sm);
+  font-weight: var(--weight-medium);
+  
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  backdrop-filter: blur(8px); /* 磨砂玻璃效果 */
+  -webkit-backdrop-filter: blur(8px);
+  
+  /* 动画状态 */
+  opacity: 0;
+  transform: translateY(-10px); /* 从上方滑入 */
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  pointer-events: none; /* 隐藏时不阻挡点击 */
+}
+
+/* 显示状态 */
+.app-toast.show {
+  opacity: 1;
+  transform: translateY(0);
+  pointer-events: auto;
+}
+
+/* 状态变体 */
+.app-toast.success {
+  border-left: 3px solid var(--success);
+}
+
+.app-toast.error {
+  border-left: 3px solid var(--error);
+}
+
+.app-toast.loading {
+  border-left: 3px solid var(--warning);
+}
+
+/* Toast 图标容器 */
+.app-toast #toast-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+}
+
+/* Toast 消息文本 */
+.app-toast #toast-message {
+  flex: 1;
+  white-space: nowrap;
+}
+
 .r2-empty-message {
   grid-column: 1 / -1;
   text-align: center;
