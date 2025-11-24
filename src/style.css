@@ -781,6 +781,19 @@ body, html {
   animation: status-message-fade-in 0.3s ease-out;
 }
 
+/* 当状态消息为空时隐藏（避免显示空框） */
+#save-status:empty, 
+#cookie-status:empty,
+#r2-status-message:empty,
+#webdav-status-message:empty,
+#history-view #status-message:empty {
+  display: none;
+  padding: 0;
+  margin: 0;
+  border: none;
+  background: transparent;
+}
+
 /* 状态消息淡入动画 */
 @keyframes status-message-fade-in {
   from {

@@ -14,6 +14,8 @@ import { WebviewWindow, appWindow } from '@tauri-apps/api/window';
 import { UploadQueueManager } from './uploadQueue';
 import { R2Manager } from './r2-manager';
 import { showConfirmModal, showAlertModal } from './ui/modal';
+import { createApp } from 'vue';
+import BackupView from './components/BackupView.vue';
 
 // --- GLOBAL ERROR HANDLERS ---
 window.addEventListener('error', (event) => {
@@ -95,14 +97,16 @@ const uploadView = getElement<HTMLElement>('upload-view', '上传视图');
 const historyView = getElement<HTMLElement>('history-view', '历史视图');
 const settingsView = getElement<HTMLElement>('settings-view', '设置视图');
 const r2ManagerView = getElement<HTMLElement>('r2-manager-view', 'R2管理视图');
-const views = [uploadView, historyView, settingsView, r2ManagerView].filter((v): v is HTMLElement => v !== null);
+const backupView = getElement<HTMLElement>('backup-view', '备份视图');
+const views = [uploadView, historyView, settingsView, r2ManagerView, backupView].filter((v): v is HTMLElement => v !== null);
 
 // Navigation
 const navUploadBtn = getElement<HTMLButtonElement>('nav-upload', '上传导航按钮');
 const navHistoryBtn = getElement<HTMLButtonElement>('nav-history', '历史导航按钮');
 const navR2ManagerBtn = getElement<HTMLButtonElement>('nav-r2-manager', 'R2管理导航按钮');
+const navBackupBtn = getElement<HTMLButtonElement>('nav-backup', '备份导航按钮');
 const navSettingsBtn = getElement<HTMLButtonElement>('nav-settings', '设置导航按钮');
-const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
+const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navBackupBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
 
 // Upload View Elements
 const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
@@ -138,8 +142,6 @@ const toastMessageEl = getElement<HTMLElement>('toast-message', 'Toast消息');
 // History View Elements
 const historyBody = getElement<HTMLElement>('history-body', '历史记录表格体');
 const clearHistoryBtn = getElement<HTMLButtonElement>('clear-history-btn', '清空历史按钮');
-const exportJsonBtn = getElement<HTMLButtonElement>('export-json-btn', '导出JSON按钮');
-const syncWebdavBtn = getElement<HTMLButtonElement>('sync-webdav-btn', '同步WebDAV按钮');
 const searchInput = getElement<HTMLInputElement>('search-input', '搜索输入框');
 const historyStatusMessageEl = queryElement<HTMLElement>('#history-view #status-message', '历史状态消息');
 
@@ -248,9 +250,9 @@ async function processUploadQueue(
 // --- VIEW ROUTING ---
 /**
  * 导航到指定视图
- * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'failed')
+ * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'r2-manager' | 'backup')
  */
-function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager'): void {
+function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager' | 'backup'): void {
   try {
     // Deactivate all views and buttons
     views.forEach(v => {
@@ -864,7 +866,7 @@ async function saveSettings(): Promise<void> {
  */
 let toastTimeout: ReturnType<typeof setTimeout> | null = null;
 
-function showToast(message: string, type: 'success' | 'error' | 'loading' = 'success', duration: number = 2000): void {
+export function showToast(message: string, type: 'success' | 'error' | 'loading' = 'success', duration: number = 2000): void {
   if (!globalToastEl || !toastIconEl || !toastMessageEl) {
     console.warn('[Toast] Toast 元素不存在，无法显示通知');
     return;
@@ -903,6 +905,9 @@ function showToast(message: string, type: 'success' | 'error' | 'loading' = 'suc
     }, duration);
   }
 }
+
+// 将 showToast 挂载到 window 对象，供 Vue 组件使用
+(window as any).showToast = showToast;
 
 /**
  * 自动保存设置（无需手动点击保存按钮）
@@ -1668,6 +1673,12 @@ function initialize(): void {
       console.warn('[初始化] 警告: R2管理导航按钮不存在');
     }
     
+    if (navBackupBtn) {
+      navBackupBtn.addEventListener('click', () => navigateTo('backup'));
+    } else {
+      console.warn('[初始化] 警告: 备份导航按钮不存在');
+    }
+    
     if (navSettingsBtn) {
       navSettingsBtn.addEventListener('click', () => navigateTo('settings'));
     } else {
@@ -1757,25 +1768,7 @@ function initialize(): void {
       console.warn('[初始化] 警告: 清空历史按钮不存在');
     }
     
-    if (exportJsonBtn) {
-      exportJsonBtn.addEventListener('click', () => {
-        exportToJson().catch(err => {
-          console.error('[初始化] 导出JSON失败:', err);
-        });
-      });
-    } else {
-      console.warn('[初始化] 警告: 导出JSON按钮不存在');
-    }
-    
-    if (syncWebdavBtn) {
-      syncWebdavBtn.addEventListener('click', () => {
-        syncToWebDAV().catch(err => {
-          console.error('[初始化] 同步WebDAV失败:', err);
-        });
-      });
-    } else {
-      console.warn('[初始化] 警告: 同步WebDAV按钮不存在');
-    }
+    // 导出和同步功能已移至备份视图，这里不再绑定事件
     
     if (searchInput) {
       searchInput.addEventListener('input', () => {
@@ -1815,6 +1808,19 @@ function initialize(): void {
     
     // 初始化自定义标题栏
     initTitleBar();
+
+    // 初始化备份视图 Vue 组件
+    if (backupView) {
+      try {
+        const backupApp = createApp(BackupView);
+        backupApp.mount(backupView);
+        console.log('[初始化] ✓ 备份视图 Vue 组件已挂载');
+      } catch (error) {
+        console.error('[初始化] 挂载备份视图失败:', error);
+      }
+    } else {
+      console.warn('[初始化] 警告: 备份视图元素不存在');
+    }
 
     console.log('[初始化] ✓ 应用初始化完成');
   } catch (error) {
