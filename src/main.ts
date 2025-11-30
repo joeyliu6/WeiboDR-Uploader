@@ -6,6 +6,10 @@ import { dialog } from '@tauri-apps/api';
 import { Store } from './store';
 import { UserConfig, HistoryItem, DEFAULT_CONFIG } from './config';
 import { processUpload, validateR2Config } from './coreLogic';
+
+// 新架构导入
+import { initializeUploaders } from './uploaders';
+import { UploadOrchestrator } from './core';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { save } from '@tauri-apps/api/dialog';
 import { writeTextFile } from '@tauri-apps/api/fs';
@@ -1653,6 +1657,14 @@ async function syncToWebDAV() {
 function initialize(): void {
   try {
     console.log('[初始化] 开始初始化应用...');
+
+    // 初始化上传器（注册微博、R2 等）
+    try {
+      initializeUploaders();
+      console.log('[初始化] 上传器已注册');
+    } catch (error) {
+      console.error('[初始化] 上传器注册失败:', error);
+    }
     
     // Bind navigation events (带空值检查)
     if (navUploadBtn) {

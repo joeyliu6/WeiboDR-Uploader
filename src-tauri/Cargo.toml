@@ -29,6 +29,10 @@ tokio-util = { version = "0.7.17", features = ["codec"] }
 futures = "0.3"
 keyring = "2"
 rand = "0.8"
+aws-config = { version = "1.0", features = ["behavior-version-latest"] }
+aws-sdk-s3 = "1.0"
+aws-smithy-types = "1.0"
+mime_guess = "2.0"
 
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.39", features = ["Win32_System_Com"] }

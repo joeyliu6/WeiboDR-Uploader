@@ -1,14 +1,13 @@
 // src-tauri/src/commands/r2.rs
 // Cloudflare R2 上传命令
-//
-// 注意：需要在 Cargo.toml 中添加以下依赖：
-// aws-config = { version = "1.0", features = ["behavior-version-latest"] }
-// aws-sdk-s3 = "1.0"
-// aws-smithy-types = "1.0"
 
-use tauri::{Window, Manager};
+use tauri::Window;
 use serde::{Serialize, Deserialize};
 use std::path::Path;
+use aws_sdk_s3::{Client, Config, primitives::ByteStream};
+use aws_sdk_s3::config::{Credentials, Region};
+use tokio::fs::File;
+use tokio::io::AsyncReadExt;
 
 #[derive(Serialize, Deserialize)]
 pub struct R2UploadResult {
@@ -16,7 +15,7 @@ pub struct R2UploadResult {
     size: u64,
 }
 
-#[derive(Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProgressPayload {
     id: String,
     progress: u64,
@@ -62,53 +61,92 @@ pub async fn upload_to_r2(
     println!("[R2] 文件大小: {} bytes", file_size);
 
     // 3. 发送初始进度
-    let _ = window.emit("upload://progress", ProgressPayload {
-        id: id.clone(),
-        progress: 0,
-        total: file_size,
-    });
+    emit_progress(&window, &id, 0, file_size);
 
-    // TODO: 实现 AWS SDK S3 上传
-    // 由于当前 Cargo.toml 没有 AWS SDK 依赖，这里是伪代码
-    //
-    // 需要完成的步骤：
-    // 1. 添加 AWS SDK 依赖到 Cargo.toml
-    // 2. 构建 S3 客户端：
-    //    let endpoint = format!("https://{}.r2.cloudflarestorage.com", account_id);
-    //    let credentials = Credentials::new(&access_key_id, &secret_access_key, None, None, "r2");
-    //    let config = aws_sdk_s3::Config::builder()
-    //        .endpoint_url(&endpoint)
-    //        .credentials_provider(credentials)
-    //        .region(Region::new("auto"))
-    //        .build();
-    //    let client = aws_sdk_s3::Client::from_conf(config);
-    //
-    // 3. 读取文件并上传：
-    //    let body = ByteStream::from_path(&path).await?;
-    //    let result = client.put_object()
-    //        .bucket(&bucket_name)
-    //        .key(&key)
-    //        .body(body)
-    //        .send()
-    //        .await?;
-    //
-    // 4. 实现进度监听（需要自定义 ByteStream wrapper）
-    //
-    // 5. 发送进度事件到前端
+    // 4. 构建 S3 客户端
+    let endpoint = format!("https://{}.r2.cloudflarestorage.com", account_id);
+    println!("[R2] 端点: {}", endpoint);
 
-    // 临时返回（等待 AWS SDK 集成）
-    Err("R2 上传功能需要添加 AWS SDK 依赖后才能使用。请在 Cargo.toml 中添加 aws-config 和 aws-sdk-s3".to_string())
+    let credentials = Credentials::new(
+        &access_key_id,
+        &secret_access_key,
+        None,
+        None,
+        "r2"
+    );
 
-    // 以下是完整实现后应该返回的结果：
-    /*
+    let config = Config::builder()
+        .endpoint_url(&endpoint)
+        .credentials_provider(credentials)
+        .region(Region::new("auto"))
+        .build();
+
+    let client = Client::from_conf(config);
+
+    // 5. 检测 MIME 类型
+    let content_type = mime_guess::from_path(&path)
+        .first_or_octet_stream()
+        .to_string();
+
+    println!("[R2] Content-Type: {}", content_type);
+
+    // 6. 读取文件
+    let mut file = File::open(&path)
+        .await
+        .map_err(|e| format!("打开文件失败: {}", e))?;
+
+    let mut buffer = Vec::new();
+    file.read_to_end(&mut buffer)
+        .await
+        .map_err(|e| format!("读取文件失败: {}", e))?;
+
+    // 发送 50% 进度（文件已读取）
+    emit_progress(&window, &id, file_size / 2, file_size);
+
+    // 7. 创建 ByteStream
+    let body = ByteStream::from(buffer);
+
+    // 8. 上传到 R2
+    println!("[R2] 开始上传到存储桶: {}", bucket_name);
+
+    let result = client
+        .put_object()
+        .bucket(&bucket_name)
+        .key(&key)
+        .body(body)
+        .content_type(&content_type)
+        .send()
+        .await
+        .map_err(|e| {
+            let error_msg = format!("R2 上传失败: {}", e);
+            println!("[R2] 错误: {}", error_msg);
+
+            // 转换为更友好的错误提示
+            if error_msg.contains("NoSuchBucket") {
+                return format!("R2 存储桶不存在: {}", bucket_name);
+            } else if error_msg.contains("AccessDenied") || error_msg.contains("InvalidAccessKeyId") {
+                return "R2 认证失败: 请检查 Account ID、Access Key ID 和 Secret Access Key".to_string();
+            } else if error_msg.contains("SignatureDoesNotMatch") {
+                return "R2 签名错误: 请检查 Secret Access Key 是否正确".to_string();
+            } else if error_msg.contains("timeout") {
+                return "R2 上传超时: 网络连接不稳定，请重试".to_string();
+            }
+
+            error_msg
+        })?;
+
+    // 9. 发送完成进度
+    emit_progress(&window, &id, file_size, file_size);
+
+    println!("[R2] 上传成功！ETag: {:?}", result.e_tag());
+
     Ok(R2UploadResult {
         e_tag: result.e_tag().map(|s| s.to_string()),
         size: file_size,
     })
-    */
 }
 
-// 辅助函数：发送进度事件
+/// 辅助函数：发送进度事件
 fn emit_progress(window: &Window, id: &str, progress: u64, total: u64) {
     let _ = window.emit("upload://progress", ProgressPayload {
         id: id.to_string(),
