@@ -108,6 +108,7 @@ fn main() {
             list_r2_objects,
             delete_r2_object,
             commands::upload::upload_file_stream,
+            commands::r2::upload_to_r2,
             get_or_create_secure_key
         ])
         .menu(menu)                          // 3. 添加原生菜单栏
