@@ -160,7 +160,10 @@ if (startLoginBtn) {
           serviceId: serviceId,
           targetDomain: provider.domains[0],
           requiredFields: provider.cookieValidation?.requiredFields || [],
-          anyOfFields: provider.cookieValidation?.anyOfFields || []
+          anyOfFields: provider.cookieValidation?.anyOfFields || [],
+          // 新增：传递延迟配置（可选）
+          initialDelayMs: provider.cookieValidation?.monitoringDelay?.initialDelayMs,
+          pollingIntervalMs: provider.cookieValidation?.monitoringDelay?.pollingIntervalMs
         });
         console.log(`[自动登录] ✓ 已启动 ${provider.name} Cookie监控`);
       } catch (error) {

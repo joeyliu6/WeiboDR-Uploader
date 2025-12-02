@@ -11,6 +11,13 @@ export interface CookieValidation {
   requiredFields?: string[];
   /** 至少包含其中一个字段 */
   anyOfFields?: string[];
+  /** Cookie 监控延迟配置（可选，不提供则使用后端默认值） */
+  monitoringDelay?: {
+    /** 初始延迟（毫秒），页面加载后等待多久开始第一次检查 */
+    initialDelayMs?: number;
+    /** 轮询间隔（毫秒），每次检查之间的等待时间 */
+    pollingIntervalMs?: number;
+  };
 }
 
 /**
@@ -48,7 +55,11 @@ export const COOKIE_PROVIDERS: Record<string, CookieProvider> = {
     loginUrl: 'https://m.weibo.cn/',
     domains: ['weibo.com', 'm.weibo.cn'],
     cookieValidation: {
-      requiredFields: ['SUB', 'SUBP']  // 微博登录成功必须有这两个字段
+      requiredFields: ['SUB', 'SUBP'],  // 微博登录成功必须有这两个字段
+      monitoringDelay: {
+        initialDelayMs: 2000,      // 2秒初始延迟（快速响应）
+        pollingIntervalMs: 500     // 0.5秒轮询（高频检测）
+      }
     },
     description: '登录微博账号获取 Cookie',
     icon: '📝'
@@ -60,7 +71,11 @@ export const COOKIE_PROVIDERS: Record<string, CookieProvider> = {
     domains: ['www.nowcoder.com', 'nowcoder.com'],  // www 在前，因为登录页面在 www 子域
     cookieValidation: {
       requiredFields: ['t', 'csrfToken'],  // 必须有登录Token和CSRF令牌
-      anyOfFields: ['acw_tc', 'SERVERID', '__snaker__id', 'gdxidpyhxdE']  // 至少包含一个安全验证字段
+      anyOfFields: ['acw_tc', 'SERVERID', '__snaker__id', 'gdxidpyhxdE'],  // 至少包含一个安全验证字段
+      monitoringDelay: {
+        initialDelayMs: 3000,      // 3秒初始延迟（等待安全令牌）
+        pollingIntervalMs: 1000    // 1秒轮询（平衡性能）
+      }
     },
     description: '登录牛客账号获取 Cookie',
     icon: '📚'

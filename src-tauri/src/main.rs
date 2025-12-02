@@ -358,29 +358,58 @@ async fn start_cookie_monitoring(
     target_domain: Option<String>,        // 目标域名（可选）
     required_fields: Option<Vec<String>>, // 必须的 Cookie 字段（可选，AND 逻辑）
     any_of_fields: Option<Vec<String>>,   // 任意字段（可选，OR 逻辑）
+    initial_delay_ms: Option<u64>,        // 新增：初始延迟（毫秒，可选）
+    polling_interval_ms: Option<u64>,     // 新增：轮询间隔（毫秒，可选）
 ) -> Result<(), String> {
+    // 默认延迟配置（毫秒）
+    const DEFAULT_INITIAL_DELAY_MS: u64 = 3000;     // 默认初始延迟 3 秒
+    const DEFAULT_POLLING_INTERVAL_MS: u64 = 1000;  // 默认轮询间隔 1 秒
+    const MIN_INITIAL_DELAY_MS: u64 = 500;          // 最小初始延迟 0.5 秒（安全保护）
+    const MAX_INITIAL_DELAY_MS: u64 = 10000;        // 最大初始延迟 10 秒（避免等待过久）
+    const MIN_POLLING_INTERVAL_MS: u64 = 200;       // 最小轮询间隔 0.2 秒（避免过于频繁）
+    const MAX_POLLING_INTERVAL_MS: u64 = 5000;      // 最大轮询间隔 5 秒（避免检测过慢）
+
     let service = service_id.unwrap_or_else(|| "weibo".to_string());
     let domain = target_domain.unwrap_or_else(|| "weibo.com".to_string());
     let fields = required_fields.unwrap_or_else(|| vec!["SUB".to_string(), "SUBP".to_string()]);
     let any_fields = any_of_fields.unwrap_or_default();
 
-    eprintln!("[Cookie监控] 开始监控 {} 的Cookie (域名: {}, 必要字段: {:?}, 任意字段: {:?})",
-        service, domain, fields, any_fields);
+    // 应用延迟配置（带边界保护）
+    let initial_delay = initial_delay_ms
+        .unwrap_or(DEFAULT_INITIAL_DELAY_MS)
+        .clamp(MIN_INITIAL_DELAY_MS, MAX_INITIAL_DELAY_MS);
+
+    let polling_interval = polling_interval_ms
+        .unwrap_or(DEFAULT_POLLING_INTERVAL_MS)
+        .clamp(MIN_POLLING_INTERVAL_MS, MAX_POLLING_INTERVAL_MS);
+
+    eprintln!(
+        "[Cookie监控] 开始监控 {} 的Cookie (域名: {}, 必要字段: {:?}, 任意字段: {:?}, 初始延迟: {}ms, 轮询间隔: {}ms)",
+        service, domain, fields, any_fields, initial_delay, polling_interval
+    );
 
     let app_handle = app.clone();
 
     // 在新线程中运行监控
     std::thread::spawn(move || {
-        // 初始延迟 5 秒，等待页面加载完成
+        // 初始延迟，等待页面加载完成
         // 避免在页面加载时就获取到未登录的 Cookie
-        eprintln!("[Cookie监控] 等待 5 秒后开始检测...");
-        std::thread::sleep(Duration::from_secs(5));
+        eprintln!("[Cookie监控] 等待 {}ms 后开始检测...", initial_delay);
+        std::thread::sleep(Duration::from_millis(initial_delay));
 
         let mut check_count = 0;
-        let max_checks = 120; // 最多检查120次（4分钟）
+        // 动态计算最大检查次数，确保总时长约 4 分钟（240 秒）
+        let max_timeout_ms = 240000u64; // 4 分钟总超时
+        let max_checks = ((max_timeout_ms.saturating_sub(initial_delay)) / polling_interval).max(10) as i32;
+
+        eprintln!(
+            "[Cookie监控] 最大检查次数: {} (预计总时长: {}ms)",
+            max_checks,
+            initial_delay + (max_checks as u64 * polling_interval)
+        );
 
         while check_count < max_checks {
-            std::thread::sleep(Duration::from_secs(2));
+            std::thread::sleep(Duration::from_millis(polling_interval));
             check_count += 1;
 
             eprintln!("[Cookie监控] 第 {}/{} 次检查 (服务: {})", check_count, max_checks, service);
