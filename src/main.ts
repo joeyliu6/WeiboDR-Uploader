@@ -120,7 +120,8 @@ const serviceCheckboxes = {
   weibo: document.querySelector<HTMLInputElement>('input[data-service="weibo"]'),
   r2: document.querySelector<HTMLInputElement>('input[data-service="r2"]'),
   tcl: document.querySelector<HTMLInputElement>('input[data-service="tcl"]'),
-  jd: document.querySelector<HTMLInputElement>('input[data-service="jd"]')
+  jd: document.querySelector<HTMLInputElement>('input[data-service="jd"]'),
+  nowcoder: document.querySelector<HTMLInputElement>('input[data-service="nowcoder"]')
 };
 
 // Settings View Elements
@@ -138,6 +139,7 @@ const webdavUrlEl = getElement<HTMLInputElement>('webdav-url', 'WebDAV URL输入
 const webdavUsernameEl = getElement<HTMLInputElement>('webdav-username', 'WebDAV用户名输入框');
 const webdavPasswordEl = getElement<HTMLInputElement>('webdav-password', 'WebDAV密码输入框');
 const webdavRemotePathEl = getElement<HTMLInputElement>('webdav-remote-path', 'WebDAV远程路径输入框');
+const nowcoderCookieEl = document.querySelector<HTMLTextAreaElement>('#nowcoder-cookie');
 const saveStatusEl = getElement<HTMLElement>('save-status', '保存状态');
 const loginWithWebviewBtn = getElement<HTMLButtonElement>('login-with-webview-btn', 'WebView登录按钮');
 const testR2Btn = getElement<HTMLButtonElement>('test-r2-btn', 'R2测试按钮');
@@ -527,6 +529,7 @@ async function initializeUpload(): Promise<void> {
           if (serviceCheckboxes.r2?.checked) enabledServices.push('r2');
           if (serviceCheckboxes.tcl?.checked) enabledServices.push('tcl');
           if (serviceCheckboxes.jd?.checked) enabledServices.push('jd');
+          if (serviceCheckboxes.nowcoder?.checked) enabledServices.push('nowcoder');
 
           if (enabledServices.length === 0) {
             console.warn('[上传] 没有勾选任何图床');
@@ -818,6 +821,7 @@ async function loadSettings(): Promise<void> {
       if (r2BucketEl) r2BucketEl.value = config.services?.r2?.bucketName || '';
       if (r2PathEl) r2PathEl.value = config.services?.r2?.path || '';
       if (r2PublicDomainEl) r2PublicDomainEl.value = config.services?.r2?.publicDomain || '';
+      if (nowcoderCookieEl) nowcoderCookieEl.value = config.services?.nowcoder?.cookie || '';
       if (baiduPrefixEl) baiduPrefixEl.value = config.baiduPrefix || DEFAULT_CONFIG.baiduPrefix || 'https://image.baidu.com/search/down?thumburl=';
       
       // WebDAV 配置
@@ -1042,6 +1046,13 @@ async function handleAutoSave(): Promise<void> {
         },
         tcl: {
           enabled: enabledServices.includes('tcl')
+        },
+        jd: {
+          enabled: enabledServices.includes('jd')
+        },
+        nowcoder: {
+          enabled: enabledServices.includes('nowcoder'),
+          cookie: nowcoderCookieEl?.value.trim() || ''
         }
       },
       outputFormat: savedConfig?.outputFormat || DEFAULT_CONFIG.outputFormat,
@@ -1054,7 +1065,11 @@ async function handleAutoSave(): Promise<void> {
       await configStore.save();
       console.log('[自动保存] ✓ 配置自动保存成功');
 
-      // 3. 显示成功状态
+      // 3. 刷新上传界面的服务复选框状态
+      await loadServiceCheckboxStates();
+      console.log('[自动保存] ✓ 服务复选框状态已刷新');
+
+      // 4. 显示成功状态
       showToast('设置已自动保存', 'success', 2000);
     } catch (saveError) {
       const errorMsg = saveError instanceof Error ? saveError.message : String(saveError);
@@ -2146,6 +2161,14 @@ async function loadServiceCheckboxStates(): Promise<void> {
       serviceCheckboxes.tcl.checked = enabledServices.includes('tcl');
       // TCL always ready
     }
+    if (serviceCheckboxes.jd) {
+      serviceCheckboxes.jd.checked = enabledServices.includes('jd');
+      // JD always ready
+    }
+    if (serviceCheckboxes.nowcoder) {
+      serviceCheckboxes.nowcoder.checked = enabledServices.includes('nowcoder');
+      updateServiceStatus('nowcoder', config);
+    }
 
     console.log('[服务复选框] 已加载状态:', enabledServices);
   } catch (error) {
@@ -2187,13 +2210,21 @@ function updateServiceStatus(serviceId: ServiceType, config: UserConfig): void {
   } else if (serviceId === 'tcl') {
     statusEl.className = 'service-config-status ready';
     statusText = '开箱即用';
+  } else if (serviceId === 'jd') {
+    statusEl.className = 'service-config-status ready';
+    statusText = '开箱即用';
+  } else if (serviceId === 'nowcoder') {
+    const nowcoderConfig = config.services.nowcoder;
+    isConfigured = !!nowcoderConfig?.cookie && nowcoderConfig.cookie.trim().length > 0;
+    statusText = isConfigured ? '已配置' : '未配置';
+    statusEl.className = `service-config-status ${isConfigured ? 'ready' : 'not-ready'}`;
   }
 
   statusEl.textContent = statusText;
 
-  // 如果未配置，禁用复选框
+  // 如果未配置，禁用复选框（TCL 和 JD 是开箱即用，不需要禁用）
   const checkbox = serviceCheckboxes[serviceId as keyof typeof serviceCheckboxes];
-  if (checkbox && serviceId !== 'tcl') {
+  if (checkbox && serviceId !== 'tcl' && serviceId !== 'jd') {
     if (!isConfigured) {
       checkbox.disabled = true;
       checkbox.checked = false;
@@ -2290,7 +2321,8 @@ function initialize(): void {
       webdavUrlEl,
       webdavUsernameEl,
       webdavPasswordEl,
-      webdavRemotePathEl
+      webdavRemotePathEl,
+      nowcoderCookieEl
     ];
     
     settingsInputs.forEach(input => {

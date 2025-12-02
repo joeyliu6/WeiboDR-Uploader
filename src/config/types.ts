@@ -195,6 +195,10 @@ export const DEFAULT_CONFIG: UserConfig = {
     },
     jd: {
       enabled: true  // 京东图床默认启用，无需额外配置
+    },
+    nowcoder: {
+      enabled: false,  // 牛客图床需要 Cookie，默认不启用
+      cookie: ''
     }
   },
   outputFormat: 'baidu-proxy',

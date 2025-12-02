@@ -249,6 +249,16 @@ export class MultiServiceUploader {
         return true;
       }
 
+      if (serviceId === 'nowcoder') {
+        const nowcoderConfig = serviceConfig as any;
+        if (!nowcoderConfig.cookie || nowcoderConfig.cookie.trim().length === 0) {
+          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
+          return false;
+        }
+        // 如果 cookie 存在，认为已配置
+        return true;
+      }
+
       if (serviceId === 'r2') {
         const r2Config = serviceConfig as any;
         if (

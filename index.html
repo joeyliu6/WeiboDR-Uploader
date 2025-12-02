@@ -108,6 +108,12 @@
                   <span class="service-name">京东图床</span>
                   <span class="service-config-status ready" data-service="jd">开箱即用</span>
                 </label>
+                <label class="service-checkbox">
+                  <input type="checkbox" data-service="nowcoder" />
+                  <span class="service-icon">📚</span>
+                  <span class="service-name">牛客图床</span>
+                  <span class="service-config-status" data-service="nowcoder"></span>
+                </label>
               </div>
             </div>
             
@@ -253,6 +259,23 @@
                 <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px;">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
                     注意：京东为第三方免费服务，稳定性无保障
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>牛客图床</h2>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：牛客为第三方服务，需要 Cookie 认证，稳定性无保障
+                </p>
+                <label for="nowcoder-cookie">牛客 Cookie</label>
+                <textarea id="nowcoder-cookie" rows="4" placeholder="请输入牛客网 Cookie...&#10;需要包含 NOWCODERUID 和 t 字段"></textarea>
+                <p class="hint" style="font-size: 0.85em; color: var(--text-secondary); margin-top: 5px;">
+                    💡 提示：登录 nowcoder.com 后，在浏览器开发者工具 (F12) → Network → 任意请求 → Headers → Cookie 中复制
                 </p>
             </div>
 

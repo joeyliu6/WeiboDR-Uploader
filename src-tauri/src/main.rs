@@ -111,6 +111,7 @@ fn main() {
             commands::r2::upload_to_r2,
             commands::tcl::upload_to_tcl,
             commands::jd::upload_to_jd,
+            commands::nowcoder::upload_to_nowcoder,
             commands::utils::file_exists,
             get_or_create_secure_key
         ])

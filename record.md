@@ -1600,6 +1600,359 @@ if (serviceId === 'tcl' || serviceId === 'jd') {
 
 ---
 
+## ✅ 阶段十一: 牛客图床支持 (2025-12-02 完成)
+
+**修改文件**:
+- `src-tauri/src/commands/nowcoder.rs` (新建) - Rust 后端上传命令
+- `src-tauri/src/commands/mod.rs` - 注册 nowcoder 模块
+- `src-tauri/src/main.rs` - 注册 `upload_to_nowcoder` 命令
+- `src/uploaders/nowcoder/NowcoderUploader.ts` (新建) - 前端上传器
+- `src/uploaders/nowcoder/index.ts` (新建) - 导出文件
+- `src/uploaders/index.ts` - 注册牛客上传器到工厂
+- `src/config/types.ts` - 确认 NowcoderServiceConfig 类型、更新 DEFAULT_CONFIG
+- `index.html` - 添加牛客复选框和设置说明
+- `src/main.ts` - 添加 nowcoder 到 serviceCheckboxes、设置自动保存
+- `src/core/MultiServiceUploader.ts` - 添加 nowcoder 到 Cookie 验证逻辑
+
+### 11.1 牛客 API 特性
+
+**核心特点**:
+- ⚠️ **需要 Cookie**: 与微博类似，需要用户登录获取 Cookie
+- ✅ **单步上传流程**: 直接 POST 上传图片
+- ✅ **HTTPS 图片域名**: 返回的 URL 自动为 HTTPS
+
+**API 端点**:
+```
+POST https://www.nowcoder.com/uploadImage?type=1&_={timestamp}
+
+Headers:
+- Cookie: (用户登录后的 Cookie)
+- Referer: https://www.nowcoder.com/creation/write/article
+- Origin: https://www.nowcoder.com
+- User-Agent: Mozilla/5.0 ...
+
+Body: multipart/form-data
+- image: (文件)
+
+Response:
+{
+    "code": 0,
+    "msg": "OK",
+    "url": "https://uploadfiles.nowcoder.com/..."
+}
+```
+
+### 11.2 Rust 后端实现
+
+**文件**: `src-tauri/src/commands/nowcoder.rs`
+
+```rust
+#[derive(Debug, Serialize)]
+pub struct NowcoderUploadResult {
+    pub url: String,
+    pub size: u64,
+}
+
+#[derive(Debug, Deserialize)]
+struct NowcoderApiResponse {
+    code: i32,       // 0 表示成功
+    msg: String,     // "OK"
+    url: String,     // 图片 URL
+}
+
+#[tauri::command]
+pub async fn upload_to_nowcoder(
+    window: Window,
+    id: String,
+    file_path: String,
+    nowcoder_cookie: String,
+) -> Result<NowcoderUploadResult, String> {
+    // 1. 读取文件并验证类型
+    let file_data = tokio::fs::read(&file_path).await?;
+    let file_name = Path::new(&file_path).file_name()...;
+    let extension = Path::new(&file_path).extension()...;
+
+    // 验证文件类型
+    let allowed_extensions = ["jpg", "jpeg", "png", "gif", "webp"];
+    if !allowed_extensions.contains(&ext_lower.as_str()) {
+        return Err("不支持的文件格式".to_string());
+    }
+
+    // 2. 构建带时间戳的 URL
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)?
+        .as_millis();
+    let url = format!(
+        "https://www.nowcoder.com/uploadImage?type=1&_={}",
+        timestamp
+    );
+
+    // 3. 构建 multipart 表单
+    let form = Form::new()
+        .part("image", Part::bytes(file_data.clone())
+            .file_name(file_name)
+            .mime_str(&mime_type)?);
+
+    // 4. 发送请求（设置必要的 Headers）
+    let client = Client::builder()
+        .danger_accept_invalid_certs(true)
+        .build()?;
+
+    let response = client
+        .post(&url)
+        .header("Cookie", nowcoder_cookie)
+        .header("Referer", "https://www.nowcoder.com/creation/write/article")
+        .header("Origin", "https://www.nowcoder.com")
+        .header("User-Agent", "Mozilla/5.0 ...")
+        .multipart(form)
+        .send().await?;
+
+    // 5. 解析响应
+    let nowcoder_response: NowcoderApiResponse = response.json().await?;
+
+    if nowcoder_response.code != 0 {
+        return Err(format!("牛客 API 错误: {}", nowcoder_response.msg));
+    }
+
+    // 6. 确保返回 HTTPS URL
+    let final_url = if nowcoder_response.url.starts_with("http://") {
+        nowcoder_response.url.replacen("http://", "https://", 1)
+    } else {
+        nowcoder_response.url
+    };
+
+    Ok(NowcoderUploadResult {
+        url: final_url,
+        size: file_data.len() as u64,
+    })
+}
+```
+
+### 11.3 前端上传器
+
+**文件**: `src/uploaders/nowcoder/NowcoderUploader.ts`
+
+```typescript
+import { BaseUploader } from '../base/BaseUploader';
+import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
+import { NowcoderServiceConfig } from '../../config/types';
+
+interface NowcoderRustResult {
+  url: string;
+  size: number;
+}
+
+export class NowcoderUploader extends BaseUploader {
+  readonly serviceId = 'nowcoder';
+  readonly serviceName = '牛客图床';
+
+  protected getRustCommand(): string {
+    return 'upload_to_nowcoder';
+  }
+
+  async validateConfig(config: any): Promise<ValidationResult> {
+    const nowcoderConfig = config as NowcoderServiceConfig;
+
+    if (!nowcoderConfig.cookie || this.isEmpty(nowcoderConfig.cookie)) {
+      return {
+        valid: false,
+        missingFields: ['Cookie'],
+        errors: ['请先在设置中配置牛客 Cookie']
+      };
+    }
+
+    return { valid: true };
+  }
+
+  async upload(
+    filePath: string,
+    options: UploadOptions,
+    onProgress?: ProgressCallback
+  ): Promise<UploadResult> {
+    const config = options.config as NowcoderServiceConfig;
+
+    const rustResult = await this.uploadViaRust(
+      filePath,
+      { nowcoderCookie: config.cookie },
+      onProgress
+    ) as NowcoderRustResult;
+
+    return {
+      serviceId: 'nowcoder',
+      fileKey: rustResult.url,
+      url: rustResult.url,
+      size: rustResult.size
+    };
+  }
+}
+```
+
+### 11.4 配置类型
+
+**文件**: `src/config/types.ts`
+
+类型定义已存在，确认正确：
+```typescript
+export type ServiceType = 'weibo' | 'r2' | 'nami' | 'jd' | 'tcl' | 'nowcoder';
+
+export interface NowcoderServiceConfig extends BaseServiceConfig {
+  cookie: string;
+}
+```
+
+**DEFAULT_CONFIG 更新**:
+```typescript
+export const DEFAULT_CONFIG: UserConfig = {
+  enabledServices: ['tcl'],
+  services: {
+    // ...其他服务
+    nowcoder: {
+      enabled: false,  // 牛客图床需要 Cookie，默认不启用
+      cookie: ''
+    }
+  },
+  // ...
+};
+```
+
+### 11.5 MultiServiceUploader 更新
+
+**文件**: `src/core/MultiServiceUploader.ts`
+
+在 `filterConfiguredServices()` 方法中添加牛客的 Cookie 验证逻辑：
+
+```typescript
+if (serviceId === 'nowcoder') {
+  const nowcoderConfig = serviceConfig as any;
+  if (!nowcoderConfig.cookie || nowcoderConfig.cookie.trim().length === 0) {
+    console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
+    return false;
+  }
+  return true;
+}
+```
+
+### 11.6 UI 集成
+
+**文件**: `index.html`
+
+**上传界面复选框**:
+```html
+<label class="service-checkbox">
+  <input type="checkbox" data-service="nowcoder" />
+  <span class="service-icon">📚</span>
+  <span class="service-name">牛客图床</span>
+  <span class="service-config-status" data-service="nowcoder"></span>
+</label>
+```
+
+**设置页面 Cookie 输入**:
+```html
+<div class="form-section">
+  <h2>牛客图床</h2>
+  <div class="form-group">
+    <label for="nowcoder-cookie">牛客 Cookie</label>
+    <textarea id="nowcoder-cookie" name="nowcoderCookie" rows="3"
+      placeholder="请输入牛客登录后的 Cookie..."></textarea>
+    <p class="help-text">登录 nowcoder.com 后，从浏览器开发者工具中复制 Cookie</p>
+  </div>
+  <p class="info-text" style="color: var(--warning);">
+    ⚠️ 注意：牛客图床需要登录，Cookie 可能会过期
+  </p>
+</div>
+```
+
+### 11.7 main.ts 更新
+
+**文件**: `src/main.ts`
+
+1. **serviceCheckboxes 添加 nowcoder**:
+```typescript
+const serviceCheckboxes = {
+  weibo: document.querySelector<HTMLInputElement>('input[data-service="weibo"]'),
+  r2: document.querySelector<HTMLInputElement>('input[data-service="r2"]'),
+  tcl: document.querySelector<HTMLInputElement>('input[data-service="tcl"]'),
+  jd: document.querySelector<HTMLInputElement>('input[data-service="jd"]'),
+  nowcoder: document.querySelector<HTMLInputElement>('input[data-service="nowcoder"]')
+};
+```
+
+2. **nowcoderCookieEl 元素引用**:
+```typescript
+const nowcoderCookieEl = document.querySelector<HTMLTextAreaElement>('#nowcoder-cookie');
+```
+
+3. **loadServiceCheckboxStates() 更新**:
+```typescript
+if (serviceCheckboxes.nowcoder) {
+  serviceCheckboxes.nowcoder.checked = enabledServices.includes('nowcoder');
+  updateServiceStatus('nowcoder', config);
+}
+```
+
+4. **updateServiceStatus() 更新**:
+```typescript
+case 'nowcoder':
+  const nowcoderConfig = config.services.nowcoder;
+  isConfigured = !!nowcoderConfig?.cookie && nowcoderConfig.cookie.trim().length > 0;
+  statusText = isConfigured ? '已配置' : '未配置';
+  break;
+```
+
+5. **handleAutoSave() 更新**:
+```typescript
+const config: UserConfig = {
+  // ...
+  services: {
+    // ...
+    nowcoder: {
+      enabled: true,
+      cookie: nowcoderCookieEl?.value || ''
+    }
+  }
+};
+```
+
+6. **设置自动保存数组**:
+```typescript
+const settingsInputs = [weiboCookieEl, r2AccountIdEl, ..., nowcoderCookieEl];
+settingsInputs.forEach(input => {
+  if (input) {
+    input.addEventListener('blur', handleAutoSave);
+  }
+});
+```
+
+### 11.8 测试要点
+
+- ✅ 牛客上传成功，返回正确 HTTPS URL
+- ✅ Cookie 未配置时显示"未配置"状态
+- ✅ Cookie 配置后显示"已配置"状态
+- ✅ 未配置时复选框禁用
+- ✅ 进度回调正常工作
+- ✅ 文件类型验证（jpg, jpeg, png, gif, webp）
+- ✅ 与其他图床并行上传正常
+- ✅ 历史记录正确显示牛客结果
+- ✅ 设置页面 Cookie 输入框正常
+- ✅ Cookie 自动保存功能
+
+### 11.9 文件完整列表
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `src-tauri/src/commands/nowcoder.rs` | 新建 | Rust 后端上传命令 |
+| `src-tauri/src/commands/mod.rs` | 修改 | 添加 `pub mod nowcoder;` |
+| `src-tauri/src/main.rs` | 修改 | 注册 `upload_to_nowcoder` 命令 |
+| `src/uploaders/nowcoder/NowcoderUploader.ts` | 新建 | 前端上传器类 |
+| `src/uploaders/nowcoder/index.ts` | 新建 | 导出文件 |
+| `src/uploaders/index.ts` | 修改 | 注册到工厂 |
+| `src/config/types.ts` | 修改 | 更新 DEFAULT_CONFIG |
+| `index.html` | 修改 | UI 复选框和设置说明 |
+| `src/main.ts` | 修改 | serviceCheckboxes、设置保存 |
+| `src/core/MultiServiceUploader.ts` | 修改 | Cookie 验证逻辑 |
+
+---
+
 ## 🚧 待完成的工作 (TODO)
 
 ### 高优先级 (P0)
@@ -1887,7 +2240,7 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 **计划支持**:
 - [ ] 纳米图床 (Nami)
 - [x] 京东图床 (JD) ✅ 已完成 2025-12-02
-- [ ] 牛客图床 (Nowcoder)
+- [x] 牛客图床 (Nowcoder) ✅ 已完成 2025-12-02
 
 **扩展模式**:
 1. 创建 `src/uploaders/{service}/{Service}Uploader.ts`
@@ -2083,11 +2436,13 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 | 阶段八 | 上传队列 Vue 组件更新 | ✅ | 2025-12-01 |
 | 阶段九 | 设置页面 TCL 说明 | ✅ | 2025-12-01 |
 | 阶段十 | 京东图床支持 | ✅ | 2025-12-02 |
+| 阶段十一 | 牛客图床支持 | ✅ | 2025-12-02 |
 
-**总体进度**: 约 98% 完成 (新增: 京东图床支持)
+**总体进度**: 约 99% 完成 (新增: 牛客图床支持)
 
 **所有 P0 + P1 任务已完成！** 🎉🎉🎉
 **京东图床已集成！** 🛒
+**牛客图床已集成！** 📚
 
 ### 进行中 (🚧)
 
@@ -2121,12 +2476,26 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
   - 获取凭证: `https://api.m.jd.com/client.action?functionId=getAidInfo`
   - 上传图片: `https://file-dd.jd.com/file/uploadImg.action`
   - 图片域名: `https://img14.360buyimg.com/`
+- 牛客 API:
+  - 上传图片: `https://www.nowcoder.com/uploadImage?type=1&_={timestamp}`
+  - 图片域名: `https://uploadfiles.nowcoder.com/`
+  - 需要 Headers: Cookie, Referer, Origin, User-Agent
 - 微博 API: (已有)
 - Cloudflare R2: (已有)
 
 ---
 
 ## 📝 更新日志
+
+### v3.0.2-alpha (2025-12-02)
+
+**新增**:
+- ✨ 牛客图床支持（需要 Cookie 认证）
+- ✨ 牛客设置页面 Cookie 输入框
+- ✨ Cookie 自动保存功能
+
+**文档**:
+- 📝 添加牛客图床实现文档到 record.md (阶段十一)
 
 ### v3.0.1-alpha (2025-12-02)
 

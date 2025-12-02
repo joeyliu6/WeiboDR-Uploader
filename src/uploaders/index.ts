@@ -6,6 +6,7 @@ import { WeiboUploader } from './weibo/WeiboUploader';
 import { R2Uploader } from './r2/R2Uploader';
 import { TCLUploader } from './tcl/TCLUploader';
 import { JDUploader } from './jd/JDUploader';
+import { NowcoderUploader } from './nowcoder/NowcoderUploader';
 
 /**
  * 初始化所有上传器
@@ -26,9 +27,11 @@ export function initializeUploaders(): void {
   // 注册京东上传器
   UploaderFactory.register('jd', () => new JDUploader());
 
+  // 注册牛客上传器
+  UploaderFactory.register('nowcoder', () => new NowcoderUploader());
+
   // 未来添加其他上传器：
   // UploaderFactory.register('nami', () => new NamiUploader());
-  // UploaderFactory.register('nowcoder', () => new NowcoderUploader());
 
   const registered = UploaderFactory.getAvailableServices();
   console.log('[Uploaders] 已注册的上传器:', registered);
@@ -39,4 +42,5 @@ export { WeiboUploader } from './weibo';
 export { R2Uploader } from './r2';
 export { TCLUploader } from './tcl';
 export { JDUploader } from './jd';
+export { NowcoderUploader } from './nowcoder';
 export { UploaderFactory } from './base/UploaderFactory';
