@@ -1953,6 +1953,82 @@ settingsInputs.forEach(input => {
 
 ---
 
+## ✅ Bug 修复记录 (2025-12-02)
+
+### Bug 修复 1: 设置页面 Cookie 保存后上传界面状态不刷新
+
+**问题描述**:
+用户在设置页面填入牛客 Cookie 后，上传界面的牛客图床复选框仍然显示灰色禁用状态，无法勾选。
+
+**根本原因**:
+`handleAutoSave()` 函数在保存配置后没有调用 `loadServiceCheckboxStates()` 来刷新上传界面的服务复选框状态。
+
+**修复位置**: `src/main.ts` - `handleAutoSave()` 函数
+
+**修复内容**:
+```typescript
+// 保存到存储
+try {
+  await configStore.set('config', config);
+  await configStore.save();
+  console.log('[自动保存] ✓ 配置自动保存成功');
+
+  // 3. 刷新上传界面的服务复选框状态 (新增)
+  await loadServiceCheckboxStates();
+  console.log('[自动保存] ✓ 服务复选框状态已刷新');
+
+  // 4. 显示成功状态
+  showToast('设置已自动保存', 'success', 2000);
+} catch (saveError) {
+  // ...
+}
+```
+
+**影响范围**: 所有需要配置的图床服务（微博、R2、牛客）都会受益
+
+---
+
+### Bug 修复 2: 牛客图床返回压缩图片 URL
+
+**问题描述**:
+牛客图床对大图会自动进行压缩，返回的 URL 包含 `/compress/mw1000/` 路径：
+```
+https://uploadfiles.nowcoder.com/compress/mw1000/images/20251202/...
+```
+需要移除压缩路径以获取原图链接：
+```
+https://uploadfiles.nowcoder.com/images/20251202/...
+```
+
+**修复位置**: `src-tauri/src/commands/nowcoder.rs`
+
+**修复内容**:
+```rust
+// 9. 移除压缩路径，获取原图链接
+// 牛客会自动压缩大图，URL 中包含 compress/mw1000/ 等路径
+// 例如: https://uploadfiles.nowcoder.com/compress/mw1000/images/...
+// 移除后: https://uploadfiles.nowcoder.com/images/...
+let final_url = if let Some(compress_pos) = https_url.find("/compress/") {
+    // 找到 /compress/ 后面的下一个 /
+    let after_compress = &https_url[compress_pos + "/compress/".len()..];
+    if let Some(next_slash) = after_compress.find('/') {
+        // 拼接: 前半部分 + 后半部分（跳过 /compress/mwXXX 部分）
+        format!("{}{}", &https_url[..compress_pos], &after_compress[next_slash..])
+    } else {
+        https_url
+    }
+} else {
+    https_url
+};
+```
+
+**实现特点**:
+- 不需要额外依赖（纯字符串操作，无需 regex crate）
+- 支持任意 `mwXXXX` 数字（mw1000、mw500 等）
+- 如果 URL 中没有 `/compress/`，则保持原样
+
+---
+
 ## 🚧 待完成的工作 (TODO)
 
 ### 高优先级 (P0)
@@ -2493,6 +2569,10 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 - ✨ 牛客图床支持（需要 Cookie 认证）
 - ✨ 牛客设置页面 Cookie 输入框
 - ✨ Cookie 自动保存功能
+
+**修复**:
+- 🐛 修复设置页面保存 Cookie 后上传界面复选框状态不刷新的问题
+- 🐛 修复牛客图床返回压缩图片 URL，现在自动获取原图链接
 
 **文档**:
 - 📝 添加牛客图床实现文档到 record.md (阶段十一)
