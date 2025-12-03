@@ -6,7 +6,7 @@ import { UploadResult } from '../uploaders/base/types';
 /**
  * 支持的图床服务类型
  */
-export type ServiceType = 'weibo' | 'r2' | 'nami' | 'jd' | 'tcl' | 'nowcoder';
+export type ServiceType = 'weibo' | 'r2' | 'nami' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu';
 
 /**
  * 基础服务配置接口
@@ -80,6 +80,15 @@ export interface NowcoderServiceConfig extends BaseServiceConfig {
 }
 
 /**
+ * 七鱼图床服务配置
+ * 基于网易七鱼客服系统的 NOS 对象存储
+ */
+export interface QiyuServiceConfig extends BaseServiceConfig {
+  /** 七鱼 NOS Token (x-nos-token 请求头的值) */
+  token: string;
+}
+
+/**
  * WebDAV 配置
  * 保持与原有结构一致
  */
@@ -141,6 +150,7 @@ export interface UserConfig {
     jd?: JDServiceConfig;
     tcl?: TCLServiceConfig;
     nowcoder?: NowcoderServiceConfig;
+    qiyu?: QiyuServiceConfig;
   };
 
   /** 输出格式 */
@@ -230,6 +240,10 @@ export const DEFAULT_CONFIG: UserConfig = {
     nowcoder: {
       enabled: false,  // 牛客图床需要 Cookie，默认不启用
       cookie: ''
+    },
+    qiyu: {
+      enabled: false,  // 七鱼图床需要 Token，默认不启用
+      token: ''
     }
   },
   outputFormat: 'baidu-proxy',
@@ -276,6 +290,10 @@ export function sanitizeConfig(config: UserConfig): UserConfig {
       nowcoder: config.services.nowcoder ? {
         ...config.services.nowcoder,
         cookie: sanitizeString(config.services.nowcoder.cookie, 8, 4)
+      } : undefined,
+      qiyu: config.services.qiyu ? {
+        ...config.services.qiyu,
+        token: sanitizeString(config.services.qiyu.token, 10, 4)
       } : undefined
     },
     webdav: config.webdav ? {

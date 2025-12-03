@@ -7,6 +7,7 @@ import { R2Uploader } from './r2/R2Uploader';
 import { TCLUploader } from './tcl/TCLUploader';
 import { JDUploader } from './jd/JDUploader';
 import { NowcoderUploader } from './nowcoder/NowcoderUploader';
+import { QiyuUploader } from './qiyu/QiyuUploader';
 
 /**
  * 初始化所有上传器
@@ -30,6 +31,9 @@ export function initializeUploaders(): void {
   // 注册牛客上传器
   UploaderFactory.register('nowcoder', () => new NowcoderUploader());
 
+  // 注册七鱼上传器
+  UploaderFactory.register('qiyu', () => new QiyuUploader());
+
   // 未来添加其他上传器：
   // UploaderFactory.register('nami', () => new NamiUploader());
 
@@ -43,4 +47,5 @@ export { R2Uploader } from './r2';
 export { TCLUploader } from './tcl';
 export { JDUploader } from './jd';
 export { NowcoderUploader } from './nowcoder';
+export { QiyuUploader } from './qiyu';
 export { UploaderFactory } from './base/UploaderFactory';

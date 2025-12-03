@@ -3652,6 +3652,141 @@ function initialize(): void {
 
 ---
 
+## ✅ 阶段十五: 七鱼图床支持 (2025-12-03 完成)
+
+### 15.1 功能概述
+
+基于网易七鱼客服系统的 NOS 对象存储实现图床服务集成。
+
+**核心特点**:
+- 需要手动获取 Token（x-nos-token），不支持自动获取
+- Token 有效期约 360 天
+- 上传方式：POST 二进制数据到 NOS CDN
+- 图片访问：通过 `createTime` 参数区分不同版本
+
+**Token 获取方式**:
+1. 打开 [七鱼客服页面](https://qiyukf.com/client?k=d65beefd7552d92ee02344b3cc6173de)
+2. 按 F12 打开开发者工具，切换到 Network 标签
+3. 在页面上点击「上传附件」，选择任意图片
+4. 找到 `cdn-nimup-chunk` 请求，复制 `x-nos-token` 请求头的值
+
+### 15.2 修改文件概览
+
+| 文件 | 变更类型 | 主要内容 |
+|------|---------|---------|
+| `src/config/types.ts` | 修改 | 添加 `qiyu` 到 ServiceType，新增 QiyuServiceConfig 接口 |
+| `src-tauri/src/commands/qiyu.rs` | 新建 | Rust 上传命令实现 |
+| `src-tauri/src/commands/mod.rs` | 修改 | 添加 `pub mod qiyu;` |
+| `src-tauri/src/main.rs` | 修改 | 注册 `upload_to_qiyu` 命令 |
+| `src/uploaders/qiyu/QiyuUploader.ts` | 新建 | TypeScript 上传器类 |
+| `src/uploaders/qiyu/index.ts` | 新建 | 导出文件 |
+| `src/uploaders/index.ts` | 修改 | 注册七鱼上传器到工厂 |
+| `src/core/MultiServiceUploader.ts` | 修改 | 添加 Token 配置验证 |
+| `index.html` | 修改 | 上传复选框 + 设置页面 Token 输入 |
+| `src/main.ts` | 修改 | UI 状态管理、自动保存、服务名称映射 |
+
+### 15.3 Rust 后端实现
+
+**文件**: `src-tauri/src/commands/qiyu.rs`
+
+**核心流程**:
+1. 检查 Token 是否过期（从 Policy 中解析 Expires）
+2. 解析 Token 获取 Object 路径（从 Base64 Policy 中提取）
+3. 读取文件，获取 Content-Type
+4. 构建上传 URL：`https://cdn-nimup-chunk.qiyukf.net/nim/{Object}?offset=0&complete=true&version=1.0`
+5. POST 二进制数据，设置 `x-nos-token` 请求头
+6. 检查 HTTP 200 状态（API 响应不解析，仅记录日志）
+7. 构建 CDN URL：`https://xlx03.cdn.qiyukf.net/{Object}?createTime={timestamp}`
+
+**API 响应格式** (仅记录，不解析):
+```json
+{
+  "requestId": "...",
+  "offset": 6580251,
+  "context": "...",
+  "callbackRetMsg": "eyJjb2RlIjoyMDB9"
+}
+```
+
+### 15.4 TypeScript 上传器
+
+**文件**: `src/uploaders/qiyu/QiyuUploader.ts`
+
+```typescript
+export class QiyuUploader extends BaseUploader {
+  readonly serviceId = 'qiyu';
+  readonly serviceName = '七鱼图床';
+
+  protected getRustCommand(): string {
+    return 'upload_to_qiyu';
+  }
+
+  async validateConfig(config: any): Promise<ValidationResult> {
+    // 验证 Token 存在且格式正确（以 "UPLOAD " 开头）
+  }
+
+  async upload(filePath: string, options: UploadOptions, onProgress?: ProgressCallback): Promise<UploadResult> {
+    // 调用 Rust 命令上传
+  }
+}
+```
+
+### 15.5 配置类型扩展
+
+**文件**: `src/config/types.ts`
+
+```typescript
+// ServiceType 添加 'qiyu'
+export type ServiceType = 'weibo' | 'r2' | 'nami' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu';
+
+// 新增配置接口
+export interface QiyuServiceConfig extends BaseServiceConfig {
+  token: string;  // x-nos-token 值
+}
+```
+
+### 15.6 UI 集成
+
+**上传界面复选框** (`index.html`):
+```html
+<label class="service-checkbox">
+  <input type="checkbox" data-service="qiyu" />
+  <span class="service-icon">🐟</span>
+  <span class="service-name">七鱼图床</span>
+  <span class="service-config-status" data-service="qiyu"></span>
+</label>
+```
+
+**设置页面**:
+- Token 输入框（textarea）
+- 获取方法说明
+- Token 有效期提示
+- 风险警告（第三方服务，稳定性无保障）
+
+### 15.7 Bug 修复
+
+**问题**: API 响应格式与预期不匹配
+
+原代码期望响应包含 `md5` 和 `size` 字段，但实际返回 `requestId`、`offset`、`context`、`callbackRetMsg`。
+
+**修复**: 移除 JSON 解析逻辑，只检查 HTTP 200 状态码即可判断上传成功。
+
+### 15.8 测试检查点
+
+- [x] Token 解析正确（从 Base64 Policy 中提取 Object 路径）
+- [x] Token 过期检查正常工作
+- [x] 上传成功，返回正确的 CDN URL
+- [x] Token 未配置时显示"未配置"状态，复选框禁用
+- [x] Token 配置后显示"已配置"状态，复选框可用
+- [x] 进度回调正常工作
+- [x] 与其他图床并行上传正常
+- [x] 历史记录正确显示七鱼结果
+- [x] 设置页面 Token 自动保存功能
+
+**编译验证**: ✅ Rust 和 TypeScript 均编译通过
+
+---
+
 ## ✅ Bug 修复记录 (2025-12-02)
 
 ### Bug 修复 1: 设置页面 Cookie 保存后上传界面状态不刷新
@@ -4214,12 +4349,15 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 | 阶段十一 | 牛客图床支持 | ✅ | 2025-12-02 |
 | 阶段十二 | 牛客 Cookie 验证增强与多域名支持 | ✅ | 2025-12-02 |
 | 阶段十三 | 链接前缀多选功能 | ✅ | 2025-12-02 |
+| 阶段十四 | 浏览视图 (Gallery View) | ✅ | 2025-12-02 |
+| 阶段十五 | 七鱼图床支持 | ✅ | 2025-12-03 |
 
-**总体进度**: 100% 完成 (最新: 链接前缀多选功能)
+**总体进度**: 100% 完成 (最新: 七鱼图床支持)
 
 **所有 P0 + P1 任务已完成！** 🎉🎉🎉
 **京东图床已集成！** 🛒
 **牛客图床已集成！** 📚
+**七鱼图床已集成！** 🐟
 **牛客 Cookie 自动捕获已修复！** ✅
 
 ### 进行中 (🚧)
@@ -4258,12 +4396,35 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
   - 上传图片: `https://www.nowcoder.com/uploadImage?type=1&_={timestamp}`
   - 图片域名: `https://uploadfiles.nowcoder.com/`
   - 需要 Headers: Cookie, Referer, Origin, User-Agent
+- 七鱼 API (网易七鱼 NOS):
+  - 上传图片: `https://cdn-nimup-chunk.qiyukf.net/nim/{Object}?offset=0&complete=true&version=1.0`
+  - 图片域名: `https://xlx03.cdn.qiyukf.net/`
+  - 需要 Headers: x-nos-token (手动从七鱼客服页面获取)
+  - Token 有效期: 约 360 天
+  - Token 格式: `UPLOAD {AccessKey}:{Signature}:{Base64Policy}`
 - 微博 API: (已有)
 - Cloudflare R2: (已有)
 
 ---
 
 ## 📝 更新日志
+
+### v3.0.3-alpha (2025-12-03)
+
+**新增**:
+- ✨ 七鱼图床支持（基于网易七鱼 NOS 对象存储）
+- ✨ 七鱼设置页面 Token 输入框
+- ✨ Token 自动保存功能
+- ✨ Token 过期检查（约 360 天有效期）
+
+**技术说明**:
+- 七鱼图床需要手动获取 Token（x-nos-token），无法自动获取
+- Token 从 Base64 编码的 Policy 中解析 Object 路径
+- 上传使用 POST 二进制数据，CDN URL 带 createTime 参数区分版本
+- API 响应格式为 `{requestId, offset, context, callbackRetMsg}`，仅检查 HTTP 200 状态
+
+**文档**:
+- 📝 添加七鱼图床实现文档到 record.md (阶段十四)
 
 ### v3.0.2-alpha (2025-12-02)
 
@@ -4343,5 +4504,5 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 
 ---
 
-**最后更新**: 2025-12-02
+**最后更新**: 2025-12-03
 **下次审查**: 添加更多图床时

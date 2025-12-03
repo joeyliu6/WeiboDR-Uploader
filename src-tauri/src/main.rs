@@ -112,6 +112,7 @@ fn main() {
             commands::tcl::upload_to_tcl,
             commands::jd::upload_to_jd,
             commands::nowcoder::upload_to_nowcoder,
+            commands::qiyu::upload_to_qiyu,
             commands::utils::file_exists,
             get_or_create_secure_key
         ])

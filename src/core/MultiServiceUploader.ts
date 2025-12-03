@@ -259,6 +259,16 @@ export class MultiServiceUploader {
         return true;
       }
 
+      if (serviceId === 'qiyu') {
+        const qiyuConfig = serviceConfig as any;
+        if (!qiyuConfig.token || qiyuConfig.token.trim().length === 0) {
+          console.warn(`[MultiUploader] ${serviceId} Token 未配置，跳过`);
+          return false;
+        }
+        // 如果 token 存在，认为已配置
+        return true;
+      }
+
       if (serviceId === 'r2') {
         const r2Config = serviceConfig as any;
         if (

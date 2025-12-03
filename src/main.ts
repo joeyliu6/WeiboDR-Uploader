@@ -148,7 +148,8 @@ const serviceCheckboxes = {
   r2: document.querySelector<HTMLInputElement>('input[data-service="r2"]'),
   tcl: document.querySelector<HTMLInputElement>('input[data-service="tcl"]'),
   jd: document.querySelector<HTMLInputElement>('input[data-service="jd"]'),
-  nowcoder: document.querySelector<HTMLInputElement>('input[data-service="nowcoder"]')
+  nowcoder: document.querySelector<HTMLInputElement>('input[data-service="nowcoder"]'),
+  qiyu: document.querySelector<HTMLInputElement>('input[data-service="qiyu"]')
 };
 
 // Settings View Elements
@@ -176,6 +177,7 @@ const webdavUsernameEl = getElement<HTMLInputElement>('webdav-username', 'WebDAV
 const webdavPasswordEl = getElement<HTMLInputElement>('webdav-password', 'WebDAV密码输入框');
 const webdavRemotePathEl = getElement<HTMLInputElement>('webdav-remote-path', 'WebDAV远程路径输入框');
 const nowcoderCookieEl = document.querySelector<HTMLTextAreaElement>('#nowcoder-cookie');
+const qiyuTokenEl = document.querySelector<HTMLTextAreaElement>('#qiyu-token');
 const saveStatusEl = getElement<HTMLElement>('save-status', '保存状态');
 const loginWithWebviewBtn = getElement<HTMLButtonElement>('login-with-webview-btn', 'WebView登录按钮');
 const testR2Btn = getElement<HTMLButtonElement>('test-r2-btn', 'R2测试按钮');
@@ -592,6 +594,7 @@ async function initializeUpload(): Promise<void> {
           if (serviceCheckboxes.tcl?.checked) enabledServices.push('tcl');
           if (serviceCheckboxes.jd?.checked) enabledServices.push('jd');
           if (serviceCheckboxes.nowcoder?.checked) enabledServices.push('nowcoder');
+          if (serviceCheckboxes.qiyu?.checked) enabledServices.push('qiyu');
 
           if (enabledServices.length === 0) {
             console.warn('[上传] 没有勾选任何图床');
@@ -951,6 +954,7 @@ async function loadSettings(): Promise<void> {
       if (r2PathEl) r2PathEl.value = config.services?.r2?.path || '';
       if (r2PublicDomainEl) r2PublicDomainEl.value = config.services?.r2?.publicDomain || '';
       if (nowcoderCookieEl) nowcoderCookieEl.value = config.services?.nowcoder?.cookie || '';
+      if (qiyuTokenEl) qiyuTokenEl.value = config.services?.qiyu?.token || '';
 
       // 链接前缀配置（使用迁移函数确保兼容旧配置）
       const migratedConfig = migrateConfig(config);
@@ -1186,6 +1190,10 @@ async function handleAutoSave(): Promise<void> {
         nowcoder: {
           enabled: enabledServices.includes('nowcoder'),
           cookie: nowcoderCookieEl?.value.trim() || ''
+        },
+        qiyu: {
+          enabled: enabledServices.includes('qiyu'),
+          token: qiyuTokenEl?.value.trim() || ''
         }
       },
       outputFormat: savedConfig?.outputFormat || DEFAULT_CONFIG.outputFormat,
@@ -2112,7 +2120,8 @@ async function renderHistoryTable(items: HistoryItem[]) {
             tcl: 'TCL',
             nami: '纳米',
             jd: '京东',
-            nowcoder: '牛客'
+            nowcoder: '牛客',
+            qiyu: '七鱼'
           };
 
           const serviceName = serviceNames[serviceResult.serviceId] || serviceResult.serviceId;
@@ -2170,7 +2179,8 @@ async function renderHistoryTable(items: HistoryItem[]) {
               tcl: 'TCL',
               nami: '纳米',
               jd: '京东',
-              nowcoder: '牛客'
+              nowcoder: '牛客',
+              qiyu: '七鱼'
             };
 
             const serviceName = serviceNames[serviceResult.serviceId] || serviceResult.serviceId;
@@ -2337,7 +2347,8 @@ async function retryServiceUpload(historyId: string, serviceId: ServiceType): Pr
       tcl: 'TCL',
       nami: '纳米',
       jd: '京东',
-      nowcoder: '牛客'
+      nowcoder: '牛客',
+      qiyu: '七鱼'
     };
     const serviceName = serviceNames[serviceId] || serviceId;
     showToast(`正在重试上传到 ${serviceName}...`, 'loading', 0);
@@ -2779,6 +2790,10 @@ async function loadServiceCheckboxStates(): Promise<void> {
       serviceCheckboxes.nowcoder.checked = enabledServices.includes('nowcoder');
       updateServiceStatus('nowcoder', config);
     }
+    if (serviceCheckboxes.qiyu) {
+      serviceCheckboxes.qiyu.checked = enabledServices.includes('qiyu');
+      updateServiceStatus('qiyu', config);
+    }
 
     console.log('[服务复选框] 已加载状态:', enabledServices);
   } catch (error) {
@@ -2826,6 +2841,11 @@ function updateServiceStatus(serviceId: ServiceType, config: UserConfig): void {
   } else if (serviceId === 'nowcoder') {
     const nowcoderConfig = config.services.nowcoder;
     isConfigured = !!nowcoderConfig?.cookie && nowcoderConfig.cookie.trim().length > 0;
+    statusText = isConfigured ? '已配置' : '未配置';
+    statusEl.className = `service-config-status ${isConfigured ? 'ready' : 'not-ready'}`;
+  } else if (serviceId === 'qiyu') {
+    const qiyuConfig = config.services.qiyu;
+    isConfigured = !!qiyuConfig?.token && qiyuConfig.token.trim().length > 0;
     statusText = isConfigured ? '已配置' : '未配置';
     statusEl.className = `service-config-status ${isConfigured ? 'ready' : 'not-ready'}`;
   }
@@ -3093,8 +3113,10 @@ function getServiceDisplayName(serviceId: ServiceType): string {
     weibo: '微博',
     r2: 'R2',
     tcl: 'TCL',
+    nami: '纳米',
     jd: '京东',
     nowcoder: '牛客',
+    qiyu: '七鱼'
   };
   return names[serviceId] || serviceId;
 }
@@ -3542,7 +3564,8 @@ function initialize(): void {
       webdavUsernameEl,
       webdavPasswordEl,
       webdavRemotePathEl,
-      nowcoderCookieEl
+      nowcoderCookieEl,
+      qiyuTokenEl
     ];
     
     settingsInputs.forEach(input => {
