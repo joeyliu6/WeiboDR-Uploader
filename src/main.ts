@@ -130,19 +130,21 @@ const historyView = getElement<HTMLElement>('history-view', '历史视图');
 const settingsView = getElement<HTMLElement>('settings-view', '设置视图');
 const r2ManagerView = getElement<HTMLElement>('r2-manager-view', 'R2管理视图');
 const backupView = getElement<HTMLElement>('backup-view', '备份视图');
-const views = [uploadView, historyView, settingsView, r2ManagerView, backupView].filter((v): v is HTMLElement => v !== null);
+const linkCheckerView = getElement<HTMLElement>('link-checker-view', '链接检测视图');
+const views = [uploadView, historyView, settingsView, r2ManagerView, backupView, linkCheckerView].filter((v): v is HTMLElement => v !== null);
 
 // Navigation
 const navUploadBtn = getElement<HTMLButtonElement>('nav-upload', '上传导航按钮');
 const navHistoryBtn = getElement<HTMLButtonElement>('nav-history', '历史导航按钮');
 const navR2ManagerBtn = getElement<HTMLButtonElement>('nav-r2-manager', 'R2管理导航按钮');
 const navBackupBtn = getElement<HTMLButtonElement>('nav-backup', '备份导航按钮');
+const navLinkCheckerBtn = getElement<HTMLButtonElement>('nav-link-checker', '链接检测导航按钮');
 const navSettingsBtn = getElement<HTMLButtonElement>('nav-settings', '设置导航按钮');
-const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navBackupBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
+const navButtons = [navUploadBtn, navHistoryBtn, navR2ManagerBtn, navBackupBtn, navLinkCheckerBtn, navSettingsBtn].filter((b): b is HTMLButtonElement => b !== null);
 
 // Upload View Elements
 const dropZoneHeader = getElement<HTMLElement>('drop-zone-header', '拖放区域头部');
-// Service checkboxes
+// Service checkboxes (上传界面)
 const serviceCheckboxes = {
   weibo: document.querySelector<HTMLInputElement>('input[data-service="weibo"]'),
   r2: document.querySelector<HTMLInputElement>('input[data-service="r2"]'),
@@ -150,6 +152,16 @@ const serviceCheckboxes = {
   jd: document.querySelector<HTMLInputElement>('input[data-service="jd"]'),
   nowcoder: document.querySelector<HTMLInputElement>('input[data-service="nowcoder"]'),
   qiyu: document.querySelector<HTMLInputElement>('input[data-service="qiyu"]')
+};
+
+// Available service checkboxes (设置界面 - 控制哪些图床在上传界面可用)
+const availableServiceCheckboxes = {
+  weibo: document.querySelector<HTMLInputElement>('#available-weibo'),
+  r2: document.querySelector<HTMLInputElement>('#available-r2'),
+  tcl: document.querySelector<HTMLInputElement>('#available-tcl'),
+  jd: document.querySelector<HTMLInputElement>('#available-jd'),
+  nowcoder: document.querySelector<HTMLInputElement>('#available-nowcoder'),
+  qiyu: document.querySelector<HTMLInputElement>('#available-qiyu')
 };
 
 // Settings View Elements
@@ -223,6 +235,21 @@ const contextMenu = getElement<HTMLElement>('context-menu', '右键菜单');
 const ctxPreview = getElement<HTMLElement>('ctx-preview', '右键预览');
 const ctxCopyLink = getElement<HTMLElement>('ctx-copy-link', '右键复制链接');
 const ctxDelete = getElement<HTMLElement>('ctx-delete', '右键删除');
+
+// Link Checker View Elements
+const linkCheckerServiceFilter = getElement<HTMLSelectElement>('link-checker-service-filter', '链接检测图床筛选器');
+const linkCheckerStartBtn = getElement<HTMLButtonElement>('link-checker-start-btn', '开始检测按钮');
+const linkCheckerCancelBtn = getElement<HTMLButtonElement>('link-checker-cancel-btn', '取消检测按钮');
+const linkCheckerProgress = getElement<HTMLElement>('link-checker-progress', '链接检测进度条');
+const linkCheckerProgressText = getElement<HTMLElement>('link-checker-progress-text', '进度文本');
+const linkCheckerProgressPercent = getElement<HTMLElement>('link-checker-progress-percent', '进度百分比');
+const linkCheckerProgressBar = getElement<HTMLElement>('link-checker-progress-bar', '进度条');
+const linkCheckerTotalEl = getElement<HTMLElement>('link-checker-total', '总数统计');
+const linkCheckerValidEl = getElement<HTMLElement>('link-checker-valid', '有效数统计');
+const linkCheckerInvalidEl = getElement<HTMLElement>('link-checker-invalid', '失效数统计');
+const linkCheckerPendingEl = getElement<HTMLElement>('link-checker-pending', '待检测数统计');
+const linkCheckerResultsBody = getElement<HTMLElement>('link-checker-results-body', '检测结果表格');
+const linkCheckerDeleteInvalidBtn = getElement<HTMLButtonElement>('link-checker-delete-invalid-btn', '删除失效按钮');
 
 // --- FILE VALIDATION ---
 /**
@@ -429,9 +456,9 @@ async function saveHistoryItem(
 // --- VIEW ROUTING ---
 /**
  * 导航到指定视图
- * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'r2-manager' | 'backup')
+ * @param viewId 视图 ID ('upload' | 'history' | 'settings' | 'r2-manager' | 'backup' | 'link-checker')
  */
-function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager' | 'backup'): void {
+function navigateTo(viewId: 'upload' | 'history' | 'settings' | 'r2-manager' | 'backup' | 'link-checker'): void {
   try {
     // Deactivate all views and buttons
     views.forEach(v => {
@@ -686,6 +713,325 @@ async function initializeUpload(): Promise<void> {
     }
 }
 
+// --- LINK CHECKER LOGIC ---
+
+/**
+ * 链接检测结果类型
+ */
+interface LinkCheckResult {
+  id: string;
+  historyItem: HistoryItem;
+  serviceId: ServiceType;
+  url: string;
+  status: 'pending' | 'checking' | 'valid' | 'invalid';
+  statusCode?: number;
+  error?: string;
+}
+
+/**
+ * 链接检测状态
+ */
+const linkCheckerState = {
+  results: [] as LinkCheckResult[],
+  isChecking: false,
+  cancelRequested: false
+};
+
+/**
+ * 图床名称映射
+ */
+const linkCheckerServiceNames: Record<ServiceType, string> = {
+  weibo: '微博',
+  r2: 'R2',
+  tcl: 'TCL',
+  jd: '京东',
+  nowcoder: '牛客',
+  qiyu: '七鱼'
+};
+
+/**
+ * 从历史记录提取待检测的链接
+ */
+function extractLinksFromHistory(history: HistoryItem[], filterService: string): LinkCheckResult[] {
+  const results: LinkCheckResult[] = [];
+
+  history.forEach(item => {
+    item.results.forEach(result => {
+      if (result.status === 'success' && result.result?.url) {
+        // 如果有筛选条件，检查是否匹配
+        if (filterService !== 'all' && result.serviceId !== filterService) {
+          return;
+        }
+
+        results.push({
+          id: `${item.id}_${result.serviceId}`,
+          historyItem: item,
+          serviceId: result.serviceId,
+          url: result.result.url,
+          status: 'pending'
+        });
+      }
+    });
+  });
+
+  return results;
+}
+
+/**
+ * 检测单个链接的有效性
+ * 使用 HTTP HEAD 请求（只获取响应头，不下载图片内容）
+ */
+async function checkLinkValidity(url: string): Promise<{ valid: boolean; statusCode?: number; error?: string }> {
+  try {
+    const client = await getClient();
+    const response = await client.request({
+      method: 'HEAD',
+      url: url,
+      timeout: 10,
+      responseType: ResponseType.Text
+    });
+
+    const statusCode = response.status;
+
+    // 2xx 视为有效
+    if (statusCode >= 200 && statusCode < 300) {
+      return { valid: true, statusCode };
+    }
+
+    // 403, 404 视为失效
+    if (statusCode === 403 || statusCode === 404) {
+      return { valid: false, statusCode };
+    }
+
+    // 其他 4xx/5xx 也视为失效
+    if (statusCode >= 400) {
+      return { valid: false, statusCode };
+    }
+
+    return { valid: true, statusCode };
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    return { valid: false, error: errorMsg };
+  }
+}
+
+/**
+ * 更新链接检测统计数据
+ */
+function updateLinkCheckerStats(): void {
+  const total = linkCheckerState.results.length;
+  const valid = linkCheckerState.results.filter(r => r.status === 'valid').length;
+  const invalid = linkCheckerState.results.filter(r => r.status === 'invalid').length;
+  const pending = linkCheckerState.results.filter(r => r.status === 'pending' || r.status === 'checking').length;
+
+  if (linkCheckerTotalEl) linkCheckerTotalEl.textContent = String(total);
+  if (linkCheckerValidEl) linkCheckerValidEl.textContent = String(valid);
+  if (linkCheckerInvalidEl) linkCheckerInvalidEl.textContent = String(invalid);
+  if (linkCheckerPendingEl) linkCheckerPendingEl.textContent = String(pending);
+
+  // 更新按钮状态
+  if (linkCheckerDeleteInvalidBtn) {
+    linkCheckerDeleteInvalidBtn.disabled = invalid === 0 || linkCheckerState.isChecking;
+  }
+}
+
+/**
+ * 渲染链接检测结果表格
+ */
+function renderLinkCheckerResults(): void {
+  if (!linkCheckerResultsBody) return;
+
+  if (linkCheckerState.results.length === 0) {
+    linkCheckerResultsBody.innerHTML = `
+      <tr>
+        <td colspan="5">
+          <div class="link-checker-empty">
+            <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+            <p>没有找到符合条件的历史记录</p>
+          </div>
+        </td>
+      </tr>
+    `;
+    return;
+  }
+
+  linkCheckerResultsBody.innerHTML = linkCheckerState.results.map(result => {
+    const statusClass = result.status;
+    const statusText: Record<string, string> = {
+      pending: '待检测',
+      checking: '检测中...',
+      valid: '有效',
+      invalid: '失效'
+    };
+    const statusIcon: Record<string, string> = {
+      pending: '⏳',
+      checking: '🔄',
+      valid: '✓',
+      invalid: '✗'
+    };
+
+    return `
+      <tr data-id="${result.id}">
+        <td class="filename" title="${result.historyItem.localFileName}">${result.historyItem.localFileName}</td>
+        <td class="link" title="${result.url}">${result.url}</td>
+        <td><span class="link-checker-service-badge">${linkCheckerServiceNames[result.serviceId] || result.serviceId}</span></td>
+        <td><span class="link-checker-status-badge ${statusClass}">${statusIcon[result.status]} ${statusText[result.status]}</span></td>
+        <td>
+          <button class="link-checker-action-btn" onclick="window.open('${result.url}', '_blank')" title="打开链接">🔗</button>
+        </td>
+      </tr>
+    `;
+  }).join('');
+}
+
+/**
+ * 批量检测链接
+ */
+async function batchCheckLinks(): Promise<void> {
+  if (linkCheckerState.isChecking) return;
+
+  linkCheckerState.isChecking = true;
+  linkCheckerState.cancelRequested = false;
+
+  if (linkCheckerStartBtn) linkCheckerStartBtn.disabled = true;
+  if (linkCheckerCancelBtn) linkCheckerCancelBtn.disabled = false;
+  if (linkCheckerProgress) linkCheckerProgress.style.display = 'block';
+
+  const total = linkCheckerState.results.length;
+  let checked = 0;
+
+  for (const result of linkCheckerState.results) {
+    if (linkCheckerState.cancelRequested) {
+      break;
+    }
+
+    result.status = 'checking';
+    renderLinkCheckerResults();
+
+    const checkResult = await checkLinkValidity(result.url);
+
+    result.status = checkResult.valid ? 'valid' : 'invalid';
+    result.statusCode = checkResult.statusCode;
+    result.error = checkResult.error;
+
+    checked++;
+
+    // 更新进度
+    const percent = Math.round((checked / total) * 100);
+    if (linkCheckerProgressText) linkCheckerProgressText.textContent = `检测中... ${checked}/${total}`;
+    if (linkCheckerProgressPercent) linkCheckerProgressPercent.textContent = `${percent}%`;
+    if (linkCheckerProgressBar) linkCheckerProgressBar.style.width = `${percent}%`;
+
+    updateLinkCheckerStats();
+    renderLinkCheckerResults();
+
+    // 限速：每次请求间隔 200ms
+    if (checked < total && !linkCheckerState.cancelRequested) {
+      await new Promise(resolve => setTimeout(resolve, 200));
+    }
+  }
+
+  linkCheckerState.isChecking = false;
+  if (linkCheckerStartBtn) linkCheckerStartBtn.disabled = false;
+  if (linkCheckerCancelBtn) linkCheckerCancelBtn.disabled = true;
+
+  if (linkCheckerState.cancelRequested) {
+    showToast('检测已取消', 'success');
+  } else {
+    showToast('检测完成', 'success');
+  }
+}
+
+/**
+ * 删除失效的历史记录
+ */
+async function deleteInvalidLinkCheckerItems(): Promise<void> {
+  const invalidResults = linkCheckerState.results.filter(r => r.status === 'invalid');
+  if (invalidResults.length === 0) {
+    showToast('没有失效的记录', 'error');
+    return;
+  }
+
+  const confirmed = await showConfirmModal(
+    '确认删除',
+    `确定要删除 ${invalidResults.length} 条失效记录吗？此操作不可撤销。`
+  );
+  if (!confirmed) return;
+
+  try {
+    // 加载历史记录
+    const history = await historyStore.get<HistoryItem[]>('uploads', []) || [];
+
+    // 获取需要删除的历史记录 ID
+    const invalidHistoryIds = new Set(invalidResults.map(r => r.historyItem.id));
+
+    // 过滤掉失效的记录
+    const newHistory = history.filter(item => !invalidHistoryIds.has(item.id));
+
+    // 保存
+    await historyStore.set('uploads', newHistory);
+
+    // 从检测结果中移除
+    linkCheckerState.results = linkCheckerState.results.filter(r => r.status !== 'invalid');
+
+    updateLinkCheckerStats();
+    renderLinkCheckerResults();
+
+    showToast(`已删除 ${invalidResults.length} 条失效记录`, 'success');
+    console.log(`[链接检测] 已删除 ${invalidResults.length} 条失效记录`);
+  } catch (error) {
+    console.error('[链接检测] 删除失效记录失败:', error);
+    showToast('删除失败', 'error');
+  }
+}
+
+/**
+ * 初始化链接检测视图事件监听
+ */
+function initLinkCheckerEvents(): void {
+  // 开始检测按钮
+  if (linkCheckerStartBtn) {
+    linkCheckerStartBtn.addEventListener('click', async () => {
+      const filterService = linkCheckerServiceFilter?.value || 'all';
+
+      // 加载历史记录
+      const history = await historyStore.get<HistoryItem[]>('uploads', []) || [];
+      if (history.length === 0) {
+        showToast('没有历史记录', 'error');
+        return;
+      }
+
+      // 提取待检测的链接
+      linkCheckerState.results = extractLinksFromHistory(history, filterService);
+
+      if (linkCheckerState.results.length === 0) {
+        showToast('没有找到符合条件的链接', 'error');
+        return;
+      }
+
+      updateLinkCheckerStats();
+      renderLinkCheckerResults();
+
+      // 开始检测
+      await batchCheckLinks();
+    });
+  }
+
+  // 取消检测按钮
+  if (linkCheckerCancelBtn) {
+    linkCheckerCancelBtn.addEventListener('click', () => {
+      linkCheckerState.cancelRequested = true;
+      if (linkCheckerCancelBtn) linkCheckerCancelBtn.disabled = true;
+    });
+  }
+
+  // 删除失效按钮
+  if (linkCheckerDeleteInvalidBtn) {
+    linkCheckerDeleteInvalidBtn.addEventListener('click', deleteInvalidLinkCheckerItems);
+  }
+
+  console.log('[链接检测] 事件监听器初始化完成');
+}
 
 // --- LOGIN WINDOW LOGIC ---
 /**
@@ -974,7 +1320,18 @@ async function loadSettings(): Promise<void> {
       }
       
       // 输出格式（不再需要设置单选按钮，因为已删除）
-      
+
+      // 加载可用图床配置
+      const availableServices = config.availableServices || DEFAULT_CONFIG.availableServices || [];
+      Object.entries(availableServiceCheckboxes).forEach(([serviceId, checkbox]) => {
+        if (checkbox) {
+          checkbox.checked = availableServices.includes(serviceId as ServiceType);
+        }
+      });
+
+      // 更新上传界面的图床显示状态
+      updateUploadServiceVisibility(availableServices);
+
       console.log('[设置] ✓ 设置已填充到UI');
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -987,7 +1344,34 @@ async function loadSettings(): Promise<void> {
     showToast(`加载失败: ${errorMsg}`, 'error', 3000);
   }
 }
-  
+
+/**
+ * 更新上传界面的图床显示状态
+ * 根据设置中的可用图床配置，显示或隐藏上传界面的图床选项
+ */
+function updateUploadServiceVisibility(availableServices: ServiceType[]): void {
+  // 获取所有上传界面的图床复选框容器
+  const allServiceLabels = document.querySelectorAll<HTMLElement>('.service-checkbox');
+
+  allServiceLabels.forEach(label => {
+    const input = label.querySelector<HTMLInputElement>('input[data-service]');
+    if (input) {
+      const serviceId = input.getAttribute('data-service') as ServiceType;
+      if (availableServices.includes(serviceId)) {
+        // 显示该图床选项
+        label.style.display = '';
+      } else {
+        // 隐藏该图床选项，并取消勾选
+        label.style.display = 'none';
+        input.checked = false;
+        label.classList.remove('checked');
+      }
+    }
+  });
+
+  console.log('[上传界面] 已根据配置更新可用图床:', availableServices);
+}
+
 /**
  * 保存设置（已弃用 - 现在使用 handleAutoSave）
  * 从 UI 表单中读取配置并保存到存储
@@ -1165,8 +1549,23 @@ async function handleAutoSave(): Promise<void> {
     // 构建配置对象（新架构）
     const enabledServices: ServiceType[] = savedConfig?.enabledServices || ['tcl'];
 
+    // 收集可用图床配置
+    const availableServices: ServiceType[] = [];
+    Object.entries(availableServiceCheckboxes).forEach(([serviceId, checkbox]) => {
+      if (checkbox?.checked) {
+        availableServices.push(serviceId as ServiceType);
+      }
+    });
+
+    // 验证至少有一个可用图床
+    if (availableServices.length === 0) {
+      showToast('至少需要启用一个图床', 'error', 3000);
+      return;
+    }
+
     const config: UserConfig = {
       enabledServices: enabledServices,
+      availableServices: availableServices,
       services: {
         weibo: {
           enabled: enabledServices.includes('weibo'),
@@ -1211,7 +1610,11 @@ async function handleAutoSave(): Promise<void> {
       await loadServiceCheckboxStates();
       console.log('[自动保存] ✓ 服务复选框状态已刷新');
 
-      // 4. 显示成功状态
+      // 4. 更新上传界面的图床显示状态
+      updateUploadServiceVisibility(availableServices);
+      console.log('[自动保存] ✓ 上传界面图床显示状态已更新');
+
+      // 5. 显示成功状态
       showToast('设置已自动保存', 'success', 2000);
     } catch (saveError) {
       const errorMsg = saveError instanceof Error ? saveError.message : String(saveError);
@@ -2118,7 +2521,6 @@ async function renderHistoryTable(items: HistoryItem[]) {
             weibo: '微博',
             r2: 'R2',
             tcl: 'TCL',
-            nami: '纳米',
             jd: '京东',
             nowcoder: '牛客',
             qiyu: '七鱼'
@@ -2177,7 +2579,6 @@ async function renderHistoryTable(items: HistoryItem[]) {
               weibo: '微博',
               r2: 'R2',
               tcl: 'TCL',
-              nami: '纳米',
               jd: '京东',
               nowcoder: '牛客',
               qiyu: '七鱼'
@@ -2345,7 +2746,6 @@ async function retryServiceUpload(historyId: string, serviceId: ServiceType): Pr
       weibo: '微博',
       r2: 'R2',
       tcl: 'TCL',
-      nami: '纳米',
       jd: '京东',
       nowcoder: '牛客',
       qiyu: '七鱼'
@@ -3113,7 +3513,6 @@ function getServiceDisplayName(serviceId: ServiceType): string {
     weibo: '微博',
     r2: 'R2',
     tcl: 'TCL',
-    nami: '纳米',
     jd: '京东',
     nowcoder: '牛客',
     qiyu: '七鱼'
@@ -3543,7 +3942,13 @@ function initialize(): void {
     } else {
       console.warn('[初始化] 警告: 备份导航按钮不存在');
     }
-    
+
+    if (navLinkCheckerBtn) {
+      navLinkCheckerBtn.addEventListener('click', () => navigateTo('link-checker'));
+    } else {
+      console.warn('[初始化] 警告: 链接检测导航按钮不存在');
+    }
+
     if (navSettingsBtn) {
       navSettingsBtn.addEventListener('click', () => navigateTo('settings'));
     } else {
@@ -3585,6 +3990,17 @@ function initialize(): void {
 
     // 链接前缀配置事件绑定
     initPrefixEventListeners();
+
+    // 可用图床复选框事件绑定
+    Object.values(availableServiceCheckboxes).forEach(checkbox => {
+      if (checkbox) {
+        checkbox.addEventListener('change', () => {
+          handleAutoSave().catch(err => {
+            console.error('[初始化] 保存可用图床配置失败:', err);
+          });
+        });
+      }
+    });
 
     if (testCookieBtn) {
       testCookieBtn.addEventListener('click', () => {
@@ -3761,6 +4177,9 @@ function initialize(): void {
     } else {
       console.warn('[初始化] 警告: 备份视图元素不存在');
     }
+
+    // 初始化链接检测视图事件监听
+    initLinkCheckerEvents();
 
     // ========================================
     // GALLERY VIEW EVENT LISTENERS (浏览视图事件监听)

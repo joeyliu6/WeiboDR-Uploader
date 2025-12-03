@@ -6,7 +6,7 @@ import { UploadResult } from '../uploaders/base/types';
 /**
  * 支持的图床服务类型
  */
-export type ServiceType = 'weibo' | 'r2' | 'nami' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu';
+export type ServiceType = 'weibo' | 'r2' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu';
 
 /**
  * 基础服务配置接口
@@ -45,14 +45,6 @@ export interface R2ServiceConfig extends BaseServiceConfig {
 
   /** 公开访问域名 (如 'https://cdn.example.com') */
   publicDomain: string;
-}
-
-/**
- * 纳米图床服务配置
- */
-export interface NamiServiceConfig extends BaseServiceConfig {
-  /** 纳米图床 Cookie */
-  cookie: string;
 }
 
 /**
@@ -142,11 +134,13 @@ export interface UserConfig {
   /** 用户启用的图床服务列表（上传窗口勾选的图床） */
   enabledServices: ServiceType[];
 
+  /** 全局可用的图床列表（设置中配置，控制上传界面显示哪些图床） */
+  availableServices?: ServiceType[];
+
   /** 各图床服务的配置 */
   services: {
     weibo?: WeiboServiceConfig;
     r2?: R2ServiceConfig;
-    nami?: NamiServiceConfig;
     jd?: JDServiceConfig;
     tcl?: TCLServiceConfig;
     nowcoder?: NowcoderServiceConfig;
@@ -217,6 +211,7 @@ export interface HistoryItem {
  */
 export const DEFAULT_CONFIG: UserConfig = {
   enabledServices: ['tcl'],  // 默认启用 TCL 图床（开箱即用）
+  availableServices: ['weibo', 'r2', 'tcl', 'jd', 'nowcoder', 'qiyu'],  // 默认所有图床都可用
   services: {
     weibo: {
       enabled: true,
@@ -280,10 +275,6 @@ export function sanitizeConfig(config: UserConfig): UserConfig {
         ...config.services.r2,
         accessKeyId: sanitizeString(config.services.r2.accessKeyId, 4, 4),
         secretAccessKey: sanitizeString(config.services.r2.secretAccessKey, 0, 0)
-      } : undefined,
-      nami: config.services.nami ? {
-        ...config.services.nami,
-        cookie: sanitizeString(config.services.nami.cookie, 8, 4)
       } : undefined,
       jd: config.services.jd,  // JD 无需清洗，没有敏感信息
       tcl: config.services.tcl,

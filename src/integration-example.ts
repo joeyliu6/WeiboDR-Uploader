@@ -213,10 +213,10 @@ function getServiceName(serviceId: string): string {
   const names: Record<string, string> = {
     'weibo': '微博',
     'r2': 'R2',
-    'nami': '纳米',
     'jd': '京东',
     'tcl': 'TCL',
-    'nowcoder': '牛客'
+    'nowcoder': '牛客',
+    'qiyu': '七鱼'
   };
   return names[serviceId] || serviceId;
 }

@@ -49,9 +49,9 @@ const serviceNames: Record<ServiceType, string> = {
   weibo: '微博',
   r2: 'R2',
   tcl: 'TCL',
-  nami: '纳米',
   jd: '京东',
-  nowcoder: '牛客'
+  nowcoder: '牛客',
+  qiyu: '七鱼'
 };
 
 // 获取状态颜色类

@@ -60,6 +60,10 @@
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
           <span class="nav-text">备份</span>
         </button>
+        <button id="nav-link-checker" class="nav-btn" title="链接检测">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-text">检测</span>
+        </button>
         <button id="nav-settings" class="nav-btn" title="设置">
           <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
           <span class="nav-text">设置</span>
@@ -369,6 +373,43 @@
             </div>
 
             <div class="form-section">
+                <h2>支持的图床</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">选择在上传界面显示的图床，取消勾选的图床不会出现在上传选项中。</p>
+                <div class="available-services-grid" id="available-services-grid">
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-weibo" data-available-service="weibo" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">微博图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-r2" data-available-service="r2" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Cloudflare R2</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-tcl" data-available-service="tcl" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">TCL 图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-jd" data-available-service="jd" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">京东图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-nowcoder" data-available-service="nowcoder" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">牛客图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-qiyu" data-available-service="qiyu" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">七鱼图床</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-section">
                 <h2>链接配置</h2>
 
                 <!-- 启用开关 -->
@@ -444,6 +485,102 @@
         </div>
         </div>
         <div id="backup-view" class="view"></div>
+
+        <!-- 链接检测视图 -->
+        <div id="link-checker-view" class="view">
+          <div class="link-checker-container">
+            <div class="link-checker-header">
+              <h1>图片链接检测</h1>
+              <p class="link-checker-desc">检测历史记录中的图片链接是否仍然有效</p>
+            </div>
+
+            <div class="link-checker-controls">
+              <div class="link-checker-filter-group">
+                <label>筛选图床：</label>
+                <select id="link-checker-service-filter">
+                  <option value="all">全部图床</option>
+                  <option value="weibo">微博图床</option>
+                  <option value="r2">Cloudflare R2</option>
+                  <option value="tcl">TCL 图床</option>
+                  <option value="jd">京东图床</option>
+                  <option value="nowcoder">牛客图床</option>
+                  <option value="qiyu">七鱼图床</option>
+                </select>
+              </div>
+              <button id="link-checker-start-btn" class="link-checker-btn primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                开始检测
+              </button>
+              <button id="link-checker-cancel-btn" class="link-checker-btn" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                取消
+              </button>
+            </div>
+
+            <div id="link-checker-progress" class="link-checker-progress" style="display: none;">
+              <div class="link-checker-progress-header">
+                <span id="link-checker-progress-text">检测中... 0/0</span>
+                <span id="link-checker-progress-percent">0%</span>
+              </div>
+              <div class="link-checker-progress-bar-container">
+                <div id="link-checker-progress-bar" class="link-checker-progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="link-checker-stats">
+              <div class="link-checker-stat-card">
+                <div class="stat-value" id="link-checker-total">0</div>
+                <div class="stat-label">总数</div>
+              </div>
+              <div class="link-checker-stat-card valid">
+                <div class="stat-value" id="link-checker-valid">0</div>
+                <div class="stat-label">有效</div>
+              </div>
+              <div class="link-checker-stat-card invalid">
+                <div class="stat-value" id="link-checker-invalid">0</div>
+                <div class="stat-label">失效</div>
+              </div>
+              <div class="link-checker-stat-card pending">
+                <div class="stat-value" id="link-checker-pending">0</div>
+                <div class="stat-label">待检测</div>
+              </div>
+            </div>
+
+            <div class="link-checker-results">
+              <div class="link-checker-results-header">
+                <h3>检测结果</h3>
+                <div class="link-checker-actions">
+                  <button id="link-checker-delete-invalid-btn" class="link-checker-btn danger" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    删除失效
+                  </button>
+                </div>
+              </div>
+              <table class="link-checker-table">
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>链接</th>
+                    <th>图床</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="link-checker-results-body">
+                  <tr>
+                    <td colspan="5">
+                      <div class="link-checker-empty">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <p>点击"开始检测"检查历史记录中的图片链接</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
         <div id="r2-manager-view" class="view">
           <div class="r2-manager-container">
             <div class="r2-manager-toolbar">

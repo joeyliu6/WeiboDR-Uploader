@@ -30,7 +30,18 @@
           "https://*.yandex.com/*",
           "https://webdav.*/*",
           "https://www.nowcoder.com/*",
-          "https://*.nowcoder.com/*"
+          "https://*.nowcoder.com/*",
+          "https://*.sinaimg.cn/*",
+          "https://tvax*.sinaimg.cn/*",
+          "https://ww*.sinaimg.cn/*",
+          "https://img*.360buyimg.com/*",
+          "https://*.360buyimg.com/*",
+          "https://uploadfiles.nowcoder.com/*",
+          "https://*.nos-eastchina1.126.net/*",
+          "https://*.nosdn.127.net/*",
+          "https://*.tcl.com/*",
+          "http://*",
+          "https://*"
         ]
       },
       "notification": {

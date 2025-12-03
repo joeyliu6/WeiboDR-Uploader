@@ -34,9 +34,6 @@ export function initializeUploaders(): void {
   // 注册七鱼上传器
   UploaderFactory.register('qiyu', () => new QiyuUploader());
 
-  // 未来添加其他上传器：
-  // UploaderFactory.register('nami', () => new NamiUploader());
-
   const registered = UploaderFactory.getAvailableServices();
   console.log('[Uploaders] 已注册的上传器:', registered);
 }
