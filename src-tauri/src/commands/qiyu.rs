@@ -1,6 +1,7 @@
 // src-tauri/src/commands/qiyu.rs
 // 七鱼图床上传命令
 // 基于网易七鱼客服系统的 NOS 对象存储
+// 自动获取 Token，无需手动配置
 
 use tauri::Window;
 use serde::Serialize;
@@ -8,7 +9,8 @@ use reqwest::Client;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::time::{SystemTime, UNIX_EPOCH};
-use base64::{Engine as _, engine::general_purpose::STANDARD as BASE64};
+
+use super::qiyu_token::fetch_qiyu_token;
 
 #[derive(Debug, Serialize)]
 pub struct QiyuUploadResult {
@@ -19,90 +21,20 @@ pub struct QiyuUploadResult {
 // 注意：API 响应格式为 {"requestId": "...", "offset": ..., "context": "...", "callbackRetMsg": "..."}
 // 我们只需检查 HTTP 200 状态码即可判断上传成功，无需解析响应内容
 
-/// 从 Token 中解析 Object 路径
-/// Token 格式: "UPLOAD {AccessKey}:{Signature}:{Base64Policy}"
-fn parse_object_path(token: &str) -> Result<String, String> {
-    // 验证 Token 格式
-    let parts: Vec<&str> = token.split(' ').collect();
-    if parts.len() != 2 || parts[0] != "UPLOAD" {
-        return Err("无效的 Token 格式，应以 'UPLOAD ' 开头".to_string());
-    }
-
-    let token_parts: Vec<&str> = parts[1].split(':').collect();
-    if token_parts.len() != 3 {
-        return Err("Token 格式错误，缺少必要部分（应为 AccessKey:Signature:Policy）".to_string());
-    }
-
-    // 解析 Base64 Policy
-    let policy_base64 = token_parts[2];
-    let policy_json = BASE64.decode(policy_base64)
-        .map_err(|e| format!("Base64 解码失败: {}", e))?;
-    let policy_str = String::from_utf8(policy_json)
-        .map_err(|e| format!("UTF-8 解码失败: {}", e))?;
-
-    // 解析 JSON 获取 Object
-    let policy: serde_json::Value = serde_json::from_str(&policy_str)
-        .map_err(|e| format!("JSON 解析失败: {}", e))?;
-
-    policy["Object"]
-        .as_str()
-        .map(|s| s.to_string())
-        .ok_or_else(|| "Policy 中缺少 Object 字段".to_string())
-}
-
-/// 检查 Token 是否过期
-fn check_token_expiry(token: &str) -> Result<(), String> {
-    let parts: Vec<&str> = token.split(' ').collect();
-    if parts.len() != 2 {
-        return Ok(()); // 格式错误由 parse_object_path 处理
-    }
-
-    let token_parts: Vec<&str> = parts[1].split(':').collect();
-    if token_parts.len() != 3 {
-        return Ok(());
-    }
-
-    let policy_base64 = token_parts[2];
-    if let Ok(policy_json) = BASE64.decode(policy_base64) {
-        if let Ok(policy_str) = String::from_utf8(policy_json) {
-            if let Ok(policy) = serde_json::from_str::<serde_json::Value>(&policy_str) {
-                if let Some(expires) = policy["Expires"].as_i64() {
-                    let now = SystemTime::now()
-                        .duration_since(UNIX_EPOCH)
-                        .unwrap()
-                        .as_secs() as i64;
-
-                    if expires < now {
-                        return Err(format!(
-                            "Token 已过期（过期时间: {}）",
-                            chrono::DateTime::from_timestamp(expires, 0)
-                                .map(|dt| dt.format("%Y-%m-%d %H:%M:%S").to_string())
-                                .unwrap_or_else(|| expires.to_string())
-                        ));
-                    }
-                }
-            }
-        }
-    }
-
-    Ok(())
-}
-
 #[tauri::command]
 pub async fn upload_to_qiyu(
     window: Window,
     id: String,
     file_path: String,
-    qiyu_token: String,
 ) -> Result<QiyuUploadResult, String> {
     println!("[Qiyu] 开始上传文件: {}", file_path);
 
-    // 1. 检查 Token 是否过期
-    check_token_expiry(&qiyu_token)?;
-
-    // 2. 解析 Token 获取 Object 路径
-    let object_path = parse_object_path(&qiyu_token)?;
-    println!("[Qiyu] 解析 Object 路径: {}", object_path);
+    // 1. 自动获取新的 Token（每次上传都获取新的，确保 Object 路径唯一）
+    println!("[Qiyu] 正在获取上传凭证...");
+    let token_info = fetch_qiyu_token().await?;
+    let qiyu_token = &token_info.token;
+    let object_path = &token_info.object_path;
+    println!("[Qiyu] Token 获取成功，Object 路径: {}", object_path);
 
     // 3. 读取文件
     let mut file = File::open(&file_path).await
@@ -151,7 +83,7 @@ pub async fn upload_to_qiyu(
     let response = client
         .post(&upload_url)
         .header("Content-Type", content_type)
-        .header("x-nos-token", &qiyu_token)
+        .header("x-nos-token", qiyu_token.as_str())
         .body(buffer)
         .send()
         .await

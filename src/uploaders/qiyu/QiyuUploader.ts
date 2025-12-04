@@ -1,10 +1,11 @@
 // src/uploaders/qiyu/QiyuUploader.ts
 // 七鱼图床上传器
 // 基于网易七鱼客服系统的 NOS 对象存储
+// Token 自动获取，需要系统安装 Chrome 浏览器
 
+import { invoke } from '@tauri-apps/api/tauri';
 import { BaseUploader } from '../base/BaseUploader';
 import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
-import { QiyuServiceConfig } from '../../config/types';
 
 interface QiyuRustResult {
   url: string;
@@ -19,55 +20,35 @@ export class QiyuUploader extends BaseUploader {
     return 'upload_to_qiyu';
   }
 
-  async validateConfig(config: any): Promise<ValidationResult> {
-    const qiyuConfig = config as QiyuServiceConfig;
-
-    if (!qiyuConfig.token || this.isEmpty(qiyuConfig.token)) {
+  async validateConfig(_config: any): Promise<ValidationResult> {
+    // 七鱼图床不需要手动配置 Token，但需要检查 Chrome 是否安装
+    try {
+      const chromeInstalled = await invoke<boolean>('check_chrome_installed');
+      if (!chromeInstalled) {
+        return {
+          valid: false,
+          errors: ['七鱼图床需要系统安装 Chrome 或 Edge 浏览器才能使用']
+        };
+      }
+      return { valid: true };
+    } catch (error) {
+      console.error('[QiyuUploader] 检查 Chrome 失败:', error);
       return {
         valid: false,
-        missingFields: ['Token'],
-        errors: ['请先在设置中配置七鱼 Token']
+        errors: ['无法检测 Chrome 安装状态']
       };
     }
-
-    // 验证 Token 格式
-    if (!qiyuConfig.token.trim().startsWith('UPLOAD ')) {
-      return {
-        valid: false,
-        errors: ['Token 格式错误，应以 "UPLOAD " 开头']
-      };
-    }
-
-    // 验证 Token 结构 (UPLOAD AccessKey:Signature:Policy)
-    const tokenParts = qiyuConfig.token.trim().split(' ');
-    if (tokenParts.length !== 2) {
-      return {
-        valid: false,
-        errors: ['Token 格式错误']
-      };
-    }
-
-    const credentialParts = tokenParts[1].split(':');
-    if (credentialParts.length !== 3) {
-      return {
-        valid: false,
-        errors: ['Token 格式错误，应包含 AccessKey:Signature:Policy']
-      };
-    }
-
-    return { valid: true };
   }
 
   async upload(
     filePath: string,
-    options: UploadOptions,
+    _options: UploadOptions,
     onProgress?: ProgressCallback
   ): Promise<UploadResult> {
-    const config = options.config as QiyuServiceConfig;
-
+    // Token 现在由后端自动获取，不再需要传递
     const rustResult = await this.uploadViaRust(
       filePath,
-      { qiyuToken: config.token },
+      {}, // 无需额外参数
       onProgress
     ) as QiyuRustResult;
 

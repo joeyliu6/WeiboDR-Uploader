@@ -189,7 +189,10 @@ const webdavUsernameEl = getElement<HTMLInputElement>('webdav-username', 'WebDAV
 const webdavPasswordEl = getElement<HTMLInputElement>('webdav-password', 'WebDAV密码输入框');
 const webdavRemotePathEl = getElement<HTMLInputElement>('webdav-remote-path', 'WebDAV远程路径输入框');
 const nowcoderCookieEl = document.querySelector<HTMLTextAreaElement>('#nowcoder-cookie');
-const qiyuTokenEl = document.querySelector<HTMLTextAreaElement>('#qiyu-token');
+const qiyuChromeStatusEl = document.querySelector<HTMLElement>('#qiyu-chrome-status');
+
+// 七鱼图床 Chrome 检测状态
+let qiyuChromeInstalled = false;
 const saveStatusEl = getElement<HTMLElement>('save-status', '保存状态');
 const loginWithWebviewBtn = getElement<HTMLButtonElement>('login-with-webview-btn', 'WebView登录按钮');
 const testR2Btn = getElement<HTMLButtonElement>('test-r2-btn', 'R2测试按钮');
@@ -1300,7 +1303,7 @@ async function loadSettings(): Promise<void> {
       if (r2PathEl) r2PathEl.value = config.services?.r2?.path || '';
       if (r2PublicDomainEl) r2PublicDomainEl.value = config.services?.r2?.publicDomain || '';
       if (nowcoderCookieEl) nowcoderCookieEl.value = config.services?.nowcoder?.cookie || '';
-      if (qiyuTokenEl) qiyuTokenEl.value = config.services?.qiyu?.token || '';
+      // 七鱼图床不再需要手动配置 Token，由后端自动获取
 
       // 链接前缀配置（使用迁移函数确保兼容旧配置）
       const migratedConfig = migrateConfig(config);
@@ -1589,8 +1592,8 @@ async function handleAutoSave(): Promise<void> {
           cookie: nowcoderCookieEl?.value.trim() || ''
         },
         qiyu: {
-          enabled: enabledServices.includes('qiyu'),
-          token: qiyuTokenEl?.value.trim() || ''
+          enabled: enabledServices.includes('qiyu')
+          // Token 由后端自动获取，无需保存
         }
       },
       outputFormat: savedConfig?.outputFormat || DEFAULT_CONFIG.outputFormat,
@@ -3225,8 +3228,8 @@ function updateServiceStatus(serviceId: ServiceType, config: UserConfig): void {
     const nowcoderConfig = config.services.nowcoder;
     isConfigured = !!nowcoderConfig?.cookie && nowcoderConfig.cookie.trim().length > 0;
   } else if (serviceId === 'qiyu') {
-    const qiyuConfig = config.services.qiyu;
-    isConfigured = !!qiyuConfig?.token && qiyuConfig.token.trim().length > 0;
+    // 七鱼图床需要系统安装 Chrome/Edge 浏览器
+    isConfigured = qiyuChromeInstalled;
   }
 
   // 更新按钮状态
@@ -3235,6 +3238,45 @@ function updateServiceStatus(serviceId: ServiceType, config: UserConfig): void {
     btn.classList.remove('selected');
   } else {
     btn.classList.remove('disabled');
+  }
+}
+
+/**
+ * 检测系统是否安装了 Chrome/Edge 浏览器
+ * 更新七鱼图床的可用状态
+ */
+async function checkQiyuChromeStatus(): Promise<void> {
+  try {
+    console.log('[七鱼] 正在检测 Chrome/Edge 浏览器...');
+    qiyuChromeInstalled = await invoke<boolean>('check_chrome_installed');
+    console.log('[七鱼] Chrome 检测结果:', qiyuChromeInstalled);
+
+    // 更新 UI 状态显示
+    if (qiyuChromeStatusEl) {
+      const statusDot = qiyuChromeStatusEl.querySelector('.status-dot') as HTMLElement;
+      const statusText = qiyuChromeStatusEl.querySelector('span:last-child') as HTMLElement;
+
+      if (qiyuChromeInstalled) {
+        if (statusDot) statusDot.style.background = '#22c55e'; // 绿色
+        if (statusText) statusText.textContent = '已检测到 Chrome/Edge ✓';
+      } else {
+        if (statusDot) statusDot.style.background = '#ef4444'; // 红色
+        if (statusText) statusText.textContent = '未检测到 Chrome/Edge';
+      }
+    }
+
+    // 刷新服务按钮状态
+    await loadServiceButtonStates();
+  } catch (error) {
+    console.error('[七鱼] Chrome 检测失败:', error);
+    qiyuChromeInstalled = false;
+
+    if (qiyuChromeStatusEl) {
+      const statusDot = qiyuChromeStatusEl.querySelector('.status-dot') as HTMLElement;
+      const statusText = qiyuChromeStatusEl.querySelector('span:last-child') as HTMLElement;
+      if (statusDot) statusDot.style.background = '#f59e0b'; // 橙色
+      if (statusText) statusText.textContent = '检测失败';
+    }
   }
 }
 
@@ -3867,9 +3909,14 @@ function initialize(): void {
       console.error('[初始化] 上传器注册失败:', error);
     }
 
-    // 加载服务按钮状态
-    loadServiceButtonStates().catch(err => {
-      console.error('[初始化] 加载服务按钮状态失败:', err);
+    // 检测七鱼图床所需的 Chrome/Edge 浏览器
+    // 此函数会在检测完成后自动刷新服务按钮状态
+    checkQiyuChromeStatus().catch(err => {
+      console.error('[初始化] 七鱼 Chrome 检测失败:', err);
+      // 即使检测失败，也加载其他服务的按钮状态
+      loadServiceButtonStates().catch(err2 => {
+        console.error('[初始化] 加载服务按钮状态失败:', err2);
+      });
     });
 
     // 绑定服务按钮点击事件
@@ -3953,8 +4000,8 @@ function initialize(): void {
       webdavUsernameEl,
       webdavPasswordEl,
       webdavRemotePathEl,
-      nowcoderCookieEl,
-      qiyuTokenEl
+      nowcoderCookieEl
+      // qiyu 不再需要手动配置 Token
     ];
     
     settingsInputs.forEach(input => {

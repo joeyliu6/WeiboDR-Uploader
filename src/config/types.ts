@@ -74,10 +74,10 @@ export interface NowcoderServiceConfig extends BaseServiceConfig {
 /**
  * 七鱼图床服务配置
  * 基于网易七鱼客服系统的 NOS 对象存储
+ * Token 由后端自动获取（通过 Chrome/Edge 浏览器），无需手动配置
  */
 export interface QiyuServiceConfig extends BaseServiceConfig {
-  /** 七鱼 NOS Token (x-nos-token 请求头的值) */
-  token: string;
+  // Token 已改为后端自动获取，此接口保留用于未来扩展
 }
 
 /**
@@ -237,8 +237,7 @@ export const DEFAULT_CONFIG: UserConfig = {
       cookie: ''
     },
     qiyu: {
-      enabled: false,  // 七鱼图床需要 Token，默认不启用
-      token: ''
+      enabled: false  // 七鱼图床需要 Chrome/Edge 浏览器，默认不启用
     }
   },
   outputFormat: 'baidu-proxy',
@@ -282,10 +281,8 @@ export function sanitizeConfig(config: UserConfig): UserConfig {
         ...config.services.nowcoder,
         cookie: sanitizeString(config.services.nowcoder.cookie, 8, 4)
       } : undefined,
-      qiyu: config.services.qiyu ? {
-        ...config.services.qiyu,
-        token: sanitizeString(config.services.qiyu.token, 10, 4)
-      } : undefined
+      // 七鱼图床 Token 由后端自动获取，无需脱敏处理
+      qiyu: config.services.qiyu
     },
     webdav: config.webdav ? {
       ...config.webdav,

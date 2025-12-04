@@ -113,6 +113,8 @@ fn main() {
             commands::jd::upload_to_jd,
             commands::nowcoder::upload_to_nowcoder,
             commands::qiyu::upload_to_qiyu,
+            commands::qiyu_token::fetch_qiyu_token,
+            commands::qiyu_token::check_chrome_installed,
             commands::utils::file_exists,
             get_or_create_secure_key
         ])

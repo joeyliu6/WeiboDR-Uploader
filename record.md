@@ -4496,6 +4496,194 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 
 ---
 
+## 阶段十五: 七鱼图床 Token 获取方案迁移 (Sidecar + Puppeteer)
+
+> **开发日期**: 2025-12-04
+> **问题背景**: 原 Rust `headless_chrome` crate 无法拦截 WebSocket 消息，导致无法获取七鱼图床的上传 Token
+
+### 问题分析
+
+七鱼图床使用网易 NOS (Netease Object Storage) 作为后端存储，Token 获取流程：
+
+1. 页面加载后建立 WebSocket 连接
+2. 用户触发文件上传
+3. **服务器通过 WebSocket 返回上传凭证 (Token)**
+4. 前端使用 Token 上传文件到 NOS
+
+**原方案问题**:
+- Rust `headless_chrome` crate 的 WebSocket 拦截功能不稳定
+- 只触发 `change` 事件无法真正上传文件，服务器不会返回 Token
+
+### 解决方案: Tauri Sidecar + Node.js + Puppeteer
+
+**架构设计**:
+```
+Tauri App (Rust)
+    |
+    +---> spawn sidecar --> qiyu-token-fetcher.exe (pkg 打包的 Node.js)
+                              |
+                              +---> puppeteer-core
+                                       |
+                                       +---> System Chrome/Edge
+```
+
+### 核心实现
+
+#### 1. Sidecar 项目结构
+
+```
+sidecar/
+└── qiyu-token-fetcher/
+    ├── package.json
+    ├── tsconfig.json
+    └── src/
+        ├── index.ts           # 命令行入口
+        ├── browser-detector.ts # Chrome/Edge 路径检测
+        └── token-fetcher.ts    # Token 获取核心逻辑
+```
+
+#### 2. 关键技术点
+
+**使用 `uploadFile()` 真正上传文件**（而非仅触发 change 事件）:
+```typescript
+// 创建临时测试图片
+const tempImagePath = await createTestImage();
+
+// 找到所有文件输入框
+const fileInputs = await page.$$('input[type="file"]');
+
+// 使用 Puppeteer 的 uploadFile 真正设置文件
+for (const fileInput of fileInputs) {
+  await fileInput.uploadFile(tempImagePath);
+  await sleep(2000);
+  if (capturedToken) break;
+}
+```
+
+**多重 Token 捕获方式**:
+
+1. **CDP WebSocket 拦截** (Base64 解码):
+```typescript
+client.on('Network.webSocketFrameReceived', (params) => {
+  const payload = params.response.payloadData;
+  const decoded = Buffer.from(payload, 'base64').toString('utf-8');
+  const tokenMatch = decoded.match(/UPLOAD\s+[a-f0-9]{32}:[A-Za-z0-9+\/=]+:[A-Za-z0-9+\/=]+/);
+  if (tokenMatch) capturedToken = tokenMatch[0];
+});
+```
+
+2. **HTTP 请求头拦截** (`x-nos-token`):
+```typescript
+client.on('Network.requestWillBeSent', (params) => {
+  const nosToken = params.request.headers['x-nos-token'];
+  if (nosToken) capturedToken = nosToken;
+});
+```
+
+#### 3. Tauri 配置
+
+**tauri.conf.json**:
+```json
+{
+  "tauri": {
+    "bundle": {
+      "externalBin": ["binaries/qiyu-token-fetcher"]
+    },
+    "allowlist": {
+      "shell": {
+        "sidecar": true,
+        "scope": [
+          { "name": "binaries/qiyu-token-fetcher", "sidecar": true, "args": true }
+        ]
+      }
+    }
+  }
+}
+```
+
+**Cargo.toml**:
+```toml
+tauri = { version = "1.5", features = ["shell-sidecar", ...] }
+# headless_chrome 已被 Sidecar (Node.js + Puppeteer) 替代
+```
+
+#### 4. Rust 调用 Sidecar
+
+```rust
+use tauri::api::process::{Command, CommandEvent};
+
+#[tauri::command]
+pub async fn fetch_qiyu_token() -> Result<QiyuToken, String> {
+    let (mut rx, _child) = Command::new_sidecar("qiyu-token-fetcher")
+        .map_err(|e| format!("创建 sidecar 失败: {}", e))?
+        .args(["fetch-token"])
+        .spawn()
+        .map_err(|e| format!("启动 sidecar 失败: {}", e))?;
+
+    let mut output = String::new();
+    while let Some(event) = rx.recv().await {
+        match event {
+            CommandEvent::Stdout(line) => output.push_str(&line),
+            CommandEvent::Stderr(line) => println!("{}", line),  // 进度日志
+            _ => {}
+        }
+    }
+
+    // 解析 JSON 响应
+    let response: SidecarResponse<QiyuToken> = serde_json::from_str(&output)?;
+    // ...
+}
+```
+
+### Token 格式
+
+```
+UPLOAD {32位AccessKey}:{Base64签名}:{Base64Policy}
+```
+
+**Policy 解码后**:
+```json
+{
+  "Bucket": "nim",
+  "Object": "MTY2OTk5Nzk=/bmltYV8zMzk3ODc2NDkwNDZf...",
+  "Expires": 1795923906,
+  "MimeLimit": "!text/html;image/svg+xml;...",
+  "CallbackUrl": "http://api-nos-callback.netease.im/nos/callback.action"
+}
+```
+
+### 构建命令
+
+```bash
+# 编译 TypeScript
+cd sidecar/qiyu-token-fetcher
+npm install
+npm run build
+
+# 打包为可执行文件
+npx @yao-pkg/pkg dist/index.js -t node18-win-x64 -o ../../src-tauri/binaries/qiyu-token-fetcher-x86_64-pc-windows-msvc.exe
+```
+
+### 修改的文件清单
+
+| 文件 | 操作 | 说明 |
+|------|------|------|
+| `sidecar/qiyu-token-fetcher/*` | 新建 | Sidecar 项目 (Node.js + Puppeteer) |
+| `src-tauri/tauri.conf.json` | 修改 | 添加 sidecar 配置 |
+| `src-tauri/Cargo.toml` | 修改 | 添加 `shell-sidecar` feature，移除 `headless_chrome` |
+| `src-tauri/src/commands/qiyu_token.rs` | 重写 | 调用 sidecar 替代 headless_chrome |
+| `src-tauri/binaries/*.exe` | 新建 | 打包后的 sidecar 可执行文件 |
+
+### 经验总结
+
+1. **真正上传 vs 触发事件**: 仅触发 `change` 事件不会让服务器返回 Token，必须使用 `uploadFile()` 真正上传文件
+2. **多输入框尝试**: 页面有多个 file input，需要逐个尝试（第 5 个是真正的上传入口）
+3. **多重拦截**: 同时使用 WebSocket 拦截和 HTTP 请求头拦截，提高成功率
+4. **Sidecar 优势**: 相比 Rust 的 headless_chrome，Node.js 的 puppeteer-core 生态更成熟，兼容性更好
+5. **体积代价**: Sidecar 方案增加约 35-50MB 应用体积，但稳定性显著提升
+
+---
+
 ## 👥 贡献者
 
 - **架构设计**: Claude (Anthropic)
@@ -4504,5 +4692,5 @@ function migrateConfigToV3(oldConfig: any): UserConfig {
 
 ---
 
-**最后更新**: 2025-12-03
+**最后更新**: 2025-12-04
 **下次审查**: 添加更多图床时

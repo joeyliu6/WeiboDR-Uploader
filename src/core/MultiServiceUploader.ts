@@ -260,12 +260,8 @@ export class MultiServiceUploader {
       }
 
       if (serviceId === 'qiyu') {
-        const qiyuConfig = serviceConfig as any;
-        if (!qiyuConfig.token || qiyuConfig.token.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Token 未配置，跳过`);
-          return false;
-        }
-        // 如果 token 存在，认为已配置
+        // 七鱼图床 Token 由后端自动获取，只要启用了就认为已配置
+        // Chrome/Edge 检测在前端 UI 层面处理
         return true;
       }
 

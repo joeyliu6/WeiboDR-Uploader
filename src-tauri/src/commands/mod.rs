@@ -4,4 +4,5 @@ pub mod tcl;
 pub mod jd;
 pub mod nowcoder;
 pub mod qiyu;
+pub mod qiyu_token;
 pub mod utils;
