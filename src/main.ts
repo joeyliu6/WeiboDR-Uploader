@@ -2297,19 +2297,27 @@ async function testNowcoderConnection(): Promise<void> {
         0xAE, 0x42, 0x60, 0x82  // IEND CRC
       ]);
 
-      // 发送测试请求
+      // 创建 Blob 对象用于 multipart 表单
+      const blob = new Blob([minimalPng], { type: 'image/png' });
+      const file = new File([blob], 'test.png', { type: 'image/png' });
+
+      // 创建 FormData
+      const formData = new FormData();
+      formData.append('file', file);
+
+      // 发送测试请求（使用 multipart/form-data，就像实际上传一样）
       const timestamp = Date.now();
       const response = await client.post<{ code: number; msg: string; url?: string }>(
         `https://www.nowcoder.com/uploadImage?type=1&_=${timestamp}`,
-        Body.bytes(minimalPng),
+        Body.form(formData),
         {
           responseType: ResponseType.JSON,
           headers: {
             Cookie: cookie,
-            'Content-Type': 'application/octet-stream',
             'Referer': 'https://www.nowcoder.com/creation/write/article',
             'Origin': 'https://www.nowcoder.com',
             'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
+            // 注意：不要手动设置 Content-Type，让浏览器自动添加 multipart/form-data 边界
           },
           timeout: 15000, // 15秒超时
         }
@@ -2555,6 +2563,110 @@ async function testZhihuConnection(): Promise<void> {
   }
 }
 
+/**
+ * 测试纳米图床 Cookie 连接
+ * 通过调用 fetch_nami_token 命令验证 Cookie 和 Auth-Token 是否有效
+ */
+async function testNamiConnection(): Promise<void> {
+  const namiCookieStatusEl = document.getElementById('nami-cookie-status');
+  const testNamiBtn = document.getElementById('test-nami-cookie-btn') as HTMLButtonElement | null;
+
+  try {
+    console.log('[纳米Cookie测试] 开始测试纳米连接...');
+
+    // 验证输入
+    if (!namiCookieEl) {
+      console.error('[纳米Cookie测试] namiCookieEl 不存在');
+      if (namiCookieStatusEl) {
+        namiCookieStatusEl.textContent = '❌ Cookie 输入框不存在';
+        namiCookieStatusEl.style.color = 'red';
+      }
+      return;
+    }
+
+    const cookie = namiCookieEl.value.trim();
+    if (!cookie || cookie.length === 0) {
+      console.warn('[纳米Cookie测试] Cookie 为空');
+      if (namiCookieStatusEl) {
+        namiCookieStatusEl.textContent = '❌ Cookie 不能为空！';
+        namiCookieStatusEl.style.color = 'red';
+      }
+      return;
+    }
+
+    // 从 Cookie 中提取 Auth-Token
+    const authTokenMatch = cookie.match(/Auth-Token=([^;]+)/);
+    const authToken = authTokenMatch ? authTokenMatch[1] : '';
+
+    if (!authToken) {
+      console.warn('[纳米Cookie测试] Cookie 中缺少 Auth-Token 字段');
+      if (namiCookieStatusEl) {
+        namiCookieStatusEl.textContent = '❌ Cookie 中缺少 Auth-Token 字段（请点击"自动获取Cookie"按钮）';
+        namiCookieStatusEl.style.color = 'red';
+      }
+      return;
+    }
+
+    // 禁用测试按钮，显示加载状态
+    if (testNamiBtn) {
+      testNamiBtn.disabled = true;
+      testNamiBtn.textContent = '测试中...';
+    }
+
+    // 更新状态
+    if (namiCookieStatusEl) {
+      namiCookieStatusEl.textContent = '⏳ 测试中...';
+      namiCookieStatusEl.style.color = 'yellow';
+    }
+
+    try {
+      // 调用 Rust 后端的 fetch_nami_token 命令验证凭据
+      await invoke('fetch_nami_token', {
+        cookie: cookie,
+        authToken: authToken
+      });
+
+      // 如果成功，说明 Cookie 和 Auth-Token 有效
+      console.log('[纳米Cookie测试] ✓ Cookie 和 Auth-Token 有效');
+      if (namiCookieStatusEl) {
+        namiCookieStatusEl.textContent = '✅ Cookie 有效！ (凭据验证成功)';
+        namiCookieStatusEl.style.color = 'lightgreen';
+      }
+    } catch (err: unknown) {
+      const errorMsg = err instanceof Error ? err.message : String(err);
+      console.error('[纳米Cookie测试] 测试失败:', err);
+
+      if (namiCookieStatusEl) {
+        // 根据错误信息提供更友好的提示
+        if (errorMsg.includes('401') || errorMsg.includes('403') || errorMsg.includes('unauthorized')) {
+          namiCookieStatusEl.textContent = '❌ Cookie 无效或已过期，请重新获取';
+        } else if (errorMsg.includes('timeout') || errorMsg.includes('超时')) {
+          namiCookieStatusEl.textContent = '❌ 测试超时，请检查网络连接';
+        } else if (errorMsg.includes('network') || errorMsg.includes('fetch')) {
+          namiCookieStatusEl.textContent = '❌ 网络连接失败，请检查网络';
+        } else {
+          const shortError = errorMsg.length > 80 ? errorMsg.substring(0, 80) + '...' : errorMsg;
+          namiCookieStatusEl.textContent = `❌ 测试失败: ${shortError}`;
+        }
+        namiCookieStatusEl.style.color = 'red';
+      }
+    }
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[纳米Cookie测试] 测试纳米连接失败:', error);
+    if (namiCookieStatusEl) {
+      namiCookieStatusEl.textContent = `❌ 测试失败: ${errorMsg}`;
+      namiCookieStatusEl.style.color = 'red';
+    }
+  } finally {
+    // 恢复按钮状态
+    if (testNamiBtn) {
+      testNamiBtn.disabled = false;
+      testNamiBtn.textContent = '测试连接';
+    }
+  }
+}
+
 
 // --- HISTORY LOGIC (from history.ts) ---
 let allHistoryItems: HistoryItem[] = [];
@@ -2698,7 +2810,7 @@ async function renderHistoryTable(items: HistoryItem[]) {
     historyBody.innerHTML = '';
 
     if (items.length === 0) {
-      historyBody.innerHTML = '<tr><td colspan="7" style="text-align: center; color: #888;">暂无历史记录</td></tr>';
+      historyBody.innerHTML = '<tr><td colspan="5" style="text-align: center; color: #888;">暂无历史记录</td></tr>';
       return;
     }
 
@@ -2747,7 +2859,7 @@ async function renderHistoryTable(items: HistoryItem[]) {
       tdName.title = item.localFileName;
       tr.appendChild(tdName);
 
-      // 3. 图床状态列（新增）
+      // 3. 图床状态列（支持点击复制）
       const tdServices = document.createElement('td');
       const servicesContainer = document.createElement('div');
       servicesContainer.className = 'service-badges-container';
@@ -2757,7 +2869,6 @@ async function renderHistoryTable(items: HistoryItem[]) {
         item.results.forEach(serviceResult => {
           const badge = document.createElement('span');
           badge.className = `service-badge ${serviceResult.status}`;
-          badge.title = serviceResult.error || serviceResult.result?.url || '';
 
           // 图床名称映射
           const serviceNames: Record<ServiceType, string> = {
@@ -2773,6 +2884,31 @@ async function renderHistoryTable(items: HistoryItem[]) {
 
           const serviceName = serviceNames[serviceResult.serviceId] || serviceResult.serviceId;
           badge.textContent = `${serviceName} ${serviceResult.status === 'success' ? '✓' : '✗'}`;
+
+          // 成功的图床支持点击复制链接
+          if (serviceResult.status === 'success' && serviceResult.result?.url) {
+            badge.style.cursor = 'pointer';
+            badge.title = '点击复制链接';
+            badge.addEventListener('click', async () => {
+              try {
+                // 获取链接（微博链接需要添加前缀）
+                let linkToCopy = serviceResult.result!.url;
+                if (serviceResult.serviceId === 'weibo') {
+                  const activePrefix = getActivePrefixFromUI();
+                  if (activePrefix) {
+                    linkToCopy = activePrefix + linkToCopy;
+                  }
+                }
+
+                await writeText(linkToCopy);
+                showToast('复制成功', 'success');
+              } catch (err) {
+                showToast('复制失败', 'error');
+              }
+            });
+          } else if (serviceResult.status === 'failed') {
+            badge.title = serviceResult.error || '上传失败';
+          }
 
           servicesContainer.appendChild(badge);
 
@@ -2791,151 +2927,35 @@ async function renderHistoryTable(items: HistoryItem[]) {
         const badge = document.createElement('span');
         badge.className = 'service-badge success';
         badge.textContent = `${item.primaryService || '未知'} ✓`;
+        badge.style.cursor = 'pointer';
+        badge.title = '点击复制链接';
+        badge.addEventListener('click', async () => {
+          try {
+            let linkToCopy = item.generatedLink;
+            if (item.primaryService === 'weibo') {
+              const activePrefix = getActivePrefixFromUI();
+              if (activePrefix) {
+                linkToCopy = activePrefix + linkToCopy;
+              }
+            }
+            await writeText(linkToCopy);
+            showToast('复制成功', 'success');
+          } catch (err) {
+            showToast('复制失败', 'error');
+          }
+        });
         servicesContainer.appendChild(badge);
       }
 
       tdServices.appendChild(servicesContainer);
       tr.appendChild(tdServices);
 
-      // 4. 链接选择列（新增下拉框）
-      const tdLink = document.createElement('td');
-
-      if (item.results && item.results.length > 0) {
-        // 获取当前前缀配置
-        const activePrefix = getActivePrefixFromUI();
-
-        // 创建链接选择下拉框
-        const linkSelector = document.createElement('select');
-        linkSelector.className = 'link-selector';
-        linkSelector.title = '选择要复制的链接';
-
-        item.results.forEach(serviceResult => {
-          if (serviceResult.status === 'success' && serviceResult.result?.url) {
-            const option = document.createElement('option');
-
-            // 微博链接动态拼接当前选择的前缀
-            let displayUrl = serviceResult.result.url;
-            if (serviceResult.serviceId === 'weibo' && activePrefix) {
-              displayUrl = activePrefix + serviceResult.result.url;
-            }
-            option.value = displayUrl;
-
-            const serviceNames: Record<ServiceType, string> = {
-              weibo: '微博',
-              r2: 'R2',
-              tcl: 'TCL',
-              jd: '京东',
-              nowcoder: '牛客',
-              qiyu: '七鱼',
-              zhihu: '知乎',
-              nami: '纳米'
-            };
-
-            const serviceName = serviceNames[serviceResult.serviceId] || serviceResult.serviceId;
-            const isPrimary = serviceResult.serviceId === item.primaryService;
-            option.textContent = `${serviceName}${isPrimary ? ' (主)' : ''}`;
-
-            if (isPrimary) {
-              option.selected = true;
-            }
-
-            linkSelector.appendChild(option);
-          }
-        });
-
-        // 如果只有一个成功的链接，直接显示链接
-        if (linkSelector.options.length === 1) {
-          // 获取实际显示的链接（已经包含前缀处理）
-          const displayLink = linkSelector.options[0].value;
-          const link = document.createElement('a');
-          link.href = displayLink;
-          link.target = '_blank';
-          link.textContent = displayLink;
-          link.title = displayLink;
-          link.className = 'history-link';
-          tdLink.appendChild(link);
-        } else if (linkSelector.options.length > 1) {
-          tdLink.appendChild(linkSelector);
-        } else {
-          tdLink.textContent = '无可用链接';
-        }
-      } else {
-        // 旧数据兼容：动态处理微博链接前缀
-        const activePrefix = getActivePrefixFromUI();
-        let displayLink = item.generatedLink;
-
-        // 如果是微博链接且有前缀配置，需要处理
-        if (item.primaryService === 'weibo' && activePrefix) {
-          // 检查链接是否已经包含旧前缀，如果是则替换
-          const oldPrefixes = [...DEFAULT_PREFIXES];
-          let isOldPrefixed = false;
-          for (const oldPrefix of oldPrefixes) {
-            if (displayLink.startsWith(oldPrefix)) {
-              // 移除旧前缀，添加新前缀
-              displayLink = activePrefix + displayLink.substring(oldPrefix.length);
-              isOldPrefixed = true;
-              break;
-            }
-          }
-          // 如果没有旧前缀，直接添加新前缀
-          if (!isOldPrefixed && !displayLink.startsWith('http')) {
-            displayLink = activePrefix + displayLink;
-          }
-        }
-
-        const link = document.createElement('a');
-        link.href = displayLink;
-        link.target = '_blank';
-        link.textContent = displayLink;
-        link.title = displayLink;
-        link.className = 'history-link';
-        tdLink.appendChild(link);
-      }
-
-      tr.appendChild(tdLink);
-
-      // 5. 时间列
+      // 4. 时间列
       const tdTime = document.createElement('td');
       tdTime.textContent = formatTimestamp(item.timestamp);
       tr.appendChild(tdTime);
 
-      // 6. 复制操作列
-      const tdAction = document.createElement('td');
-      const copyBtn = document.createElement('button');
-      const copyIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>';
-      const checkIcon = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-
-      copyBtn.innerHTML = copyIcon;
-      copyBtn.title = '复制当前选择的链接';
-      copyBtn.className = 'icon-btn';
-
-      copyBtn.addEventListener('click', async () => {
-        try {
-          let linkToCopy = item.generatedLink;
-
-          // 如果有下拉框，复制选中的链接
-          const selector = tr.querySelector<HTMLSelectElement>('.link-selector');
-          if (selector) {
-            linkToCopy = selector.value;
-          }
-
-          await writeText(linkToCopy);
-          copyBtn.innerHTML = checkIcon;
-          copyBtn.style.color = 'var(--success)';
-          setTimeout(() => {
-            copyBtn.innerHTML = copyIcon;
-            copyBtn.style.color = '';
-          }, 1500);
-        } catch (err) {
-          copyBtn.innerHTML = '❌';
-          copyBtn.style.color = 'var(--error)';
-          copyBtn.style.fontSize = '14px';
-        }
-      });
-      tdAction.appendChild(copyBtn);
-      tr.appendChild(tdAction);
-
-      // 7. 删除操作列
+      // 5. 删除操作列
       const tdDelete = document.createElement('td');
       const deleteBtn = document.createElement('button');
       deleteBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>';
@@ -4002,10 +4022,10 @@ async function lightboxCopyLink(): Promise<void> {
   try {
     const url = getImageUrlFromItem(item);
     await writeText(url);
-    showToast('success', '链接已复制到剪贴板');
+    showToast('复制成功', 'success');
   } catch (error) {
     console.error('[Lightbox] 复制链接失败:', error);
-    showToast('error', '复制失败');
+    showToast('复制失败', 'error');
   }
 }
 
@@ -4093,10 +4113,10 @@ async function contextMenuCopyLink(): Promise<void> {
   try {
     const url = getImageUrlFromItem(item);
     await writeText(url);
-    showToast('success', '链接已复制到剪贴板');
+    showToast('复制成功', 'success');
   } catch (error) {
     console.error('[Context Menu] 复制链接失败:', error);
-    showToast('error', '复制失败');
+    showToast('复制失败', 'error');
   }
 
   hideContextMenu();
@@ -4380,6 +4400,18 @@ function initialize(): void {
       });
     } else {
       console.warn('[初始化] 警告: 知乎Cookie测试按钮不存在');
+    }
+
+    // 纳米Cookie测试按钮事件绑定
+    const testNamiCookieBtn = document.getElementById('test-nami-cookie-btn');
+    if (testNamiCookieBtn) {
+      testNamiCookieBtn.addEventListener('click', () => {
+        testNamiConnection().catch(err => {
+          console.error('[初始化] 测试纳米Cookie失败:', err);
+        });
+      });
+    } else {
+      console.warn('[初始化] 警告: 纳米Cookie测试按钮不存在');
     }
 
     // 纳米登录按钮事件绑定
