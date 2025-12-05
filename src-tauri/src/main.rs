@@ -112,6 +112,7 @@ fn main() {
             commands::tcl::upload_to_tcl,
             commands::jd::upload_to_jd,
             commands::nowcoder::upload_to_nowcoder,
+            commands::nowcoder::test_nowcoder_cookie,
             commands::qiyu::upload_to_qiyu,
             commands::qiyu_token::fetch_qiyu_token,
             commands::qiyu_token::check_chrome_installed,

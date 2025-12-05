@@ -2333,16 +2333,6 @@ async function testNowcoderConnection(): Promise<void> {
       return;
     }
 
-    // 检查必要字段
-    if (!cookie.includes('t=')) {
-      console.warn('[牛客Cookie测试] Cookie 缺少 t 字段');
-      if (nowcoderCookieStatusEl) {
-        nowcoderCookieStatusEl.textContent = '❌ Cookie 缺少必要字段 t（需要登录后的 Cookie）';
-        nowcoderCookieStatusEl.style.color = 'red';
-      }
-      return;
-    }
-
     // 禁用测试按钮，显示加载状态
     if (testNowcoderBtn) {
       testNowcoderBtn.disabled = true;
@@ -2355,119 +2345,19 @@ async function testNowcoderConnection(): Promise<void> {
       nowcoderCookieStatusEl.style.color = 'yellow';
     }
 
-    try {
-      // 获取 HTTP 客户端
-      const client = await getClient();
+    // 调用后端命令测试 Cookie
+    await invoke('test_nowcoder_cookie', { nowcoderCookie: cookie });
 
-      // 创建最小的 1x1 透明 PNG（67 字节）
-      const minimalPng = new Uint8Array([
-        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A, // PNG signature
-        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52, // IHDR chunk
-        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01, // 1x1 dimensions
-        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4, // 8-bit RGBA
-        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41, // IDAT chunk
-        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00, // compressed data
-        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00, // checksum
-        0x00, 0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, // IEND chunk
-        0xAE, 0x42, 0x60, 0x82  // IEND CRC
-      ]);
-
-      // 创建 Blob 对象用于 multipart 表单
-      const blob = new Blob([minimalPng], { type: 'image/png' });
-      const file = new File([blob], 'test.png', { type: 'image/png' });
-
-      // 创建 FormData
-      const formData = new FormData();
-      formData.append('file', file);
-
-      // 发送测试请求（使用 multipart/form-data，就像实际上传一样）
-      const timestamp = Date.now();
-      const response = await client.post<{ code: number; msg: string; url?: string }>(
-        `https://www.nowcoder.com/uploadImage?type=1&_=${timestamp}`,
-        Body.form(formData),
-        {
-          responseType: ResponseType.JSON,
-          headers: {
-            Cookie: cookie,
-            'Referer': 'https://www.nowcoder.com/creation/write/article',
-            'Origin': 'https://www.nowcoder.com',
-            'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36'
-            // 注意：不要手动设置 Content-Type，让浏览器自动添加 multipart/form-data 边界
-          },
-          timeout: 15000, // 15秒超时
-        }
-      );
-
-      // 检查 HTTP 状态码
-      if (!response.ok) {
-        const errorMsg = `❌ 测试失败 (HTTP ${response.status})`;
-        console.warn('[牛客Cookie测试] HTTP 请求失败:', response.status);
-        if (nowcoderCookieStatusEl) {
-          if (response.status === 401 || response.status === 403) {
-            nowcoderCookieStatusEl.textContent = `${errorMsg}: Cookie 无效或已过期`;
-          } else if (response.status >= 500) {
-            nowcoderCookieStatusEl.textContent = `${errorMsg}: 牛客服务器错误`;
-          } else {
-            nowcoderCookieStatusEl.textContent = errorMsg;
-          }
-          nowcoderCookieStatusEl.style.color = 'red';
-        }
-        return;
-      }
-
-      // 检查响应数据
-      if (!response.data) {
-        console.warn('[牛客Cookie测试] 响应数据为空');
-        if (nowcoderCookieStatusEl) {
-          nowcoderCookieStatusEl.textContent = '❌ 测试失败: 响应数据为空';
-          nowcoderCookieStatusEl.style.color = 'red';
-        }
-        return;
-      }
-
-      // 验证返回码
-      if (response.data.code === 0) {
-        console.log('[牛客Cookie测试] ✓ Cookie 有效');
-        if (nowcoderCookieStatusEl) {
-          nowcoderCookieStatusEl.textContent = '✅ Cookie 有效！ (已登录)';
-          nowcoderCookieStatusEl.style.color = 'lightgreen';
-        }
-      } else {
-        console.warn('[牛客Cookie测试] Cookie 无效，返回:', response.data);
-        if (nowcoderCookieStatusEl) {
-          nowcoderCookieStatusEl.textContent = `❌ ${response.data.msg || 'Cookie 无效或已过期'} (code: ${response.data.code})`;
-          nowcoderCookieStatusEl.style.color = 'red';
-        }
-      }
-    } catch (err: unknown) {
-      const errorStr = err?.toString() || String(err) || '';
-      const errorMsg = err instanceof Error ? err.message : errorStr;
-      const fullError = (errorMsg + ' ' + errorStr).toLowerCase();
-
-      console.error('[牛客Cookie测试] 测试失败:', err);
-
-      let displayMessage = '❌ 测试失败: 未知错误';
-      if (fullError.includes('json') || fullError.includes('parse')) {
-        displayMessage = '❌ 测试失败: Cookie 无效或格式错误 (无法解析响应)';
-      } else if (fullError.includes('network') || fullError.includes('fetch') || fullError.includes('connection')) {
-        displayMessage = '❌ 测试失败: 网络连接失败，请检查网络连接';
-      } else if (fullError.includes('timeout') || fullError.includes('超时')) {
-        displayMessage = '❌ 测试失败: 请求超时，请检查网络连接';
-      } else if (errorMsg) {
-        const shortError = errorMsg.length > 100 ? errorMsg.substring(0, 100) + '...' : errorMsg;
-        displayMessage = `❌ 测试失败: ${shortError}`;
-      }
-
-      if (nowcoderCookieStatusEl) {
-        nowcoderCookieStatusEl.textContent = displayMessage;
-        nowcoderCookieStatusEl.style.color = 'red';
-      }
+    console.log('[牛客Cookie测试] ✓ Cookie 有效');
+    if (nowcoderCookieStatusEl) {
+      nowcoderCookieStatusEl.textContent = '✅ Cookie 有效！ (已登录)';
+      nowcoderCookieStatusEl.style.color = 'lightgreen';
     }
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('[牛客Cookie测试] 测试牛客连接失败:', error);
+    console.error('[牛客Cookie测试] 测试失败:', errorMsg);
     if (nowcoderCookieStatusEl) {
-      nowcoderCookieStatusEl.textContent = `❌ 测试失败: ${errorMsg}`;
+      nowcoderCookieStatusEl.textContent = `❌ ${errorMsg}`;
       nowcoderCookieStatusEl.style.color = 'red';
     }
   } finally {

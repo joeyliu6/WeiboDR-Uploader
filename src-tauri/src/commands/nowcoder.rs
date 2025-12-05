@@ -8,6 +8,74 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
+/// 测试牛客 Cookie 是否有效
+#[tauri::command]
+pub async fn test_nowcoder_cookie(nowcoder_cookie: String) -> Result<String, String> {
+    println!("[Nowcoder] 测试 Cookie 有效性...");
+
+    // 检查 Cookie 是否包含必要字段
+    if !nowcoder_cookie.contains("t=") {
+        return Err("Cookie 缺少必要的 't' 字段".to_string());
+    }
+
+    // 最小的 1x1 透明 PNG（67 字节）
+    let minimal_png: Vec<u8> = vec![
+        0x89, 0x50, 0x4E, 0x47, 0x0D, 0x0A, 0x1A, 0x0A,
+        0x00, 0x00, 0x00, 0x0D, 0x49, 0x48, 0x44, 0x52,
+        0x00, 0x00, 0x00, 0x01, 0x00, 0x00, 0x00, 0x01,
+        0x08, 0x06, 0x00, 0x00, 0x00, 0x1F, 0x15, 0xC4,
+        0x89, 0x00, 0x00, 0x00, 0x0A, 0x49, 0x44, 0x41,
+        0x54, 0x78, 0x9C, 0x63, 0x00, 0x01, 0x00, 0x00,
+        0x05, 0x00, 0x01, 0x0D, 0x0A, 0x2D, 0xB4, 0x00,
+        0x00, 0x00, 0x00, 0x49, 0x45, 0x4E, 0x44, 0xAE,
+        0x42, 0x60, 0x82,
+    ];
+
+    // 构建带时间戳的 URL
+    let timestamp = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map_err(|e| format!("无法获取时间戳: {}", e))?
+        .as_millis();
+
+    let url = format!("https://www.nowcoder.com/uploadImage?type=1&_={}", timestamp);
+
+    // 构建 multipart form
+    let part = multipart::Part::bytes(minimal_png)
+        .file_name("test.png".to_string())
+        .mime_str("image/png")
+        .map_err(|e| format!("无法设置 MIME 类型: {}", e))?;
+
+    let form = multipart::Form::new().part("file", part);
+
+    // 发送请求
+    let client = reqwest::Client::new();
+    let response = client
+        .post(&url)
+        .header("Cookie", &nowcoder_cookie)
+        .header("Referer", "https://www.nowcoder.com/creation/write/article")
+        .header("Origin", "https://www.nowcoder.com")
+        .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36")
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("请求失败: {}", e))?;
+
+    let response_text = response.text().await
+        .map_err(|e| format!("无法读取响应: {}", e))?;
+
+    println!("[Nowcoder] 测试响应: {}", response_text);
+
+    // 解析响应
+    let api_response: NowcoderApiResponse = serde_json::from_str(&response_text)
+        .map_err(|_| "Cookie 无效或已过期（无法解析响应）".to_string())?;
+
+    if api_response.code == 0 {
+        Ok("Cookie 有效".to_string())
+    } else {
+        Err(format!("{} (code: {})", api_response.msg.trim(), api_response.code))
+    }
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct NowcoderUploadResult {
     pub url: String,
