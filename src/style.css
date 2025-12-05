@@ -373,7 +373,7 @@ body, html {
 
 /* 不可选状态 (未配置) */
 .service-btn.disabled {
-  opacity: 0.5;
+  color: rgba(255, 255, 255, 0.4);
   cursor: not-allowed;
 }
 
@@ -390,7 +390,7 @@ body, html {
   left: 50%;
   transform: translateX(-50%) scale(0.9);
   padding: 10px 14px;
-  background: rgba(10, 10, 10, 0.95);
+  background: rgb(10, 10, 10);
   border: 2px solid #475569;
   border-radius: 8px;
   font-size: 13px;
