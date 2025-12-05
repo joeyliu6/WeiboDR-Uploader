@@ -2841,6 +2841,7 @@ async function renderHistoryTable(items: HistoryItem[]) {
       img.style.objectFit = 'cover';
       img.style.borderRadius = '4px';
       img.alt = item.localFileName;
+      img.referrerPolicy = 'no-referrer';
 
       // 从成功的图床结果中获取预览图
       const successResult = item.results?.find(r => r.status === 'success');
@@ -3748,6 +3749,7 @@ function createGalleryCard(item: HistoryItem): HTMLElement {
   const img = document.createElement('img');
   img.className = 'gallery-item-image';
   img.alt = item.localFileName;
+  img.referrerPolicy = 'no-referrer';
 
   const imageUrl = getImageUrlFromItem(item);
   img.setAttribute('data-src', imageUrl);
