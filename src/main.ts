@@ -1441,6 +1441,7 @@ async function loadSettings(): Promise<void> {
       if (r2PublicDomainEl) r2PublicDomainEl.value = config.services?.r2?.publicDomain || '';
       if (nowcoderCookieEl) nowcoderCookieEl.value = config.services?.nowcoder?.cookie || '';
       if (zhihuCookieEl) zhihuCookieEl.value = config.services?.zhihu?.cookie || '';
+      if (namiCookieEl) namiCookieEl.value = config.services?.nami?.cookie || '';
       // 七鱼图床不再需要手动配置 Token，由后端自动获取
 
       // 链接前缀配置（使用迁移函数确保兼容旧配置）
