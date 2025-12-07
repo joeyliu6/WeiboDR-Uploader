@@ -4,7 +4,7 @@
 import { invoke } from '@tauri-apps/api/tauri';
 import { writeText } from '@tauri-apps/api/clipboard';
 import { UserConfig } from './config/types';
-import { appState } from './main';
+import { appState } from './appState';
 import { showConfirmModal } from './ui/modal';
 
 /**

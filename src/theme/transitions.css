@@ -1,0 +1,43 @@
+/* src/theme/transitions.css */
+/* 主题切换过渡动画 */
+
+/**
+ * 主题切换过渡效果
+ * 当 html 元素有 .theme-transitioning 类时启用
+ */
+:root.theme-transitioning,
+:root.theme-transitioning * {
+  transition:
+    background-color var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1),
+    color var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1),
+    border-color var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1),
+    box-shadow var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1),
+    fill var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1),
+    stroke var(--theme-transition-duration, 300ms) cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+/**
+ * 排除某些元素的过渡效果
+ * 避免动画卡顿或视觉问题
+ */
+:root.theme-transitioning progress,
+:root.theme-transitioning .loading-icon,
+:root.theme-transitioning .loading-spinner,
+:root.theme-transitioning video,
+:root.theme-transitioning img,
+:root.theme-transitioning canvas,
+:root.theme-transitioning iframe {
+  transition: none !important;
+}
+
+/**
+ * 保持快速响应的交互元素
+ * 使用更短的过渡时间
+ */
+:root.theme-transitioning button:hover,
+:root.theme-transitioning a:hover,
+:root.theme-transitioning input:focus,
+:root.theme-transitioning textarea:focus,
+:root.theme-transitioning select:focus {
+  transition-duration: calc(var(--theme-transition-duration, 300ms) * 0.5) !important;
+}

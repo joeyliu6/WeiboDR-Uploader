@@ -1,7 +1,18 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { writeText } from '@tauri-apps/api/clipboard';
 import type { ServiceType } from '../config/types';
+import ProgressBar from 'primevue/progressbar';
+import Button from 'primevue/button';
+import { useToast } from '../composables/useToast';
+import { useQueueState } from '../composables/useQueueState';
+import type { UploadQueueManager } from '../uploadQueue';
+
+const toast = useToast();
+const { queueItems } = useQueueState();  // 使用全局队列状态
+
+// 队列管理器实例（仅用于兼容旧代码）
+let queueManagerInstance: UploadQueueManager | null = null;
 
 // 重试回调函数
 let retryCallback: ((itemId: string) => void) | null = null;
@@ -65,32 +76,25 @@ const getStatusClass = (status: string): string => {
   return '';
 };
 
-const items = ref<QueueItem[]>([]);
+// 直接使用全局队列状态，不需要本地 items
 
-const copyToClipboard = async (text: string | undefined, event: Event) => {
+const copyToClipboard = async (text: string | undefined) => {
     if (!text) return;
     try {
         await writeText(text);
-        const btn = event.target as HTMLButtonElement;
-        const originalText = btn.textContent;
-        btn.textContent = '✓ 已复制';
-        btn.classList.add('copied');
-        setTimeout(() => {
-            btn.textContent = originalText;
-            btn.classList.remove('copied');
-        }, 1500);
+        toast.success('已复制', '链接已复制到剪贴板', 1500);
     } catch (err) {
         console.error('Copy failed', err);
+        toast.error('复制失败', String(err));
     }
 };
 
 defineExpose({
   addFile: (item: QueueItem) => {
-      // Prepend to match "newest first" behavior
-      items.value.unshift(item);
+      queueItems.value.unshift(item);
   },
   updateItem: (id: string, updates: Partial<QueueItem>) => {
-      const item = items.value.find(i => i.id === id);
+      const item = queueItems.value.find(i => i.id === id);
       if (item) {
           Object.assign(item, updates);
           // Update thumbUrl if PID is available and not set
@@ -101,9 +105,11 @@ defineExpose({
           }
       }
   },
-  getItem: (id: string) => items.value.find(i => i.id === id),
-  clear: () => items.value = [],
-  count: () => items.value.length,
+  getItem: (id: string) => queueItems.value.find(i => i.id === id),
+  clear: () => {
+      queueItems.value = [];
+  },
+  count: () => queueItems.value.length,
   setRetryCallback: (callback: (itemId: string) => void) => {
       retryCallback = callback;
   }
@@ -113,12 +119,13 @@ defineExpose({
 <template>
   <div class="upload-queue-vue">
     <!-- 空状态提示 -->
-    <div v-if="items.length === 0" class="upload-queue-empty">
+    <div v-if="queueItems.length === 0" class="upload-queue-empty">
+      <i class="pi pi-inbox empty-icon"></i>
       <span class="empty-text">暂无上传队列</span>
     </div>
-    
+
     <!-- 队列项列表 -->
-    <div v-for="item in items" :key="item.id" class="upload-item" :class="[item.status, { 'upload-success': item.status === 'success', 'upload-error': item.status === 'error' }]">
+    <div v-for="item in queueItems" :key="item.id" class="upload-item" :class="[item.status, { 'upload-success': item.status === 'success', 'upload-error': item.status === 'error' }]">
       
       <!-- Preview Column -->
       <div class="preview">
@@ -147,11 +154,12 @@ defineExpose({
             class="progress-row"
           >
             <label>{{ serviceNames[service] }}:</label>
-            <progress
+            <ProgressBar
               :value="item.serviceProgress[service]?.progress || 0"
-              max="100"
               :class="getStatusClass(item.serviceProgress[service]?.status || '')"
-            ></progress>
+              :showValue="false"
+              class="progress-bar"
+            />
             <span
               class="status"
               :class="getStatusClass(item.serviceProgress[service]?.status || '')"
@@ -165,12 +173,12 @@ defineExpose({
         <template v-else>
           <div class="progress-row">
             <label>微博:</label>
-            <progress :value="item.weiboProgress" max="100"></progress>
+            <ProgressBar :value="item.weiboProgress" :showValue="false" class="progress-bar" />
             <span class="status" :class="{ success: item.weiboStatus?.includes('✓'), error: item.weiboStatus?.includes('✗') }">{{ item.weiboStatus }}</span>
           </div>
           <div class="progress-row" v-if="item.uploadToR2">
             <label>R2:</label>
-            <progress :value="item.r2Progress" max="100"></progress>
+            <ProgressBar :value="item.r2Progress" :showValue="false" class="progress-bar" />
             <span class="status" :class="{ success: item.r2Status?.includes('✓'), error: item.r2Status?.includes('✗'), skipped: item.r2Status === '已跳过' }">{{ item.r2Status }}</span>
           </div>
         </template>
@@ -179,35 +187,36 @@ defineExpose({
       <!-- Actions Column -->
       <div class="actions">
         <!-- 重试按钮（失败时显示） -->
-        <button v-if="item.status === 'error'" @click="handleRetry(item.id)" class="action-btn retry-btn" title="重试上传">
-          <svg class="action-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/>
-            <path d="M21 3v5h-5"/>
-            <path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/>
-            <path d="M8 16H3v5"/>
-          </svg>
-          <span>重试</span>
-        </button>
+        <Button
+          v-if="item.status === 'error'"
+          @click="handleRetry(item.id)"
+          label="重试"
+          icon="pi pi-refresh"
+          severity="warning"
+          size="small"
+          class="retry-btn"
+        />
 
         <!-- 新架构：动态显示启用服务的复制按钮 -->
         <template v-if="item.serviceProgress && item.enabledServices && item.status === 'success'">
-          <button
+          <Button
             v-for="service in item.enabledServices"
             :key="service"
-            @click="copyToClipboard(item.serviceProgress[service]?.link, $event)"
+            @click="copyToClipboard(item.serviceProgress[service]?.link)"
             :disabled="!item.serviceProgress[service]?.link"
-            class="action-btn"
-            :title="`复制 ${serviceNames[service]} 链接`"
-          >
-            {{ serviceNames[service] }}
-          </button>
+            :label="serviceNames[service]"
+            icon="pi pi-copy"
+            size="small"
+            outlined
+            class="copy-btn"
+          />
         </template>
 
         <!-- 旧架构：向后兼容 -->
         <template v-else-if="item.status === 'success'">
-          <button @click="copyToClipboard(item.weiboLink, $event)" :disabled="!item.weiboLink" class="action-btn">微博</button>
-          <button @click="copyToClipboard(item.baiduLink, $event)" :disabled="!item.baiduLink" class="action-btn">百度</button>
-          <button v-if="item.uploadToR2" @click="copyToClipboard(item.r2Link, $event)" :disabled="!item.r2Link" class="action-btn">R2</button>
+          <Button @click="copyToClipboard(item.weiboLink)" :disabled="!item.weiboLink" label="微博" icon="pi pi-copy" size="small" outlined class="copy-btn" />
+          <Button @click="copyToClipboard(item.baiduLink)" :disabled="!item.baiduLink" label="百度" icon="pi pi-copy" size="small" outlined class="copy-btn" />
+          <Button v-if="item.uploadToR2" @click="copyToClipboard(item.r2Link)" :disabled="!item.r2Link" label="R2" icon="pi pi-copy" size="small" outlined class="copy-btn" />
         </template>
       </div>
 
@@ -226,10 +235,18 @@ defineExpose({
 /* 空状态样式 */
 .upload-queue-empty {
     display: flex;
+    flex-direction: column;
     align-items: center;
     justify-content: center;
     padding: 40px 0;
     text-align: center;
+    gap: 12px;
+}
+
+.empty-icon {
+    font-size: 3rem;
+    color: var(--text-muted);
+    opacity: 0.5;
 }
 
 .empty-text {
@@ -322,39 +339,26 @@ defineExpose({
     text-align: right;
 }
 
-progress {
+/* PrimeVue ProgressBar 样式覆盖 */
+.progress-bar {
     flex: 1;
     height: 6px;
-    border-radius: 3px;
-    overflow: hidden;
-    /* Webkit styling for progress bar */
-    -webkit-appearance: none;
-    background-color: var(--bg-input);
-}
-
-progress::-webkit-progress-bar {
-    background-color: var(--bg-input);
-}
-
-progress::-webkit-progress-value {
-    background-color: var(--primary);
-    transition: width 0.3s ease;
 }
 
 /* 颜色编码进度条 */
-progress.success::-webkit-progress-value {
+.progress-bar.success :deep(.p-progressbar-value) {
     background-color: var(--success);
 }
 
-progress.error::-webkit-progress-value {
+.progress-bar.error :deep(.p-progressbar-value) {
     background-color: var(--error);
 }
 
-progress.uploading::-webkit-progress-value {
+.progress-bar.uploading :deep(.p-progressbar-value) {
     background-color: var(--primary);
 }
 
-progress.skipped::-webkit-progress-value {
+.progress-bar.skipped :deep(.p-progressbar-value) {
     background-color: var(--text-muted);
 }
 
@@ -376,48 +380,10 @@ progress.skipped::-webkit-progress-value {
     align-self: flex-start;
 }
 
-.actions button {
-    padding: 4px 8px;
+/* PrimeVue Button 样式调整 */
+.copy-btn,
+.retry-btn {
     font-size: 0.8em;
-    cursor: pointer;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-input);
-    color: var(--text-primary);
-    border-radius: 4px;
-    transition: all 0.2s;
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.action-btn {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.action-icon {
-    width: 14px;
-    height: 14px;
-    flex-shrink: 0;
-}
-
-.actions button:hover:not(:disabled) {
-    background: var(--primary);
-    border-color: var(--primary);
-    color: white;
-}
-
-.actions button:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-    background: var(--bg-app);
-}
-
-.actions button.copied {
-    background: var(--success);
-    color: white;
-    border-color: var(--success);
 }
 
 .error-icon {
@@ -425,17 +391,5 @@ progress.skipped::-webkit-progress-value {
     height: 24px;
     color: var(--error);
     flex-shrink: 0;
-}
-
-.retry-btn {
-    background: rgba(234, 179, 8, 0.6) !important;
-    border-color: rgba(234, 179, 8, 0.8) !important;
-    color: rgba(255, 255, 255, 0.9) !important;
-}
-
-.retry-btn:hover {
-    background: rgba(234, 179, 8, 0.8) !important;
-    border-color: rgba(234, 179, 8, 1) !important;
-    color: white !important;
 }
 </style>

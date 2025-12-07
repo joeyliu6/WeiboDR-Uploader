@@ -11,13 +11,9 @@ import ToastService from 'primevue/toastservice';
 import ConfirmationService from 'primevue/confirmationservice';
 import Tooltip from 'primevue/tooltip';
 
-// 上传器初始化
-import { initializeUploaders } from './uploaders';
-
 // PrimeVue 样式
 import 'primeicons/primeicons.css';
 import './theme/transitions.css';
-import './theme/dark-theme.css';
 import './theme/light-theme.css';
 
 // 创建 Vue 应用实例
@@ -39,9 +35,6 @@ app.use(PrimeVue, {
 app.use(ToastService);
 app.use(ConfirmationService);
 app.directive('tooltip', Tooltip);
-
-// 初始化上传器
-initializeUploaders();
 
 // 挂载应用
 app.mount('#app');

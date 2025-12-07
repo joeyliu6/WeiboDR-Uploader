@@ -1,0 +1,794 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="referrer" content="no-referrer" />
+    <!-- 内联样式：立即设置背景色，避免白色闪烁 -->
+    <style>
+      html, body {
+        margin: 0;
+        padding: 0;
+        width: 100%;
+        height: 100%;
+        overflow: hidden;
+        background-color: #0f172a; /* Slate 900 - 与应用主题色一致 */
+        color: #f8fafc; /* Slate 50 - 文本颜色 */
+      }
+    </style>
+    <link rel="stylesheet" href="/src/style.css" />
+    <title>WeiboDR-Uploader (微博灾备上传器)</title>
+  </head>
+  <body>
+    <div id="titlebar" data-tauri-drag-region>
+      <div class="titlebar-drag-region" data-tauri-drag-region>
+        <span class="app-title">WeiboDR</span>
+      </div>
+      <div class="titlebar-controls">
+        <div class="titlebar-button" id="titlebar-minimize">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="5" y1="12" x2="19" y2="12"/>
+          </svg>
+        </div>
+        <div class="titlebar-button" id="titlebar-maximize">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M8 3H5a2 2 0 0 0-2 2v3m18 0V5a2 2 0 0 0-2-2h-3m0 18h3a2 2 0 0 0 2-2v-3M3 16v3a2 2 0 0 0 2 2h3"/>
+          </svg>
+        </div>
+        <div class="titlebar-button close" id="titlebar-close">
+          <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </div>
+      </div>
+    </div>
+    <div class="dashboard-container">
+      <div class="sidebar">
+        <button id="nav-upload" class="nav-btn active" title="上传">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+          <span class="nav-text">上传</span>
+        </button>
+        <button id="nav-history" class="nav-btn" title="浏览记录">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+          <span class="nav-text">浏览</span>
+        </button>
+        <button id="nav-r2-manager" class="nav-btn" title="R2 管理">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="21 8 21 21 3 21 3 8"/><rect x="1" y="3" width="22" height="5"/><line x1="10" y1="12" x2="14" y2="12"/></svg>
+          <span class="nav-text">R2 管理</span>
+        </button>
+        <button id="nav-backup" class="nav-btn" title="备份与同步">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+          <span class="nav-text">备份</span>
+        </button>
+        <button id="nav-link-checker" class="nav-btn" title="链接检测">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+          <span class="nav-text">检测</span>
+        </button>
+        <button id="nav-settings" class="nav-btn" title="设置">
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.09a2 2 0 0 1-1-1.74v-.47a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.39a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+          <span class="nav-text">设置</span>
+        </button>
+      </div>
+      <div class="content-area">
+        <div id="upload-view" class="view active">
+          <div class="upload-container">
+            <!-- 顶部拖拽区域 -->
+            <div id="drop-zone-header">
+              <div id="drop-message">
+                <p>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="display: block; margin: 0 auto 10px auto;"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+                  拖拽图片到此处上传
+                </p>
+                <span>或点击选择文件</span>
+              </div>
+              <input type="file" id="file-input" multiple accept="image/*" style="display: none;" />
+            </div>
+            
+            <!-- 多图床选择 -->
+            <div class="upload-controls">
+              <h3 style="margin: 0 0 10px 0; color: var(--text-secondary); font-size: 14px;">选择上传图床 (可多选)</h3>
+              <div class="service-buttons">
+                <button type="button" class="service-btn" data-service="weibo" data-tooltip="请先在设置中配置">微博</button>
+                <button type="button" class="service-btn" data-service="r2" data-tooltip="请先在设置中配置">R2</button>
+                <button type="button" class="service-btn selected" data-service="tcl">TCL</button>
+                <button type="button" class="service-btn selected" data-service="jd">京东</button>
+                <button type="button" class="service-btn" data-service="nowcoder" data-tooltip="请先在设置中配置">牛客</button>
+                <button type="button" class="service-btn" data-service="qiyu" data-tooltip="请先在设置中配置">七鱼</button>
+                <button type="button" class="service-btn" data-service="zhihu" data-tooltip="请先在设置中配置">知乎</button>
+                <button type="button" class="service-btn" data-service="nami" data-tooltip="请先在设置中配置">纳米</button>
+              </div>
+            </div>
+
+            <!-- 上传队列列表 -->
+            <div id="upload-queue-container">
+              <h3>上传队列</h3>
+              <div id="upload-queue-list"></div>
+            </div>
+          </div>
+        </div>
+        <div id="history-view" class="view">
+          <div class="container">
+            <!-- 工具栏 -->
+            <div class="history-toolbar">
+                <!-- 第一行：批量操作 + 视图切换 -->
+                <div class="toolbar-row">
+                    <div class="bulk-actions">
+                        <label class="select-all-label">
+                            <input type="checkbox" id="select-all-history" />
+                            <span>全选</span>
+                        </label>
+                        <button id="bulk-copy-btn" class="bulk-action-btn" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                            批量复制
+                        </button>
+                        <button id="bulk-export-btn" class="bulk-action-btn" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+                            导出 JSON
+                        </button>
+                        <button id="bulk-delete-btn" class="bulk-action-btn danger" disabled>
+                            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                            批量删除
+                        </button>
+                    </div>
+                    <div class="view-mode-toggle">
+                        <button id="view-mode-table" class="view-mode-btn active" title="表格视图">
+                            <svg width="18" height="18" viewBox="0 0 24 24">
+                                <rect x="3" y="3" width="18" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
+                                <line x1="3" y1="9" x2="21" y2="9" stroke="currentColor" stroke-width="2"/>
+                                <line x1="3" y1="15" x2="21" y2="15" stroke="currentColor" stroke-width="2"/>
+                                <line x1="9" y1="9" x2="9" y2="21" stroke="currentColor" stroke-width="2"/>
+                            </svg>
+                        </button>
+                        <button id="view-mode-grid" class="view-mode-btn" title="瀑布流视图">
+                            <svg width="18" height="18" viewBox="0 0 24 24">
+                                <rect x="3" y="3" width="7" height="7" rx="1" fill="currentColor"/>
+                                <rect x="14" y="3" width="7" height="7" rx="1" fill="currentColor"/>
+                                <rect x="3" y="14" width="7" height="7" rx="1" fill="currentColor"/>
+                                <rect x="14" y="14" width="7" height="7" rx="1" fill="currentColor"/>
+                            </svg>
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 第二行：筛选和搜索 -->
+                <div class="filter-search-section">
+                    <select id="image-bed-filter" class="image-bed-filter">
+                        <option value="all">全部图床</option>
+                        <option value="weibo">微博</option>
+                        <option value="r2">R2</option>
+                        <option value="tcl">TCL</option>
+                        <option value="jd">京东</option>
+                        <option value="nowcoder">牛客</option>
+                        <option value="qiyu">七鱼</option>
+                    </select>
+                    <div class="search-section">
+                        <input type="text" id="search-input" placeholder="搜索本地文件名..." />
+                    </div>
+                </div>
+            </div>
+
+            <!-- 表格视图容器 -->
+            <div id="table-view-container" class="view-container">
+                <table id="history-table">
+                <thead>
+                    <tr>
+                        <th class="checkbox-col">
+                            <input type="checkbox" id="th-select-all" title="全选/取消全选" />
+                        </th>
+                        <th>预览</th>
+                        <th>本地文件名</th>
+                        <th>图床状态</th>
+                        <th>上传时间</th>
+                        <th>删除</th>
+                    </tr>
+                </thead>
+                <tbody id="history-body">
+                </tbody>
+            </table>
+            </div>
+
+            <!-- 瀑布流视图容器 -->
+            <div id="grid-view-container" class="view-container" style="display: none;">
+                <div id="gallery-grid" class="gallery-grid">
+                    <!-- 动态生成图片卡片 -->
+                </div>
+                <div id="grid-loading-indicator" class="grid-loading-indicator" style="display: none;">
+                    <div class="spinner"></div>
+                    <p>加载更多...</p>
+                </div>
+                <div id="grid-end-message" class="grid-end-message" style="display: none;">
+                    <p>已加载全部图片</p>
+                </div>
+            </div>
+
+            <div class="footer">
+                <button id="clear-history-btn">清空历史</button>
+                <span id="status-message"></span>
+                <p style="margin-top: 15px; color: var(--text-secondary); font-size: 0.85em;">
+                  💡 提示：导出和同步功能已移至"备份与同步中心"
+                </p>
+            </div>
+        </div>
+        </div>
+        <div id="settings-view" class="view">
+          <div class="container">
+            <h1>设置</h1>
+    
+            <div class="form-section">
+                <h2>微博 Cookie (必填)</h2>
+                <p>用于 m.weibo.cn 接口。这是项目成功的关键。</p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="login-with-webview-btn" style="flex: 1; display: flex; align-items: center; justify-content: center; gap: 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg>
+                        自动获取Cookie
+                    </button>
+                    <button id="test-cookie-btn" style="flex: 1;">测试连接</button>
+                </div>
+                <textarea id="weibo-cookie" rows="5" placeholder="在此粘贴从 m.weibo.cn 获取的完整 Cookie 字符串...或点击上方'自动获取Cookie'按钮"></textarea>
+                <span id="cookie-status"></span>
+            </div>
+    
+            <div class="form-section">
+                <h2>Cloudflare R2 配置 (可选)</h2>
+                <p>步骤 A 成功后，将图片异步备份到 R2。</p>
+                <label>R2 账户 ID (Account ID)</label>
+                <input type="text" id="r2-account-id" />
+    
+                <label>R2 访问密钥 ID (Access Key ID)</label>
+                <input type="password" id="r2-key-id" />
+    
+                <label>R2 访问密钥 (Secret Access Key)</label>
+                <input type="password" id="r2-secret-key" />
+    
+                <label>R2 存储桶名称 (Bucket Name)</label>
+                <input type="text" id="r2-bucket" />
+    
+                <label>R2 自定义路径 (Optional Path)</label>
+                <input type="text" id="r2-path" placeholder="例如: blog/images/ (留空则为根目录)" />
+    
+                <label>R2 公开访问域名 (Public Domain)</label>
+                <input type="text" id="r2-public-domain" placeholder="例如: https://images.example.com (末尾不要加 /)" />
+                
+                <button type="button" id="test-r2-btn">测试 R2 连接</button>
+                <span id="r2-status-message"></span>
+            </div>
+    
+            <div class="form-section">
+                <h2>TCL 图床</h2>
+                <p class="info-text" style="color: var(--success); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    TCL 图床无需配置，开箱即用
+                </p>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：TCL 为第三方免费服务，稳定性无保障
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>京东图床</h2>
+                <p class="info-text" style="color: var(--success); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
+                    京东图床无需配置，开箱即用
+                </p>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF
+                </p>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/></svg>
+                    文件大小限制：15MB
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：京东为第三方免费服务，稳定性无保障
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>牛客图床</h2>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：牛客为第三方服务，需要 Cookie 认证，稳定性无保障
+                </p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="login-nowcoder-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        自动获取Cookie
+                    </button>
+                    <button id="test-nowcoder-cookie-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        测试连接
+                    </button>
+                </div>
+                <label for="nowcoder-cookie">牛客 Cookie</label>
+                <textarea id="nowcoder-cookie" rows="4" placeholder="请输入牛客网 Cookie...&#10;需要包含 NOWCODERUID 和 t 字段"></textarea>
+                <span id="nowcoder-cookie-status" style="display: block; margin-top: 5px; font-size: 0.9em;"></span>
+                <p class="hint" style="font-size: 0.85em; color: var(--text-secondary); margin-top: 5px;">
+                    💡 提示：点击上方"自动获取Cookie"按钮，或手动复制：登录 nowcoder.com 后，在浏览器开发者工具 (F12) → Network → 任意请求 → Headers → Cookie 中复制
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>七鱼图床</h2>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF、WebP
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：七鱼为第三方服务，稳定性无保障，仅建议临时使用
+                </p>
+
+                <!-- Chrome 检测状态 -->
+                <div class="chrome-requirement-box" style="background: var(--bg-secondary); border-radius: 8px; padding: 12px 16px; margin-bottom: 12px;">
+                    <div style="display: flex; align-items: center; gap: 10px; margin-bottom: 8px;">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+                        <span style="font-weight: 500;">浏览器要求</span>
+                    </div>
+                    <p style="color: var(--text-secondary); font-size: 0.9em; margin: 0 0 8px 0;">
+                        七鱼图床需要系统安装 Chrome 或 Edge 浏览器才能自动获取上传凭证。
+                    </p>
+                    <div id="qiyu-chrome-status" style="display: flex; align-items: center; gap: 8px; font-size: 0.9em;">
+                        <span class="status-dot" style="width: 8px; height: 8px; border-radius: 50%; background: var(--text-tertiary);"></span>
+                        <span>检测中...</span>
+                    </div>
+                </div>
+
+                <p class="hint" style="font-size: 0.85em; color: var(--text-secondary); margin-top: 8px;">
+                    工作原理：上传时程序会在后台启动浏览器（无界面），自动从七鱼页面获取上传凭证，整个过程约需 2-3 秒。每次上传都会获取新的凭证，确保图片不会被覆盖。
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>知乎图床</h2>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF、WebP
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：知乎为第三方服务，需要 Cookie 认证，稳定性无保障
+                </p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="login-zhihu-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        自动获取Cookie
+                    </button>
+                    <button id="test-zhihu-cookie-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        测试连接
+                    </button>
+                </div>
+                <label for="zhihu-cookie">知乎 Cookie</label>
+                <textarea id="zhihu-cookie" rows="4" placeholder="请输入知乎 Cookie...&#10;需要包含 z_c0 字段"></textarea>
+                <span id="zhihu-cookie-status" style="display: block; margin-top: 5px; font-size: 0.9em;"></span>
+                <p class="hint" style="font-size: 0.85em; color: var(--text-secondary); margin-top: 5px;">
+                    💡 提示：点击上方"自动获取Cookie"按钮，或手动复制：登录 zhihu.com 后，在浏览器开发者工具 (F12) → Network → 任意请求 → Headers → Cookie 中复制
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>纳米图床</h2>
+                <p class="info-text" style="color: var(--text-secondary); display: flex; align-items: center; gap: 8px; margin-bottom: 8px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+                    支持格式：JPG、JPEG、PNG、GIF、WebP、BMP
+                </p>
+                <p class="info-text" style="color: var(--warning); display: flex; align-items: center; gap: 8px; margin-bottom: 12px;">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" x2="12" y1="9" y2="13"/><line x1="12" x2="12.01" y1="17" y2="17"/></svg>
+                    注意：纳米为第三方服务，需要 Cookie 认证，稳定性无保障
+                </p>
+                <div style="display: flex; gap: 10px; margin-bottom: 10px;">
+                    <button id="login-nami-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        自动获取Cookie
+                    </button>
+                    <button id="test-nami-cookie-btn" class="btn-secondary" style="flex: 1; padding: 8px 12px; cursor: pointer;">
+                        测试连接
+                    </button>
+                </div>
+                <label for="nami-cookie">纳米 Cookie</label>
+                <textarea id="nami-cookie" rows="4" placeholder="请输入纳米 Cookie...&#10;需要包含 Auth-Token 字段"></textarea>
+                <span id="nami-cookie-status" style="display: block; margin-top: 5px; font-size: 0.9em;"></span>
+                <p class="hint" style="font-size: 0.85em; color: var(--text-secondary); margin-top: 5px;">
+                    💡 提示：点击上方"自动获取Cookie"按钮，登录后会自动获取 Cookie 和 Auth-Token
+                </p>
+            </div>
+
+            <div class="form-section">
+                <h2>支持的图床</h2>
+                <p style="color: var(--text-secondary); margin-bottom: 12px;">选择在上传界面显示的图床，取消勾选的图床不会出现在上传选项中。</p>
+                <div class="available-services-grid" id="available-services-grid">
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-weibo" data-available-service="weibo" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">微博图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-r2" data-available-service="r2" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">Cloudflare R2</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-tcl" data-available-service="tcl" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">TCL 图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-jd" data-available-service="jd" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">京东图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-nowcoder" data-available-service="nowcoder" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">牛客图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-qiyu" data-available-service="qiyu" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">七鱼图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-zhihu" data-available-service="zhihu" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">知乎图床</span>
+                    </label>
+                    <label class="service-toggle">
+                        <input type="checkbox" id="available-nami" data-available-service="nami" checked />
+                        <span class="toggle-slider"></span>
+                        <span class="toggle-label">纳米图床</span>
+                    </label>
+                </div>
+            </div>
+
+            <div class="form-section">
+                <h2>链接配置</h2>
+
+                <!-- 启用开关 -->
+                <div class="prefix-toggle-container">
+                    <label class="toggle-switch">
+                        <input type="checkbox" id="prefix-enabled" checked />
+                        <span class="toggle-slider"></span>
+                    </label>
+                    <span class="toggle-label">启用代理前缀（仅微博图床）</span>
+                </div>
+
+                <!-- 前缀选择器 -->
+                <div class="prefix-selector-container" id="prefix-selector-wrapper">
+                    <select id="prefix-selector" class="prefix-selector">
+                        <!-- 选项由 JavaScript 动态填充 -->
+                    </select>
+                    <button type="button" id="add-prefix-btn" class="prefix-action-btn" title="添加自定义前缀">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+                            <circle cx="12" cy="12" r="10" stroke-width="2"/>
+                            <line x1="12" y1="8" x2="12" y2="16" stroke-width="2.5"/>
+                            <line x1="8" y1="12" x2="16" y2="12" stroke-width="2.5"/>
+                        </svg>
+                    </button>
+                    <button type="button" id="delete-prefix-btn" class="prefix-action-btn prefix-delete-btn" title="删除当前前缀">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                            <path d="M3 6h18"/>
+                            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>
+                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                            <line x1="10" y1="11" x2="10" y2="17"/>
+                            <line x1="14" y1="11" x2="14" y2="17"/>
+                        </svg>
+                    </button>
+                </div>
+
+                <p class="hint">微博图床返回的链接需要通过代理前缀才能正常访问。</p>
+            </div>
+
+            <!-- 添加前缀模态框 -->
+            <div id="add-prefix-modal" class="modal hidden">
+                <div class="modal-content">
+                    <h3>添加自定义前缀</h3>
+                    <label>前缀 URL</label>
+                    <input type="text" id="new-prefix-input" placeholder="https://example.com/proxy?url=" />
+                    <p class="hint">请输入完整的代理前缀 URL，微博图片链接会拼接在此前缀之后。</p>
+                    <div class="modal-buttons">
+                        <button type="button" id="cancel-add-prefix" class="btn-secondary">取消</button>
+                        <button type="button" id="confirm-add-prefix" class="btn-primary">添加</button>
+                    </div>
+                </div>
+            </div>
+    
+            <div class="form-section">
+                <h2>WebDAV 配置</h2>
+                <p>配置后，每次上传成功会自动将历史记录同步到 WebDAV（例如：坚果云）。</p>
+                <label>WebDAV URL</label>
+                <input type="text" id="webdav-url" placeholder="例如: https://dav.jianguoyun.com/dav/" />
+                
+                <label>WebDAV 用户名</label>
+                <input type="text" id="webdav-username" placeholder="通常是邮箱" />
+                
+                <label>WebDAV 密码</label>
+                <input type="password" id="webdav-password" placeholder="通常是应用的授权码" />
+                
+            <label>远程路径 <span style="color: #888; font-size: 0.9em;">(将覆盖同名文件)</span></label>
+            <input type="text" id="webdav-remote-path" placeholder="例如: /WeiboDR/history.json 或 /WeiboDR/" value="/WeiboDR/history.json" />
+            <p style="font-size: 0.85em; color: #888; margin-top: 5px;">
+                💡 提示：支持完整路径（如 /path/history.json）或目录（如 /path/，自动存为 history.json）。同步将覆盖旧文件。
+            </p>
+                
+                <button type="button" id="test-webdav-btn">测试 WebDAV 连接</button>
+                <span id="webdav-status-message"></span>
+            </div>
+    
+            <div class="footer">
+                <span id="save-status"></span>
+            </div>
+        </div>
+        </div>
+        <div id="backup-view" class="view"></div>
+
+        <!-- 链接检测视图 -->
+        <div id="link-checker-view" class="view">
+          <div class="link-checker-container">
+            <div class="link-checker-header">
+              <h1>图片链接检测</h1>
+              <p class="link-checker-desc">检测历史记录中的图片链接是否仍然有效</p>
+            </div>
+
+            <div class="link-checker-controls">
+              <div class="link-checker-filter-group">
+                <label>筛选图床：</label>
+                <select id="link-checker-service-filter">
+                  <option value="all">全部图床</option>
+                  <option value="weibo">微博图床</option>
+                  <option value="r2">Cloudflare R2</option>
+                  <option value="tcl">TCL 图床</option>
+                  <option value="jd">京东图床</option>
+                  <option value="nowcoder">牛客图床</option>
+                  <option value="qiyu">七鱼图床</option>
+                  <option value="zhihu">知乎图床</option>
+                  <option value="nami">纳米图床</option>
+                </select>
+              </div>
+              <button id="link-checker-start-btn" class="link-checker-btn primary">
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                开始检测
+              </button>
+              <button id="link-checker-cancel-btn" class="link-checker-btn" disabled>
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="6" y="4" width="4" height="16"/><rect x="14" y="4" width="4" height="16"/></svg>
+                取消
+              </button>
+            </div>
+
+            <div id="link-checker-progress" class="link-checker-progress" style="display: none;">
+              <div class="link-checker-progress-header">
+                <span id="link-checker-progress-text">检测中... 0/0</span>
+                <span id="link-checker-progress-percent">0%</span>
+              </div>
+              <div class="link-checker-progress-bar-container">
+                <div id="link-checker-progress-bar" class="link-checker-progress-bar"></div>
+              </div>
+            </div>
+
+            <div class="link-checker-stats">
+              <div class="link-checker-stat-card">
+                <div class="stat-value" id="link-checker-total">0</div>
+                <div class="stat-label">总数</div>
+              </div>
+              <div class="link-checker-stat-card valid">
+                <div class="stat-value" id="link-checker-valid">0</div>
+                <div class="stat-label">有效</div>
+              </div>
+              <div class="link-checker-stat-card invalid">
+                <div class="stat-value" id="link-checker-invalid">0</div>
+                <div class="stat-label">失效</div>
+              </div>
+              <div class="link-checker-stat-card pending">
+                <div class="stat-value" id="link-checker-pending">0</div>
+                <div class="stat-label">待检测</div>
+              </div>
+            </div>
+
+            <div class="link-checker-results">
+              <div class="link-checker-results-header">
+                <h3>检测结果</h3>
+                <div class="link-checker-actions">
+                  <button id="link-checker-delete-invalid-btn" class="link-checker-btn danger" disabled>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg>
+                    删除失效
+                  </button>
+                </div>
+              </div>
+              <table class="link-checker-table">
+                <thead>
+                  <tr>
+                    <th>文件名</th>
+                    <th>链接</th>
+                    <th>图床</th>
+                    <th>状态</th>
+                    <th>操作</th>
+                  </tr>
+                </thead>
+                <tbody id="link-checker-results-body">
+                  <tr>
+                    <td colspan="5">
+                      <div class="link-checker-empty">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
+                        <p>点击"开始检测"检查历史记录中的图片链接</p>
+                      </div>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+
+        <div id="r2-manager-view" class="view">
+          <div class="r2-manager-container">
+            <div class="r2-manager-toolbar">
+              <div class="r2-toolbar-title">
+                <svg class="r2-toolbar-icon" xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+                <span class="r2-toolbar-title-text">R2 存储管理</span>
+              </div>
+              <div class="r2-toolbar-controls">
+                <label class="r2-select-all">
+                  <input type="checkbox" id="r2-select-all" />
+                  <span>全选</span>
+                </label>
+                <button id="r2-batch-delete-btn" class="r2-btn r2-btn-danger r2-btn-compact">
+                  <span class="r2-btn-text">删除</span>
+                  <span id="r2-batch-count" class="r2-btn-badge">(0)</span>
+                </button>
+                <div class="r2-toolbar-info">
+                  <span id="r2-bucket-info" class="r2-info-text"></span>
+                  <span id="r2-stats-info" class="r2-stats-text"></span>
+                </div>
+                <button id="r2-refresh-btn" class="r2-btn r2-btn-icon-text">
+                  <svg class="r2-btn-icon" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 0 1 9-9 9.75 9.75 0 0 1 6.74 2.74L21 8"/><path d="M21 3v5h-5"/><path d="M21 12a9 9 0 0 1-9 9 9.75 9.75 0 0 1-6.74-2.74L3 16"/><path d="M8 16H3v5"/></svg>
+                  <span class="r2-btn-text">刷新</span>
+                </button>
+              </div>
+            </div>
+            <div id="r2-loading" class="r2-loading" style="display: none;">
+              <div class="r2-spinner"></div>
+              <p>加载中...</p>
+            </div>
+            <div id="r2-error-message" class="r2-error-message" style="display: none;"></div>
+            <div id="r2-grid-container" class="r2-grid"></div>
+          </div>
+          <!-- 预览模态框 -->
+          <div id="r2-modal" class="r2-modal" style="display: none;">
+            <div class="r2-modal-overlay"></div>
+            <div class="r2-modal-content">
+              <button class="r2-modal-close" id="r2-modal-close-btn">✕</button>
+              <img id="r2-modal-image" class="r2-modal-image" alt="预览图片" />
+              <div class="r2-modal-footer">
+                <div class="r2-modal-info">
+                  <p id="r2-modal-filename"></p>
+                  <p id="r2-modal-filesize"></p>
+                </div>
+                <div class="r2-modal-actions">
+                  <button id="r2-modal-copy-btn" class="r2-btn r2-btn-primary">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                    复制链接
+                  </button>
+                  <button id="r2-modal-delete-btn" class="r2-btn r2-btn-danger">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align: text-bottom; margin-right: 4px;"><polyline points="3 6 5 6 21 6"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+                    删除
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- Generic Confirmation Modal -->
+    <div id="confirm-modal" class="modal" style="display: none;">
+      <div class="modal-overlay"></div>
+      <div class="modal-content confirm-modal-content">
+        <div class="modal-header">
+          <h3 id="confirm-modal-title">确认</h3>
+          <button class="modal-close" id="confirm-modal-close">✕</button>
+        </div>
+        <div class="modal-body">
+          <p id="confirm-modal-message"></p>
+        </div>
+        <div class="modal-footer">
+          <button id="confirm-modal-cancel" class="btn btn-secondary">取消</button>
+          <button id="confirm-modal-ok" class="btn btn-danger">确定</button>
+        </div>
+      </div>
+    </div>
+    <!-- Global Toast Notification -->
+    <div id="global-toast" class="app-toast">
+      <span id="toast-icon"></span>
+      <span id="toast-message"></span>
+    </div>
+
+    <!-- Lightbox Modal -->
+    <div id="lightbox-modal" class="lightbox-modal" style="display: none;">
+      <div class="lightbox-overlay"></div>
+      <div class="lightbox-content">
+        <button class="lightbox-close" id="lightbox-close">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+
+        <div class="lightbox-image-container">
+          <img id="lightbox-image" src="" alt="" referrerpolicy="no-referrer" />
+        </div>
+
+        <div class="lightbox-info">
+          <div class="lightbox-filename" id="lightbox-filename"></div>
+          <div class="lightbox-meta">
+            <span id="lightbox-service-badge" class="service-badge"></span>
+            <span id="lightbox-timestamp"></span>
+          </div>
+        </div>
+
+        <button class="lightbox-nav lightbox-prev" id="lightbox-prev">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="15 18 9 12 15 6"/>
+          </svg>
+        </button>
+        <button class="lightbox-nav lightbox-next" id="lightbox-next">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="9 18 15 12 9 6"/>
+          </svg>
+        </button>
+
+        <div class="lightbox-actions">
+          <button id="lightbox-copy-btn" class="lightbox-action-btn">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+              <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+            </svg>
+            复制链接
+          </button>
+          <button id="lightbox-delete-btn" class="lightbox-action-btn danger">
+            <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+              <polyline points="3 6 5 6 21 6"/>
+              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+            </svg>
+            删除
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Context Menu -->
+    <div id="context-menu" class="context-menu" style="display: none;">
+      <ul class="context-menu-list">
+        <li id="ctx-preview" class="context-menu-item">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>
+            <circle cx="12" cy="12" r="3"/>
+          </svg>
+          <span>预览</span>
+        </li>
+        <li id="ctx-copy-link" class="context-menu-item">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2"/>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+          </svg>
+          <span>复制链接</span>
+        </li>
+        <li class="context-menu-divider"></li>
+        <li id="ctx-delete" class="context-menu-item danger">
+          <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+            <polyline points="3 6 5 6 21 6"/>
+            <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+          </svg>
+          <span>删除</span>
+        </li>
+      </ul>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
+

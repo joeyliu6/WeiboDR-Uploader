@@ -6,8 +6,9 @@
 
 import { createApp, App } from 'vue';
 import UploadQueueVue from './components/UploadQueue.vue';
-import { appState } from './main';
+import { appState } from './appState';
 import { ServiceType } from './config/types';
+import { useQueueState } from './composables/useQueueState';
 
 /**
  * 单个图床服务的进度状态
@@ -18,6 +19,7 @@ export interface ServiceProgress {
   status: string;    // 状态文本
   link?: string;     // 上传成功后的链接
   error?: string;    // 错误信息
+  metadata?: Record<string, any>;  // 额外元数据（如微博 PID）
 }
 
 /**
@@ -58,19 +60,26 @@ export type UploadProgressCallback = (progress: {
  * 上传队列管理器类
  */
 export class UploadQueueManager {
-  private app: App;
+  private app: App | null = null;
   private vm: InstanceType<typeof UploadQueueVue> | null = null;
+  private queueState = useQueueState();  // 新架构：使用全局状态管理
 
-  constructor(queueListElementId: string) {
-    const el = document.getElementById(queueListElementId);
-    if (!el) {
-      console.error(`[UploadQueue] 队列列表元素不存在: ${queueListElementId}`);
-      throw new Error(`Element #${queueListElementId} not found`);
+  constructor(queueListElementId?: string) {
+    // 新架构：如果没有提供 elementId，说明组件已经通过 Vue 模板挂载
+    // 只需要提供数据管理功能，不需要挂载组件
+    if (queueListElementId) {
+      const el = document.getElementById(queueListElementId);
+      if (!el) {
+        console.error(`[UploadQueue] 队列列表元素不存在: ${queueListElementId}`);
+        throw new Error(`Element #${queueListElementId} not found`);
+      }
+
+      // Mount Vue App (仅旧架构使用)
+      this.app = createApp(UploadQueueVue);
+      this.vm = this.app.mount(el) as InstanceType<typeof UploadQueueVue>;
+    } else {
+      console.log('[UploadQueue] 使用新架构模式 - 组件由 Vue 模板管理');
     }
-    
-    // Mount Vue App
-    this.app = createApp(UploadQueueVue);
-    this.vm = this.app.mount(el);
   }
 
   /**
@@ -104,7 +113,12 @@ export class UploadQueueManager {
       r2Status: enabledServices.includes('r2') ? '等待中...' : '已跳过',
     };
 
-    this.vm.addFile(item);
+    // 根据架构模式选择添加方式
+    if (this.vm) {
+      this.vm.addFile(item);
+    } else {
+      this.queueState.addItem(item);
+    }
 
     console.log(`[UploadQueue] 添加文件到队列: ${fileName} (图床: ${enabledServices.join(', ')})`);
     return id;
@@ -114,7 +128,7 @@ export class UploadQueueManager {
    * 更新某个图床的上传进度
    */
   updateServiceProgress(itemId: string, serviceId: ServiceType, percent: number): void {
-    const item = this.vm.getItem(itemId);
+    const item = this.getItem(itemId);
     if (!item) {
       console.warn(`[UploadQueue] 找不到队列项: ${itemId}`);
       return;
@@ -143,14 +157,14 @@ export class UploadQueueManager {
       updates.r2Status = `${safePercent}%`;
     }
 
-    this.vm.updateItem(itemId, updates);
+    this.updateItem(itemId, updates);
   }
 
   /**
    * 标记队列项上传成功
    */
   markItemComplete(itemId: string, primaryUrl: string): void {
-    const item = this.vm.getItem(itemId);
+    const item = this.getItem(itemId);
     if (!item) {
       console.warn(`[UploadQueue] 找不到队列项: ${itemId}`);
       return;
@@ -195,7 +209,7 @@ export class UploadQueueManager {
       }
     });
 
-    this.vm.updateItem(itemId, {
+    this.updateItem(itemId, {
       status: 'success',
       serviceProgress,
       ...linkFields,
@@ -210,13 +224,13 @@ export class UploadQueueManager {
    * 标记队列项上传失败
    */
   markItemFailed(itemId: string, errorMessage: string): void {
-    const item = this.vm.getItem(itemId);
+    const item = this.getItem(itemId);
     if (!item) {
       console.warn(`[UploadQueue] 找不到队列项: ${itemId}`);
       return;
     }
 
-    this.vm.updateItem(itemId, {
+    this.updateItem(itemId, {
       status: 'error',
       errorMessage,
       weiboStatus: '✗ 失败',  // 向后兼容
@@ -230,15 +244,10 @@ export class UploadQueueManager {
    */
   createProgressCallback(itemId: string): UploadProgressCallback {
     return (progress) => {
-      // We get the item from Vue to check current state if needed, but mostly we just push updates
-      // Since we can't easily sync read from Vue proxy in this callback structure without reference,
-      // we will just dispatch updates to Vue.
-      
       const updates: Partial<QueueItem> = {};
 
       switch (progress.type) {
         case 'weibo_progress':
-          // 确保 payload 是数字，并限制在 0-100 范围内
           const weiboPercent = Math.max(0, Math.min(100, Number(progress.payload) || 0));
           updates.weiboProgress = weiboPercent;
           updates.weiboStatus = `${weiboPercent}%`;
@@ -254,7 +263,6 @@ export class UploadQueueManager {
           break;
 
         case 'r2_progress':
-          // 确保 payload 是数字，并限制在 0-100 范围内
           const r2Percent = Math.max(0, Math.min(100, Number(progress.payload) || 0));
           updates.r2Progress = r2Percent;
           updates.r2Status = `${r2Percent}%`;
@@ -264,21 +272,14 @@ export class UploadQueueManager {
           updates.r2Progress = 100;
           updates.r2Status = '✓ 完成';
           updates.r2Link = progress.payload.r2Link;
-          // [v2.6 优化] 标记 R2 数据已变更
           appState.isR2Dirty = true;
           break;
 
         case 'error':
           updates.status = 'error';
           updates.errorMessage = progress.payload;
-          
-          // Helper to decide which part failed
-          // We need current state to know which step failed strictly, 
-          // but we can infer or just set status.
-          // Simplification: Just set error message and Vue component will show it.
-          // But to update specific column status:
-          // We assume if weiboProgress < 100 it's weibo error
-          const currentItem = this.vm.getItem(itemId);
+
+          const currentItem = this.getItem(itemId);
           if (currentItem) {
              if (currentItem.weiboProgress < 100) {
                  updates.weiboStatus = '✗ 失败';
@@ -293,7 +294,7 @@ export class UploadQueueManager {
           break;
       }
 
-      this.vm.updateItem(itemId, updates);
+      this.updateItem(itemId, updates);
     };
   }
 
@@ -301,7 +302,11 @@ export class UploadQueueManager {
    * 清空队列
    */
   clearQueue(): void {
-    this.vm.clear();
+    if (this.vm) {
+      this.vm.clear();
+    } else {
+      this.queueState.clearQueue();
+    }
     console.log('[UploadQueue] 队列已清空');
   }
 
@@ -309,35 +314,47 @@ export class UploadQueueManager {
    * 获取队列大小
    */
   getQueueSize(): number {
-    return this.vm.count();
+    if (this.vm) {
+      return this.vm.count();
+    } else {
+      return this.queueState.queueItems.value.length;
+    }
   }
 
   /**
    * 获取队列项
    */
   getItem(itemId: string): QueueItem | undefined {
-    return this.vm?.getItem(itemId);
+    if (this.vm) {
+      return this.vm.getItem(itemId);
+    } else {
+      return this.queueState.getItem(itemId);
+    }
   }
 
   /**
    * 更新队列项
    */
   updateItem(itemId: string, updates: Partial<QueueItem>): void {
-    this.vm?.updateItem(itemId, updates);
+    if (this.vm) {
+      this.vm.updateItem(itemId, updates);
+    } else {
+      this.queueState.updateItem(itemId, updates);
+    }
   }
 
   /**
    * 重置队列项状态（用于重试）
    */
   resetItemForRetry(itemId: string): void {
-    const item = this.vm.getItem(itemId);
+    const item = this.getItem(itemId);
     if (!item) {
       console.warn(`[UploadQueue] 重试失败: 找不到队列项 ${itemId}`);
       return;
     }
 
     // 重置状态
-    this.vm.updateItem(itemId, {
+    this.updateItem(itemId, {
       status: 'pending',
       weiboProgress: 0,
       r2Progress: 0,

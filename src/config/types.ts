@@ -4,6 +4,25 @@
 import { UploadResult } from '../uploaders/base/types';
 
 /**
+ * 主题模式类型
+ */
+export type ThemeMode = 'light' | 'dark';
+
+/**
+ * 主题配置接口
+ */
+export interface ThemeConfig {
+  /** 当前主题模式 */
+  mode: ThemeMode;
+
+  /** 是否启用主题过渡动画 */
+  enableTransitions: boolean;
+
+  /** 过渡动画持续时间（毫秒） */
+  transitionDuration: number;
+}
+
+/**
  * 支持的图床服务类型
  */
 export type ServiceType = 'weibo' | 'r2' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu' | 'zhihu' | 'nami';
@@ -188,6 +207,9 @@ export interface UserConfig {
     selectedImageBed?: ServiceType | 'all';
     gridColumnWidth: number;
   };
+
+  /** 主题配置 */
+  theme?: ThemeConfig;
 }
 
 /**
@@ -284,6 +306,11 @@ export const DEFAULT_CONFIG: UserConfig = {
     username: '',
     password: '',
     remotePath: '/WeiboDR/history.json'
+  },
+  theme: {
+    mode: 'dark',
+    enableTransitions: true,
+    transitionDuration: 300
   }
 };
 

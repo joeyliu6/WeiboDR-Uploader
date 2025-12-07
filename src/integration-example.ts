@@ -170,7 +170,7 @@ async function enableWeiboBackup() {
 // 步骤 7: 历史记录显示示例
 // ============================================
 async function loadHistory() {
-  const historyStore = new Store('history.dat');
+  const historyStore = new Store('.history.dat');
   const history = await historyStore.get<any[]>('uploads', []);
 
   const historyList = document.querySelector('#history-list');

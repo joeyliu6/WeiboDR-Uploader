@@ -26,7 +26,7 @@ export class UploadOrchestrator {
   private historyStore: Store;
 
   constructor() {
-    this.historyStore = new Store('history.dat');
+    this.historyStore = new Store('.history.dat');
   }
 
   /**
