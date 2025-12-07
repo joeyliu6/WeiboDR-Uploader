@@ -14,6 +14,7 @@ import {
 import { MultiServiceUploader, MultiUploadResult } from '../core/MultiServiceUploader';
 import { UploadQueueManager } from '../uploadQueue';
 import { useToast } from './useToast';
+import { debounceWithError } from '../utils/debounce';
 
 // --- STORES ---
 const configStore = new Store('.settings.dat');
@@ -48,6 +49,48 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
   // 上传中状态
   const isUploading = ref(false);
+
+  /**
+   * 保存启用的服务到配置
+   * 防抖版本，避免频繁写入
+   */
+  const saveEnabledServicesToConfig = debounceWithError(
+    async (services: ServiceType[]) => {
+      try {
+        console.log('[配置保存] 保存图床选择到配置:', services);
+
+        // 获取当前配置
+        let config: UserConfig | null = null;
+        try {
+          config = await configStore.get<UserConfig>('config');
+        } catch (error) {
+          console.error('[配置保存] 读取配置失败:', error);
+          throw error;
+        }
+
+        // 如果配置不存在，使用默认配置
+        if (!config) {
+          config = DEFAULT_CONFIG;
+        }
+
+        // 更新启用的服务
+        config.enabledServices = [...services]; // 创建副本
+
+        // 保存配置
+        await configStore.set('config', config);
+        await configStore.save();
+
+        console.log('[配置保存] ✓ 图床选择已保存');
+      } catch (error) {
+        console.error('[配置保存] 保存失败:', error);
+        throw error;
+      }
+    },
+    500, // 500ms 防抖延迟
+    (error) => {
+      toast.warn('保存失败', '图床选择保存失败，请重试');
+    }
+  );
 
   /**
    * 验证文件类型（只允许图片）
@@ -143,30 +186,29 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
       console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
 
+      // 关键修改：使用配置中的服务列表，而不是界面状态
+      const enabledServices = config.enabledServices || selectedServices.value;
+
       // 验证是否选中了图床服务
-      if (selectedServices.value.length === 0) {
+      if (enabledServices.length === 0) {
         console.warn('[上传] 没有选择任何图床');
         toast.error('配置缺失', '请至少选择一个图床服务！');
         return;
       }
 
-      // 保存用户选择到配置
-      config.enabledServices = selectedServices.value;
-      try {
-        await configStore.set('config', config);
-        await configStore.save();
-      } catch (error) {
-        console.warn('[上传] 保存图床选择失败:', error);
-        // 不阻塞上传流程
+      // 同步界面状态和配置状态
+      if (JSON.stringify(enabledServices.sort()) !== JSON.stringify(selectedServices.value.sort())) {
+        console.warn('[上传] 检测到状态不一致，同步中...');
+        selectedServices.value = [...enabledServices];
       }
 
-      console.log(`[上传] 启用的图床:`, selectedServices.value);
+      console.log(`[上传] 启用的图床:`, enabledServices);
 
       // 标记为上传中
       isUploading.value = true;
 
       // 并发处理上传队列
-      await processUploadQueue(valid, config, selectedServices.value);
+      await processUploadQueue(valid, config, enabledServices);
 
       console.log('[上传] 上传队列处理完成');
 
@@ -208,6 +250,12 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     const uploadTasks = filePaths.map(filePath => {
       const fileName = filePath.split(/[/\\]/).pop() || filePath;
       const itemId = queueManager!.addFile(filePath, fileName, [...enabledServices]);  // 传递数组副本
+
+      // 检查是否因为重复而跳过
+      if (!itemId) {
+        console.log(`[并发上传] 跳过重复文件: ${fileName}`);
+        return null; // 返回 null 表示跳过
+      }
 
       return async () => {
         try {
@@ -265,7 +313,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
           queueManager!.markItemFailed(itemId, errorMsg);
         }
       };
-    });
+    }).filter(task => task !== null); // 过滤掉 null 值
+
+    console.log(`[并发上传] 实际需要上传的文件数: ${uploadTasks.length}/${filePaths.length}`);
 
     // 使用并发限制执行上传任务
     const executing: Promise<void>[] = [];
@@ -362,10 +412,19 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       availableServices.value = config.availableServices || DEFAULT_CONFIG.availableServices || [];
 
       // 加载保存的选择状态
-      const savedEnabledServices = config.enabledServices || ['tcl', 'jd'];
+      const savedEnabledServices = config.enabledServices || DEFAULT_CONFIG.enabledServices;
       selectedServices.value = savedEnabledServices.filter(
         service => availableServices.value.includes(service)
       );
+
+      // 立即保存当前选择，确保配置同步
+      if (selectedServices.value.length > 0) {
+        try {
+          await saveEnabledServicesToConfig.immediate([...selectedServices.value]);
+        } catch (error) {
+          console.warn('[服务按钮] 初始同步保存失败:', error);
+        }
+      }
 
       // 更新各图床的配置状态
       await updateServiceConfigStatus(config);
@@ -462,6 +521,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     }
 
     console.log('[上传] 选中的图床:', selectedServices.value);
+
+    // 立即保存到配置（防抖）
+    saveEnabledServicesToConfig([...selectedServices.value]); // 传递副本
   }
 
   /**

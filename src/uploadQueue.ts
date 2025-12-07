@@ -83,9 +83,36 @@ export class UploadQueueManager {
   }
 
   /**
+   * 检查文件是否已在队列中
+   * @param filePath 文件路径
+   * @returns 是否存在重复
+   */
+  private isFileInQueue(filePath: string): boolean {
+    const allItems = this.vm ? this.vm.getAllItems() : this.queueState.queueItems.value;
+    return allItems.some(item => item.filePath === filePath);
+  }
+
+  /**
+   * 获取队列中相同文件的数量
+   * @param filePath 文件路径
+   * @returns 重复文件数量
+   */
+  private getDuplicateCount(filePath: string): number {
+    const allItems = this.vm ? this.vm.getAllItems() : this.queueState.queueItems.value;
+    return allItems.filter(item => item.filePath === filePath).length;
+  }
+
+  /**
    * 添加文件到队列（新架构 - 多图床支持）
    */
-  addFile(filePath: string, fileName: string, enabledServices: ServiceType[]): string {
+  addFile(filePath: string, fileName: string, enabledServices: ServiceType[]): string | null {
+    // 检查重复
+    if (this.isFileInQueue(filePath)) {
+      const duplicateCount = this.getDuplicateCount(filePath);
+      console.warn(`[UploadQueue] 文件已在队列中: ${fileName} (重复次数: ${duplicateCount})`);
+      return null; // 返回 null 表示重复，不添加到队列
+    }
+
     const id = `queue-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
 
     // 初始化每个图床的进度状态

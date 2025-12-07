@@ -255,7 +255,7 @@ export interface HistoryItem {
  * 默认配置
  */
 export const DEFAULT_CONFIG: UserConfig = {
-  enabledServices: ['tcl'],  // 默认启用 TCL 图床（开箱即用）
+  enabledServices: ['tcl', 'jd'],  // 默认启用 TCL 和 JD 图床（开箱即用）
   availableServices: ['weibo', 'r2', 'tcl', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami'],  // 默认所有图床都可用
   services: {
     weibo: {

@@ -14,6 +14,10 @@ import Tooltip from 'primevue/tooltip';
 // 上传器初始化
 import { initializeUploaders } from './uploaders';
 
+// 配置和 Store 导入
+import { Store } from './store';
+import { DEFAULT_CONFIG, UserConfig } from './config/types';
+
 // PrimeVue 样式
 import 'primeicons/primeicons.css';
 import './theme/transitions.css';
@@ -40,8 +44,32 @@ app.use(ToastService);
 app.use(ConfirmationService);
 app.directive('tooltip', Tooltip);
 
-// 初始化上传器
+/**
+ * 确保配置同步
+ * 在应用启动时检查并初始化配置
+ */
+async function ensureConfigSync() {
+  const configStore = new Store('.settings.dat');
+
+  try {
+    const config = await configStore.get<UserConfig>('config');
+    if (!config) {
+      // 初始化配置
+      console.log('[初始化] 创建默认配置...');
+      await configStore.set('config', DEFAULT_CONFIG);
+      await configStore.save();
+      console.log('[初始化] ✓ 已创建默认配置，启用的图床:', DEFAULT_CONFIG.enabledServices);
+    } else {
+      console.log('[初始化] ✓ 配置已存在，启用的图床:', config.enabledServices);
+    }
+  } catch (error) {
+    console.error('[初始化] 配置同步失败:', error);
+  }
+}
+
+// 初始化上传器和配置同步
 initializeUploaders();
+ensureConfigSync();
 
 // 挂载应用
 app.mount('#app');
