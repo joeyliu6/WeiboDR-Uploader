@@ -3602,37 +3602,47 @@ body, html {
   --p-border-radius: 8px;
 }
 
-/* 2. DataTable 样式优化 */
+/* 2. DataTable 样式优化 - 极简线条风 */
 :deep(.p-datatable) {
   border-radius: var(--p-border-radius);
   overflow: hidden;
 }
 
-/* 表头：透明背景 + 微妙边框 */
+/* 表头：有背景色 + 稍粗的分割线 */
 :deep(.p-datatable .p-datatable-thead > tr > th) {
-  background: transparent !important;
-  border-bottom: 1px solid var(--border-subtle);
+  background-color: var(--bg-secondary) !important;
+  color: var(--text-primary) !important;
   font-weight: 600;
-  font-size: 0.9rem;
-  padding: 12px 16px;
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
+  font-size: 13px;
+  padding: 12px 16px !important;
+  border-bottom: 2px solid var(--border-subtle) !important;
 }
 
-/* 表格行：hover 高亮 */
+/* 表格行：基础背景 */
 :deep(.p-datatable .p-datatable-tbody > tr) {
+  background-color: var(--bg-card) !important;
   transition: background-color 0.2s ease;
 }
 
+/* 斑马纹：让阅读更轻松 */
+:deep(.p-datatable .p-datatable-tbody > tr:nth-child(even)) {
+  background-color: rgba(0, 0, 0, 0.02) !important;
+}
+
+:root.dark-theme :deep(.p-datatable .p-datatable-tbody > tr:nth-child(even)) {
+  background-color: rgba(255, 255, 255, 0.02) !important;
+}
+
+/* hover 高亮 */
 :deep(.p-datatable .p-datatable-tbody > tr:hover) {
   background-color: var(--hover-overlay-subtle) !important;
 }
 
-/* 单元格边框：更微妙 */
+/* 单元格：细边框 */
 :deep(.p-datatable .p-datatable-tbody > tr > td) {
-  border-color: var(--border-subtle);
-  padding: 12px 16px;
+  padding: 12px 16px !important;
+  border-bottom: 1px solid var(--border-subtle) !important;
+  font-size: 13px;
 }
 
 /* 3. 输入框样式统一：扁平化 */
