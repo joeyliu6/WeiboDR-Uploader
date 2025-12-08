@@ -103,9 +103,6 @@ src/uploaders/
 │   ├── NamiUploader.ts
 │   └── index.ts
 │
-├── template/                      # 📝 模板（用于快速添加新图床）
-│   └── TemplateUploader.ts
-│
 └── index.ts                       # 统一注册所有上传器
 ```
 
@@ -118,7 +115,6 @@ src/uploaders/
 | `base/UploaderFactory.ts` | - | 工厂模式，创建上传器实例 | ⭐⭐⭐⭐ |
 | `tcl/TCLUploader.ts` | 95 | 最简单的上传器实现 | ⭐⭐⭐⭐ |
 | `weibo/WeiboUploader.ts` | - | 复杂上传器示例 | ⭐⭐⭐ |
-| `template/TemplateUploader.ts` | - | 新图床开发模板 | ⭐⭐⭐ |
 
 **学习路径推荐**：
 1. 先学习 `IUploader.ts`（理解接口设计）
@@ -133,7 +129,6 @@ src/uploaders/
 ```
 src/core/
 ├── MultiServiceUploader.ts        # 多图床编排器（314 行）⭐⭐⭐⭐⭐
-├── UploadOrchestrator.ts          # 上传流程编排
 ├── LinkGenerator.ts               # URL 链接生成器
 └── index.ts                       # 统一导出
 ```
@@ -210,20 +205,6 @@ src/components/
 
 ---
 
-### 📂 `src/ui/` - UI 模块
-
-```
-src/ui/
-└── modal.ts                       # 模态框管理系统
-```
-
-**作用**：
-- 统一管理所有模态框（登录窗口、R2 管理器等）
-- 提供打开/关闭/切换 API
-- 防止多个模态框同时打开
-
----
-
 ### 📂 `src/utils/` - 工具函数
 
 ```
@@ -241,10 +222,8 @@ src/
 ├── uploadQueue.ts                 # 上传队列管理
 ├── store.ts                       # 本地存储封装
 ├── crypto.ts                      # AES-GCM 加密
-├── r2-manager.ts                  # R2 文件管理器
 ├── login-webview.ts               # 登录窗口逻辑
 ├── config.ts                      # 配置加载/保存
-├── errors.ts                      # 错误类型定义
 └── style.css                      # 全局样式
 ```
 
@@ -610,7 +589,7 @@ dist/
 4. `src-tauri/src/commands/<新图床>.rs` - 实现 Rust 命令
 5. `src-tauri/src/main.rs` - 注册 Rust 命令
 
-**模板**：`src/uploaders/template/TemplateUploader.ts`
+**参考示例**：查看 `src/uploaders/tcl/TCLUploader.ts` 作为最简单的实现示例
 
 ---
 

@@ -494,17 +494,13 @@ WeiboDR-Uploader/
 │   │       └── NowcoderUploader.ts
 │   ├── core/                    # 核心业务逻辑
 │   │   ├── MultiServiceUploader.ts  # 多图床编排器
-│   │   ├── UploadOrchestrator.ts    # 流程编排
 │   │   └── LinkGenerator.ts         # URL 生成
 │   ├── config/                  # 配置管理
 │   │   └── types.ts             # 配置类型定义
-│   ├── ui/                      # UI 组件模块
-│   │   └── modal.ts             # 模态框管理
 │   ├── components/              # Vue 组件
-│   │   └── BackupView.vue       # 备份视图
+│   │   └── BackupView.vue       # 备份视图（包含 R2 管理功能）
 │   ├── main.ts                  # 应用入口
 │   ├── uploadQueue.ts           # 上传队列管理
-│   ├── r2-manager.ts            # R2 管理器逻辑
 │   ├── store.ts                 # 本地存储操作封装
 │   ├── crypto.ts                # AES-GCM 加密
 │   └── style.css                # 全局样式
@@ -554,7 +550,7 @@ WeiboDR-Uploader/
 | **配置管理** | `src/config/types.ts` | UserConfig、HistoryItem 类型定义 |
 | **加密存储** | `src/store.ts` + `src/crypto.ts` | AES-GCM 加密的配置存储 |
 | **上传队列** | `src/uploadQueue.ts` | 上传队列管理和进度跟踪 |
-| **R2 管理** | `src/r2-manager.ts` | R2 文件浏览、删除、刷新 |
+| **R2 管理** | `src/components/BackupView.vue` | R2 文件浏览、删除、刷新 |
 | **Rust 后端** | `src-tauri/src/commands/` | 各图床的 Rust 上传实现 |
 
 ---
