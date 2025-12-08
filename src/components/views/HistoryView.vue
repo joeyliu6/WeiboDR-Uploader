@@ -242,16 +242,16 @@ const getServiceSeverity = (service: string): 'success' | 'info' | 'warn' | 'dan
 // 获取服务自定义颜色（深色模式友好）
 const getServiceColor = (service: string): { bg: string; text: string } => {
   const colorMap: Record<string, { bg: string; text: string }> = {
-    weibo: { bg: '#3b82f6', text: '#ffffff' },      // 蓝色
-    r2: { bg: '#10b981', text: '#ffffff' },          // 绿色
-    tcl: { bg: '#f97316', text: '#ffffff' },         // 橙色
-    jd: { bg: '#ef4444', text: '#ffffff' },          // 红色
-    nowcoder: { bg: '#a855f7', text: '#ffffff' },    // 紫色
-    qiyu: { bg: '#06b6d4', text: '#ffffff' },        // 青色
-    zhihu: { bg: '#6366f1', text: '#ffffff' },       // 靛蓝
-    nami: { bg: '#ec4899', text: '#ffffff' }         // 粉色
+    weibo: { bg: '#60a5fa', text: '#ffffff' },      // 亮蓝色
+    r2: { bg: '#34d399', text: '#ffffff' },          // 亮绿色
+    tcl: { bg: '#fb923c', text: '#ffffff' },         // 亮橙色
+    jd: { bg: '#f87171', text: '#ffffff' },          // 亮红色
+    nowcoder: { bg: '#c084fc', text: '#ffffff' },    // 亮紫色
+    qiyu: { bg: '#22d3ee', text: '#ffffff' },        // 亮青色
+    zhihu: { bg: '#818cf8', text: '#ffffff' },       // 亮靛蓝色
+    nami: { bg: '#f472b6', text: '#ffffff' }         // 亮粉色
   };
-  return colorMap[service] || { bg: '#64748b', text: '#ffffff' }; // 默认灰色
+  return colorMap[service] || { bg: '#94a3b8', text: '#ffffff' }; // 默认亮灰色
 };
 
 // 获取服务名称
@@ -384,7 +384,7 @@ const handleCopyServiceLink = async (item: HistoryItem, serviceId: ServiceType) 
             <i class="pi pi-search search-icon"></i>
             <InputText
               v-model="historyManager.searchTerm.value"
-              placeholder="搜索本地文件名..."
+              placeholder="搜索图名..."
               class="search-input"
             />
           </div>
@@ -438,7 +438,7 @@ const handleCopyServiceLink = async (item: HistoryItem, serviceId: ServiceType) 
           </template>
         </Column>
 
-        <Column field="localFileName" header="本地文件名" sortable style="min-width: 150px; width: 15%">
+        <Column field="localFileName" header="图名" sortable style="min-width: 150px; width: 15%">
           <template #body="slotProps">
             <span class="file-name" :title="slotProps.data.localFileName">
               {{ slotProps.data.localFileName }}

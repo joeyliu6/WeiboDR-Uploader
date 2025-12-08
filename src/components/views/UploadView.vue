@@ -308,13 +308,13 @@ onMounted(async () => {
 
 .service-btn.service-selected {
   font-weight: 600;
-  background-color: #2e8b57 !important;
+  background-color: #22c55e !important;
   color: #ffffff !important;
-  border-color: #2e8b57 !important;
+  border-color: #22c55e !important;
 }
 
 .service-btn.service-selected:hover {
-  background-color: #267347 !important;
+  background-color: #16a34a !important;
 }
 
 /* 上传队列区域 */
