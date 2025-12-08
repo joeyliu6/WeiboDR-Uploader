@@ -1156,12 +1156,13 @@ onMounted(async () => {
   flex-shrink: 0;
 }
 
-.checkbox-label {
+.field-checkbox .checkbox-label {
   cursor: pointer;
   font-weight: 500;
   color: var(--text-primary);
   user-select: none;
   line-height: 1;
+  margin-bottom: 0;
 }
 
 .prefix-manager {
