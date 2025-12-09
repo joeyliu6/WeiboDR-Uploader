@@ -1,6 +1,8 @@
 // src/uploaders/r2/R2Error.ts
 // Cloudflare R2 上传错误处理
 
+import { UploadErrorCode, StructuredError, createStructuredError } from '../base/ErrorTypes';
+
 /**
  * R2 上传错误类
  */
@@ -67,4 +69,48 @@ export function convertToR2Error(error: any): R2UploadError {
     'UPLOAD_ERROR',
     error
   );
+}
+
+/**
+ * 新增：转换为结构化错误
+ */
+export function convertToStructuredR2Error(error: any): StructuredError {
+  const r2Error = convertToR2Error(error);
+
+  let code: UploadErrorCode;
+  let retryable = false;
+  let solution: string | undefined;
+
+  switch (r2Error.code) {
+    case 'AUTH_ERROR':
+      code = UploadErrorCode.AUTH_FAILED;
+      solution = '请检查 R2 的 Account ID、Access Key ID 和 Secret Access Key';
+      break;
+    case 'BUCKET_ERROR':
+      code = UploadErrorCode.BUCKET_NOT_FOUND;
+      solution = '请检查 Bucket Name 是否正确';
+      break;
+    case 'NETWORK_ERROR':
+      code = UploadErrorCode.NETWORK_ERROR;
+      retryable = true;
+      solution = '请检查网络连接后重试';
+      break;
+    case 'PERMISSION_ERROR':
+      code = UploadErrorCode.PERMISSION_DENIED;
+      solution = '请检查 Access Key 是否有上传权限';
+      break;
+    case 'UPLOAD_ERROR':
+    default:
+      code = UploadErrorCode.UPLOAD_FAILED;
+      retryable = true;
+      break;
+  }
+
+  return createStructuredError(code, r2Error.message, {
+    details: r2Error.originalError?.message,
+    retryable,
+    solution,
+    originalError: r2Error.originalError,
+    serviceId: 'r2'
+  });
 }

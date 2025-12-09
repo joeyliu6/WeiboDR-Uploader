@@ -231,11 +231,13 @@ defineExpose({
         <Button
           v-if="item.status === 'error'"
           @click="handleRetry(item.id)"
-          label="重试"
-          icon="pi pi-refresh"
+          :label="item.retryCount && item.maxRetries ? `重试 (${item.retryCount}/${item.maxRetries})` : '重试'"
+          :icon="item.isRetrying ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'"
+          :disabled="item.isRetrying || (item.retryCount && item.maxRetries && item.retryCount >= item.maxRetries)"
           severity="warning"
           size="small"
           class="retry-btn"
+          :title="item.retryCount && item.maxRetries && item.retryCount >= item.maxRetries ? '已达到最大重试次数' : ''"
         />
 
         <!-- 新架构：动态显示启用服务的复制按钮 -->

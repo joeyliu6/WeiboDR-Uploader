@@ -25,6 +25,9 @@ const uploadQueueRef = ref<InstanceType<typeof UploadQueue>>();
 // 文件拖拽监听器清理函数
 const fileDropUnlisteners = ref<UnlistenFn[]>([]);
 
+// 新增：重试并发控制
+const retryingItems = ref<Set<string>>(new Set());
+
 // 服务配置映射
 const serviceLabels: Record<ServiceType, string> = {
   weibo: '微博',
@@ -156,8 +159,45 @@ const setupRetryCallback = () => {
         return;
       }
 
-      console.log(`[上传] 重试上传: ${item.fileName}`);
-      toast.info('重试中', `正在重新上传 ${item.fileName}`);
+      // 新增：并发控制 - 检查是否已在重试中
+      if (retryingItems.value.has(itemId)) {
+        console.warn(`[重试] ${item.fileName} 已在重试中，跳过`);
+        return;
+      }
+
+      // 新增：检查重试次数限制
+      const currentRetryCount = item.retryCount || 0;
+      const maxRetries = item.maxRetries || 3;
+
+      if (currentRetryCount >= maxRetries) {
+        toast.error(
+          '重试次数已达上限',
+          `${item.fileName} 已重试 ${maxRetries} 次，无法继续重试`,
+          5000
+        );
+        return;
+      }
+
+      console.log(`[上传] 重试上传 (${currentRetryCount + 1}/${maxRetries}): ${item.fileName}`);
+
+      // 新增：指数退避延迟（0ms, 2000ms, 4000ms）
+      const delays = [0, 2000, 4000];
+      const delay = delays[currentRetryCount] || 4000;
+
+      if (delay > 0) {
+        console.log(`[重试] 等待 ${delay}ms 后重试...`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+
+      // 新增：标记为重试中
+      retryingItems.value.add(itemId);
+      queueManager.updateItem(itemId, {
+        isRetrying: true,
+        retryCount: currentRetryCount + 1,
+        lastRetryTime: Date.now()
+      });
+
+      toast.info('重试中', `正在重新上传 ${item.fileName} (${currentRetryCount + 1}/${maxRetries})`);
 
       // 【关键修复】不调用 handleFilesUpload，直接在原地重新上传
       // 避免触发 isFileInQueue() 的重复检测
@@ -194,6 +234,43 @@ const setupRetryCallback = () => {
           }
         );
 
+        // 更新每个服务的状态(成功和失败)
+        const currentItem = queueManager.getItem(itemId);
+        if (currentItem) {
+          const updatedServiceProgress = { ...currentItem.serviceProgress };
+
+          result.results.forEach(serviceResult => {
+            if (updatedServiceProgress[serviceResult.serviceId]) {
+              if (serviceResult.status === 'success' && serviceResult.result) {
+                // 成功：更新链接和状态
+                let link = serviceResult.result.url;
+                if (serviceResult.serviceId === 'weibo' && uploadManager.activePrefix.value) {
+                  link = uploadManager.activePrefix.value + link;
+                }
+                updatedServiceProgress[serviceResult.serviceId] = {
+                  ...updatedServiceProgress[serviceResult.serviceId],
+                  status: '✓ 完成',
+                  progress: 100,
+                  link: link
+                };
+              } else if (serviceResult.status === 'failed') {
+                // 失败：更新错误状态并重置进度
+                updatedServiceProgress[serviceResult.serviceId] = {
+                  ...updatedServiceProgress[serviceResult.serviceId],
+                  status: '✗ 失败',
+                  progress: 0,  // 失败时进度重置为0
+                  error: serviceResult.error || '上传失败'
+                };
+              }
+            }
+          });
+
+          // 批量更新所有服务的状态
+          queueManager.updateItem(itemId, {
+            serviceProgress: updatedServiceProgress
+          });
+        }
+
         // 处理上传成功
         let thumbUrl = result.primaryUrl;
         if (result.primaryService === 'weibo' && uploadManager.activePrefix.value) {
@@ -203,6 +280,29 @@ const setupRetryCallback = () => {
 
         // 保存到历史记录
         await uploadManager.saveHistoryItem(item.filePath, result);
+
+        // 新增：清理重试状态
+        retryingItems.value.delete(itemId);
+        queueManager.updateItem(itemId, { isRetrying: false });
+
+        // 新增：部分失败检测和 Toast 警告
+        if (result.isPartialSuccess && result.partialFailures) {
+          const failedServiceNames = result.partialFailures
+            .map(f => {
+              const nameMap: Record<string, string> = {
+                weibo: '微博', r2: 'R2', tcl: 'TCL', jd: '京东',
+                nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
+              };
+              return nameMap[f.serviceId] || f.serviceId;
+            })
+            .join('、');
+
+          toast.warn(
+            '部分图床上传失败',
+            `${item.fileName} 的 ${failedServiceNames} 上传失败，但主力图床已成功`,
+            5000
+          );
+        }
 
       } catch (error) {
         const errorMsg = error instanceof Error ? error.message : String(error);
@@ -239,7 +339,30 @@ const setupRetryCallback = () => {
           );
         }
 
+        // 新增:更新所有服务的失败状态
+        const currentItem = queueManager.getItem(itemId);
+        if (currentItem && currentItem.serviceProgress) {
+          const updatedServiceProgress = { ...currentItem.serviceProgress };
+          enabledServices.forEach(serviceId => {
+            if (updatedServiceProgress[serviceId]) {
+              updatedServiceProgress[serviceId] = {
+                ...updatedServiceProgress[serviceId],
+                status: '✗ 失败',
+                progress: 0,
+                error: errorMsg
+              };
+            }
+          });
+          queueManager.updateItem(itemId, {
+            serviceProgress: updatedServiceProgress
+          });
+        }
+
         queueManager.markItemFailed(itemId, errorMsg);
+
+        // 新增：清理重试状态
+        retryingItems.value.delete(itemId);
+        queueManager.updateItem(itemId, { isRetrying: false });
       }
     });
   }

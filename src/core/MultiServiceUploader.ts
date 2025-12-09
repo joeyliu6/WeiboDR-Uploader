@@ -4,6 +4,12 @@
 import { UploaderFactory } from '../uploaders/base/UploaderFactory';
 import { UploadResult } from '../uploaders/base/types';
 import { UserConfig, ServiceType } from '../config/types';
+import { StructuredError, UploadErrorCode, createStructuredError } from '../uploaders/base/ErrorTypes';
+import { convertToStructuredWeiboError } from '../uploaders/weibo/WeiboError';
+import { convertToStructuredR2Error } from '../uploaders/r2/R2Error';
+import { convertToTCLError } from '../uploaders/tcl/TCLError';
+import { convertToJDError } from '../uploaders/jd/JDError';
+import { convertToNamiError } from '../uploaders/nami/NamiError';
 
 /**
  * 多图床上传结果
@@ -18,10 +24,21 @@ export interface MultiUploadResult {
     result?: UploadResult;
     status: 'success' | 'failed';
     error?: string;
+    structuredError?: StructuredError;  // 新增：结构化错误
   }>;
 
   /** 主力图床的 URL */
   primaryUrl: string;
+
+  /** 新增：部分失败的图床列表（至少一个成功时） */
+  partialFailures?: Array<{
+    serviceId: ServiceType;
+    error: string;
+    structuredError?: StructuredError;
+  }>;
+
+  /** 新增：是否为部分成功（有成功也有失败） */
+  isPartialSuccess?: boolean;
 }
 
 /**
@@ -112,20 +129,46 @@ export class MultiServiceUploader {
           status: 'success' as const
         };
       } catch (error) {
-        // 增强类型安全的错误处理
-        let errorMsg = '未知错误';
+        // 新增：转换为结构化错误
+        let structuredError: StructuredError;
 
-        if (error instanceof Error) {
-          errorMsg = error.message;
-        } else if (typeof error === 'string') {
-          errorMsg = error;
+        switch (serviceId) {
+          case 'weibo':
+            structuredError = convertToStructuredWeiboError(error);
+            break;
+          case 'r2':
+            structuredError = convertToStructuredR2Error(error);
+            break;
+          case 'tcl':
+            structuredError = convertToTCLError(error);
+            break;
+          case 'jd':
+            structuredError = convertToJDError(error);
+            break;
+          case 'nami':
+            structuredError = convertToNamiError(error);
+            break;
+          default:
+            // 其他图床使用通用错误
+            const errorMsg = error instanceof Error ? error.message : String(error);
+            structuredError = createStructuredError(
+              UploadErrorCode.UPLOAD_FAILED,
+              `${serviceId} 上传失败: ${errorMsg}`,
+              {
+                details: errorMsg,
+                retryable: true,
+                originalError: error,
+                serviceId
+              }
+            );
         }
 
-        console.error(`[MultiUploader] ${serviceId} 上传失败:`, error);
+        console.error(`[MultiUploader] ${serviceId} 上传失败:`, structuredError);
         return {
           serviceId,
           status: 'failed' as const,
-          error: errorMsg
+          error: structuredError.message,
+          structuredError  // 新增：保存结构化错误
         };
       }
     });
@@ -163,11 +206,11 @@ export class MultiServiceUploader {
 
     // 4. 确定主力图床（第一个成功的）
     const primaryResult = uploadResults.find(r => r.status === 'success');
+    const failedResults = uploadResults.filter(r => r.status === 'failed');
 
     if (!primaryResult || !primaryResult.result) {
       // 收集所有失败详情
-      const failureDetails = uploadResults
-        .filter(r => r.status === 'failed')
+      const failureDetails = failedResults
         .map(r => `  - ${r.serviceId}: ${r.error || '未知错误'}`)
         .join('\n');
 
@@ -176,16 +219,31 @@ export class MultiServiceUploader {
       );
     }
 
+    // 新增：检测部分失败
+    const isPartialSuccess = failedResults.length > 0;
+    const partialFailures = isPartialSuccess ? failedResults.map(r => ({
+      serviceId: r.serviceId,
+      error: r.error || '未知错误',
+      structuredError: r.structuredError
+    })) : undefined;
+
     console.log('[MultiUploader] 主力图床:', primaryResult.serviceId);
     console.log('[MultiUploader] 上传结果:', {
       成功: uploadResults.filter(r => r.status === 'success').length,
       失败: uploadResults.filter(r => r.status === 'failed').length
     });
 
+    // 新增：记录警告
+    if (isPartialSuccess) {
+      console.warn('[MultiUploader] 部分图床上传失败:', partialFailures);
+    }
+
     return {
       primaryService: primaryResult.serviceId,
       results: uploadResults,
-      primaryUrl: primaryResult.result.url
+      primaryUrl: primaryResult.result.url,
+      partialFailures,           // 新增
+      isPartialSuccess          // 新增
     };
   }
 

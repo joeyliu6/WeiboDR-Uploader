@@ -36,6 +36,12 @@ export interface QueueItem {
   primaryUrl?: string;  // 主力图床的URL
   thumbUrl?: string;
 
+  // 新增：重试相关字段
+  retryCount?: number;        // 当前重试次数（默认 0）
+  maxRetries?: number;        // 最大重试次数（默认 3）
+  lastRetryTime?: number;     // 上次重试时间戳
+  isRetrying?: boolean;       // 是否正在重试中
+
   // 向后兼容字段（可选，供旧UI使用）
   uploadToR2?: boolean;
   weiboProgress?: number;
@@ -137,6 +143,11 @@ export class UploadQueueManager {
       enabledServices: [...enabledServices],  // 创建数组副本,避免引用共享
       serviceProgress: serviceProgress as Record<ServiceType, ServiceProgress>,
       status: 'pending',
+      // 新增：初始化重试相关字段
+      retryCount: 0,
+      maxRetries: 3,
+      lastRetryTime: undefined,
+      isRetrying: false,
       // 向后兼容
       uploadToR2: enabledServices.includes('r2'),
       weiboProgress: 0,
@@ -222,10 +233,12 @@ export class UploadQueueManager {
       return;
     }
 
-    // 更新成功的图床状态
+    // 更新成功的图床状态(不覆盖失败状态)
     const serviceProgress = { ...item.serviceProgress };
     item.enabledServices.forEach((serviceId: ServiceType) => {
-      if (serviceProgress[serviceId]?.progress === 100) {
+      const currentStatus = serviceProgress[serviceId]?.status || '';
+      // 只标记那些进度为100且不是失败状态的服务
+      if (serviceProgress[serviceId]?.progress === 100 && !currentStatus.includes('失败') && !currentStatus.includes('✗')) {
         serviceProgress[serviceId] = {
           ...serviceProgress[serviceId],
           status: '✓ 完成'

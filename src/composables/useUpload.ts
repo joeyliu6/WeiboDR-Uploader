@@ -283,28 +283,61 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
           console.log(`[并发上传] ${fileName} 上传完成，主力图床: ${result.primaryService}`);
 
-          // 更新每个服务的链接信息
-          result.results.forEach(serviceResult => {
-            if (serviceResult.status === 'success' && serviceResult.result) {
-              const item = queueManager!.getItem(itemId);
-              if (item && item.serviceProgress[serviceResult.serviceId]) {
-                // 微博链接需要加前缀
-                let link = serviceResult.result.url;
-                if (serviceResult.serviceId === 'weibo' && activePrefix.value) {
-                  link = activePrefix.value + link;
-                }
-                queueManager!.updateItem(itemId, {
-                  serviceProgress: {
-                    ...item.serviceProgress,
-                    [serviceResult.serviceId]: {
-                      ...item.serviceProgress[serviceResult.serviceId],
-                      link: link
-                    }
+          // 新增：检查部分失败并显示警告 Toast
+          if (result.isPartialSuccess && result.partialFailures) {
+            const failedServiceNames = result.partialFailures
+              .map(f => {
+                const nameMap: Record<string, string> = {
+                  weibo: '微博', r2: 'R2', tcl: 'TCL', jd: '京东',
+                  nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
+                };
+                return nameMap[f.serviceId] || f.serviceId;
+              })
+              .join('、');
+
+            toast.warn(
+              '部分图床上传失败',
+              `${fileName} 的 ${failedServiceNames} 上传失败，但主力图床已成功`,
+              5000
+            );
+          }
+
+          // 更新每个服务的状态(成功和失败)
+          const item = queueManager!.getItem(itemId);
+          if (item) {
+            const updatedServiceProgress = { ...item.serviceProgress };
+
+            result.results.forEach(serviceResult => {
+              if (updatedServiceProgress[serviceResult.serviceId]) {
+                if (serviceResult.status === 'success' && serviceResult.result) {
+                  // 成功：更新链接和状态
+                  let link = serviceResult.result.url;
+                  if (serviceResult.serviceId === 'weibo' && activePrefix.value) {
+                    link = activePrefix.value + link;
                   }
-                });
+                  updatedServiceProgress[serviceResult.serviceId] = {
+                    ...updatedServiceProgress[serviceResult.serviceId],
+                    status: '✓ 完成',
+                    progress: 100,
+                    link: link
+                  };
+                } else if (serviceResult.status === 'failed') {
+                  // 失败：更新错误状态并重置进度
+                  updatedServiceProgress[serviceResult.serviceId] = {
+                    ...updatedServiceProgress[serviceResult.serviceId],
+                    status: '✗ 失败',
+                    progress: 0,  // 失败时进度重置为0
+                    error: serviceResult.error || '上传失败'
+                  };
+                }
               }
-            }
-          });
+            });
+
+            // 批量更新所有服务的状态
+            queueManager!.updateItem(itemId, {
+              serviceProgress: updatedServiceProgress
+            });
+          }
 
           // 保存历史记录
           await saveHistoryItem(filePath, result);
@@ -364,6 +397,25 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
               `${fileName}: ${errorMsg}`,
               5000
             );
+          }
+
+          // 新增:更新所有服务的失败状态
+          const item = queueManager!.getItem(itemId);
+          if (item && item.serviceProgress) {
+            const updatedServiceProgress = { ...item.serviceProgress };
+            enabledServices.forEach(serviceId => {
+              if (updatedServiceProgress[serviceId]) {
+                updatedServiceProgress[serviceId] = {
+                  ...updatedServiceProgress[serviceId],
+                  status: '✗ 失败',
+                  progress: 0,
+                  error: errorMsg
+                };
+              }
+            });
+            queueManager!.updateItem(itemId, {
+              serviceProgress: updatedServiceProgress
+            });
           }
 
           queueManager!.markItemFailed(itemId, errorMsg);
