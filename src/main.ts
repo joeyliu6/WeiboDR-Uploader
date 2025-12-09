@@ -10,6 +10,7 @@ import { WeiboDRPreset } from './theme';
 import ToastService from 'primevue/toastservice';
 import ConfirmationService from 'primevue/confirmationservice';
 import Tooltip from 'primevue/tooltip';
+import Ripple from 'primevue/ripple';
 
 // 上传器初始化
 import { initializeUploaders } from './uploaders';
@@ -43,6 +44,7 @@ app.use(PrimeVue, {
 app.use(ToastService);
 app.use(ConfirmationService);
 app.directive('tooltip', Tooltip);
+app.directive('ripple', Ripple);
 
 /**
  * 确保配置同步
