@@ -492,8 +492,6 @@ body, html {
 
 .upload-item:hover {
   border-color: var(--primary);
-  transform: translateY(-1px);
-  box-shadow: var(--shadow-float);
 }
 
 .upload-item.upload-success {

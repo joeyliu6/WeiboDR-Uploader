@@ -128,8 +128,7 @@
 }
 
 /* 卡片悬浮效果 */
-:root.light-theme .card:hover,
-:root.light-theme .upload-item:hover {
+:root.light-theme .card:hover {
   box-shadow: var(--shadow-float);
 }
 

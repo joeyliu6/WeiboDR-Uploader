@@ -129,8 +129,7 @@
 }
 
 /* 卡片悬浮效果 */
-:root.dark-theme .card:hover,
-:root.dark-theme .upload-item:hover {
+:root.dark-theme .card:hover {
   box-shadow: var(--shadow-float);
 }
 
