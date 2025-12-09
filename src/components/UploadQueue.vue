@@ -72,8 +72,48 @@ const getStatusClass = (status: string): string => {
   if (status.includes('✓') || status.includes('完成')) return 'success';
   if (status.includes('✗') || status.includes('失败')) return 'error';
   if (status.includes('跳过')) return 'skipped';
-  if (status.includes('%')) return 'uploading';
+  if (status.includes('%') || status.includes('中')) return 'uploading';
   return '';
+};
+
+// 状态文字精简函数
+const formatStatus = (status: string | undefined): string => {
+  if (!status) return '等待';
+
+  // 检测完成状态
+  if (status.includes('✓') || status.includes('完成')) return '完成';
+
+  // 检测失败状态
+  if (status.includes('✗') || status.includes('失败')) return '失败';
+
+  // 检测跳过状态
+  if (status.includes('跳过')) return '跳过';
+
+  // 检测等待状态
+  if (status.includes('等待')) return '等待';
+
+  // 如果是百分比，直接返回
+  if (status.includes('%')) return status;
+
+  // 如果是步骤信息（如 "获取凭证中... (1/2)"）
+  const stepMatch = status.match(/^(.+?)\s*\((\d+)\/(\d+)\)$/);
+  if (stepMatch) {
+    const stepText = stepMatch[1].replace(/\.\.\.$/, '').trim();
+    // 智能简化步骤文字
+    const shortStepMap: Record<string, string> = {
+      '获取凭证中': '获取中',
+      '获取Token中': '获取中',
+      '上传图片中': '上传中',
+      '处理图片中': '处理中',
+      '压缩图片中': '压缩中',
+      '验证图片中': '验证中'
+    };
+    const shortStep = shortStepMap[stepText] || stepText;
+    return `${shortStep} ${stepMatch[2]}/${stepMatch[3]}`;
+  }
+
+  // 兜底策略：截断过长文字
+  return status.length > 8 ? status.substring(0, 7) + '..' : status;
 };
 
 // 直接使用全局队列状态，不需要本地 items
@@ -153,7 +193,7 @@ defineExpose({
             :key="service"
             class="progress-row"
           >
-            <label>{{ serviceNames[service] }}:</label>
+            <label>{{ serviceNames[service] }}</label>
             <ProgressBar
               :value="item.serviceProgress[service]?.progress || 0"
               :class="getStatusClass(item.serviceProgress[service]?.status || '')"
@@ -163,8 +203,9 @@ defineExpose({
             <span
               class="status"
               :class="getStatusClass(item.serviceProgress[service]?.status || '')"
+              :title="item.serviceProgress[service]?.status"
             >
-              {{ item.serviceProgress[service]?.status || '等待中...' }}
+              {{ formatStatus(item.serviceProgress[service]?.status) }}
             </span>
           </div>
         </template>
@@ -172,14 +213,14 @@ defineExpose({
         <!-- 旧架构：向后兼容 Weibo + R2 -->
         <template v-else>
           <div class="progress-row">
-            <label>微博:</label>
+            <label>微博</label>
             <ProgressBar :value="item.weiboProgress" :showValue="false" class="progress-bar" />
-            <span class="status" :class="{ success: item.weiboStatus?.includes('✓'), error: item.weiboStatus?.includes('✗') }">{{ item.weiboStatus }}</span>
+            <span class="status" :class="{ success: item.weiboStatus?.includes('✓'), error: item.weiboStatus?.includes('✗') }" :title="item.weiboStatus">{{ formatStatus(item.weiboStatus) }}</span>
           </div>
           <div class="progress-row" v-if="item.uploadToR2">
-            <label>R2:</label>
+            <label>R2</label>
             <ProgressBar :value="item.r2Progress" :showValue="false" class="progress-bar" />
-            <span class="status" :class="{ success: item.r2Status?.includes('✓'), error: item.r2Status?.includes('✗'), skipped: item.r2Status === '已跳过' }">{{ item.r2Status }}</span>
+            <span class="status" :class="{ success: item.r2Status?.includes('✓'), error: item.r2Status?.includes('✗'), skipped: item.r2Status === '已跳过' }" :title="item.r2Status">{{ formatStatus(item.r2Status) }}</span>
           </div>
         </template>
       </div>
@@ -259,35 +300,36 @@ defineExpose({
 .upload-item {
     display: flex;
     align-items: center;
-    padding: 10px;
+    padding: 10px 14px;
     background: var(--bg-card);
     border: 1px solid var(--border-subtle);
-    border-radius: 6px;
-    gap: 10px;
+    border-radius: 8px;
+    gap: 12px;
     color: var(--text-primary);
     transition: all 0.2s ease;
 }
 
 .upload-item.upload-success {
     border-left: 4px solid var(--success);
-    background: rgba(16, 185, 129, 0.1);
+    background: rgba(16, 185, 129, 0.05);
 }
 
 .upload-item.upload-error {
     border-left: 4px solid var(--error);
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(239, 68, 68, 0.05);
 }
 
 .preview {
-    width: 50px;
-    height: 50px;
+    width: 48px;
+    height: 48px;
     display: flex;
     align-items: center;
     justify-content: center;
     background: var(--bg-input);
-    border-radius: 4px;
+    border-radius: 6px;
     overflow: hidden;
     border: 1px solid var(--border-subtle);
+    flex-shrink: 0;
 }
 
 .thumb-img {
@@ -310,39 +352,43 @@ defineExpose({
 
 .filename {
     flex: 1;
+    min-width: 100px;
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 0.9em;
     font-weight: 500;
-    max-width: 150px;
     color: var(--text-primary);
 }
 
 .progress-section {
     display: flex;
     flex-direction: column;
-    gap: 4px;
-    width: 200px;
+    justify-content: center;
+    gap: 6px;
+    width: 240px;
+    flex-shrink: 0;
 }
 
 .progress-row {
-    display: flex;
+    display: grid;
+    grid-template-columns: 32px 60px 1fr;
+    gap: 10px;
     align-items: center;
-    gap: 8px;
-    font-size: 0.8em;
-    color: var(--text-secondary);
+    font-size: 12px;
+    height: 18px;
 }
 
 .progress-row label {
-    width: 35px;
-    text-align: right;
+    color: var(--text-secondary);
+    text-align: left;
+    white-space: nowrap;
 }
 
 /* PrimeVue ProgressBar 样式覆盖 */
 .progress-bar {
-    flex: 1;
-    height: 6px;
+    height: 4px !important;
+    border-radius: 2px;
 }
 
 /* 颜色编码进度条 */
@@ -363,15 +409,20 @@ defineExpose({
 }
 
 .status {
-    width: 50px;
     text-align: right;
-    font-size: 0.85em;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    font-size: 11px;
+    font-family: var(--font-mono);
+    color: var(--text-secondary);
+    opacity: 0.9;
 }
 
 .status.success { color: var(--success); }
 .status.error { color: var(--error); }
-.status.uploading { color: var(--primary); }
-.status.skipped { color: var(--text-muted); }
+.status.uploading { color: var(--primary); font-weight: 500; }
+.status.skipped { color: var(--text-muted); opacity: 0.7; }
 
 .actions {
     display: flex;
@@ -383,7 +434,10 @@ defineExpose({
 /* PrimeVue Button 样式调整 */
 .copy-btn,
 .retry-btn {
-    font-size: 0.8em;
+    font-size: 11px !important;
+    padding: 2px 8px !important;
+    height: 24px !important;
+    width: auto !important;
 }
 
 .error-icon {

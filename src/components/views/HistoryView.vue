@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { writeText } from '@tauri-apps/api/clipboard';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -18,6 +18,9 @@ import { useConfigManager } from '../../composables/useConfig';
 const toast = useToast();
 const historyManager = useHistoryManager();
 const configManager = useConfigManager();
+
+// watch 监听器停止函数
+const watchers = ref<(() => void)[]>([]);
 
 // 视图选项
 const viewOptions = ref([
@@ -75,30 +78,33 @@ const handleHeaderCheckboxChange = (checked: boolean) => {
 };
 
 // 监听视图模式变化
-watch(() => historyManager.historyState.value.viewMode, (newMode) => {
+const stopWatchViewMode = watch(() => historyManager.historyState.value.viewMode, (newMode) => {
   console.log('[HistoryView] 视图模式切换:', newMode);
   historyManager.switchViewMode(newMode);
 });
 
 // 监听筛选变化
-watch(() => historyManager.historyState.value.currentFilter, (newFilter) => {
+const stopWatchFilter = watch(() => historyManager.historyState.value.currentFilter, (newFilter) => {
   console.log('[HistoryView] 图床筛选:', newFilter);
   historyManager.setFilter(newFilter);
 });
 
 // 监听搜索词变化
-watch(() => historyManager.searchTerm.value, (newTerm) => {
+const stopWatchSearch = watch(() => historyManager.searchTerm.value, (newTerm) => {
   console.log('[HistoryView] 搜索:', newTerm);
 });
 
 // 监听选中状态变化，同步工具栏全选复选框
-watch([isAllSelected, isSomeSelected], () => {
+const stopWatchSelection = watch([isAllSelected, isSomeSelected], () => {
   if (isAllSelected.value) {
     selectAll.value = true;
   } else if (!isSomeSelected.value) {
     selectAll.value = false;
   }
 });
+
+// 保存所有 watch 停止函数
+watchers.value = [stopWatchViewMode, stopWatchFilter, stopWatchSearch, stopWatchSelection];
 
 // 全选/取消全选
 const handleSelectAll = () => {
@@ -164,6 +170,13 @@ onActivated(async () => {
     console.log('[HistoryView] 视图已激活，刷新历史记录');
     await historyManager.loadHistory();
   }
+});
+
+// 视图失活时清理监听器（KeepAlive 缓存时的清理）
+onDeactivated(() => {
+  console.log('[HistoryView] 视图已失活，清理 watchers');
+  watchers.value.forEach(stop => stop());
+  watchers.value = [];
 });
 
 // 格式化时间

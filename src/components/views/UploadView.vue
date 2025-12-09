@@ -1,13 +1,15 @@
 <script setup lang="ts">
-import { ref, onMounted, computed, watch } from 'vue';
-import { listen } from '@tauri-apps/api/event';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import Button from 'primevue/button';
 import UploadQueue from '../UploadQueue.vue';
-import type { ServiceType } from '../../config/types';
+import type { ServiceType, UserConfig } from '../../config/types';
+import { DEFAULT_CONFIG } from '../../config/types';
 import { useToast } from '../../composables/useToast';
 import { useUploadManager } from '../../composables/useUpload';
 import { UploadQueueManager } from '../../uploadQueue';
 import { MultiServiceUploader } from '../../core/MultiServiceUploader';
+import { Store } from '../../store';
 
 const toast = useToast();
 
@@ -19,6 +21,9 @@ const uploadManager = useUploadManager(queueManager);
 
 // 引用
 const uploadQueueRef = ref<InstanceType<typeof UploadQueue>>();
+
+// 文件拖拽监听器清理函数
+const fileDropUnlisteners = ref<UnlistenFn[]>([]);
 
 // 服务配置映射
 const serviceLabels: Record<ServiceType, string> = {
@@ -117,7 +122,7 @@ const handleDrop = (e: DragEvent) => {
 async function setupTauriFileDropListener() {
   try {
     // 监听文件拖拽事件
-    await listen<string[]>('tauri://file-drop', async (event) => {
+    const unlistenDrop = await listen<string[]>('tauri://file-drop', async (event) => {
       const filePaths = event.payload;
       console.log('[上传] 收到拖拽文件:', filePaths);
       await uploadManager.handleFilesUpload(filePaths);
@@ -125,15 +130,16 @@ async function setupTauriFileDropListener() {
     });
 
     // 监听拖拽悬停事件
-    await listen('tauri://file-drop-hover', () => {
+    const unlistenHover = await listen('tauri://file-drop-hover', () => {
       isDragging.value = true;
     });
 
     // 监听拖拽取消事件
-    await listen('tauri://file-drop-cancelled', () => {
+    const unlistenCancelled = await listen('tauri://file-drop-cancelled', () => {
       isDragging.value = false;
     });
 
+    fileDropUnlisteners.value = [unlistenDrop, unlistenHover, unlistenCancelled];
     console.log('[上传] Tauri 文件拖拽监听器已设置');
   } catch (error) {
     console.error('[上传] 设置 Tauri 文件拖拽监听器失败:', error);
@@ -163,17 +169,29 @@ const setupRetryCallback = () => {
       const enabledServices = item.enabledServices || [];
 
       try {
-        // 直接调用 MultiServiceUploader
-        const uploader = new MultiServiceUploader(
-          queueManager,
-          toast,
-          uploadManager.activePrefix.value
-        );
+        // 创建 MultiServiceUploader 实例（无参数构造函数）
+        const uploader = new MultiServiceUploader();
 
+        // 从 configStore 读取配置
+        const configStore = new Store('.settings.dat');
+        const config = await configStore.get<UserConfig>('config') || DEFAULT_CONFIG;
+
+        // 调用上传方法，传入配置对象和进度回调
         const result = await uploader.uploadToMultipleServices(
           item.filePath,
           enabledServices,
-          itemId
+          config,  // 第3个参数：配置对象
+          (serviceId, percent, step, stepIndex, totalSteps) => {
+            // 在进度回调中使用 itemId 更新进度
+            queueManager.updateServiceProgress(
+              itemId,
+              serviceId,
+              percent,
+              step,
+              stepIndex,
+              totalSteps
+            );
+          }
         );
 
         // 处理上传成功
@@ -238,6 +256,13 @@ onMounted(async () => {
 
   // 设置重试回调
   setupRetryCallback();
+});
+
+// 组件卸载时清理监听器
+onUnmounted(() => {
+  // 清理所有文件拖拽监听器
+  fileDropUnlisteners.value.forEach(unlisten => unlisten());
+  fileDropUnlisteners.value = [];
 });
 </script>
 

@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/tauri';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
 import Textarea from 'primevue/textarea';
@@ -18,6 +19,9 @@ import { DEFAULT_PREFIXES } from '../../config/types';
 const toast = useToast();
 const { currentTheme, setTheme } = useThemeManager();
 const configManager = useConfigManager();
+
+// Cookie 监听器清理函数
+const cookieUnlisten = ref<UnlistenFn | null>(null);
 
 // --- 导航状态管理 ---
 type SettingsTab = 'general' | 'weibo' | 'r2' | 'third_party' | 'builtin' | 'links' | 'webdav';
@@ -186,12 +190,20 @@ const resetToDefaultPrefixes = () => {
 onMounted(async () => {
   await loadSettings();
   await checkQiyuChrome();
-  await configManager.setupCookieListener(async (sid, cookie) => {
+  cookieUnlisten.value = await configManager.setupCookieListener(async (sid, cookie) => {
     if (sid === 'weibo') formData.value.weiboCookie = cookie;
     else if (['nowcoder', 'zhihu', 'nami'].includes(sid)) (formData.value as any)[sid].cookie = cookie;
     await saveSettings();
     toast.success('Cookie 已更新', `已自动捕获 ${serviceNames[sid as ServiceType]} Cookie`);
   });
+});
+
+// 组件卸载时清理监听器
+onUnmounted(() => {
+  if (cookieUnlisten.value) {
+    cookieUnlisten.value();
+    cookieUnlisten.value = null;
+  }
 });
 </script>
 

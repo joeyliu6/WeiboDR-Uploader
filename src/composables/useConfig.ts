@@ -3,7 +3,7 @@
 
 import { ref, Ref } from 'vue';
 import { invoke } from '@tauri-apps/api/tauri';
-import { listen } from '@tauri-apps/api/event';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/window';
 import { getClient, ResponseType } from '@tauri-apps/api/http';
 import { Store } from '../store';
@@ -543,10 +543,10 @@ export function useConfigManager() {
    */
   async function setupCookieListener(
     onCookieUpdate: (serviceId: string, cookie: string) => Promise<void>
-  ): Promise<void> {
+  ): Promise<UnlistenFn> {
     try {
       // 监听新格式的事件 {serviceId, cookie}
-      await listen<CookieUpdatedPayload>('cookie-updated', async (event) => {
+      const unlisten = await listen<CookieUpdatedPayload>('cookie-updated', async (event) => {
         try {
           const payload = event.payload;
 
@@ -600,9 +600,11 @@ export function useConfigManager() {
       });
 
       console.log('[Cookie更新] ✓ 监听器已设置（支持多服务）');
+      return unlisten;
     } catch (error) {
       console.error('[Cookie更新] 设置监听器失败:', error);
-      // 不抛出错误，避免阻塞应用启动
+      // 返回空函数以保持接口一致性
+      return () => {};
     }
   }
 
