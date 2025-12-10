@@ -2,6 +2,7 @@
 import { writeText } from '@tauri-apps/api/clipboard';
 import type { ServiceType } from '../config/types';
 import ProgressBar from 'primevue/progressbar';
+import ProgressSpinner from 'primevue/progressspinner';
 import Button from 'primevue/button';
 import { useToast } from '../composables/useToast';
 import { useQueueState } from '../composables/useQueueState';
@@ -316,11 +317,13 @@ defineExpose({
                 v-tooltip.top="'复制链接'"
               />
 
-              <i
+              <ProgressSpinner
                 v-else-if="item.serviceProgress[service]?.isRetrying"
-                class="pi pi-spin pi-spinner action-icon loading-icon"
-                title="重传中..."
-              ></i>
+                strokeWidth="6"
+                class="retry-spinner"
+                style="width: 18px; height: 18px"
+                v-tooltip.top="'重传中...'"
+              />
 
               <Button
                 v-else-if="item.serviceProgress[service]?.status?.includes('✗') || item.serviceProgress[service]?.status?.includes('失败')"
@@ -619,11 +622,15 @@ defineExpose({
     color: var(--text-muted);
 }
 
-.action-icon.loading-icon {
-    color: var(--primary);
-    /* 修复: 设置旋转中心点，确保以中心旋转 */
-    transform-origin: center center;
-    display: inline-block; /* 确保 transform-origin 生效 */
+/* ProgressSpinner 深度定制 - 重试动画 */
+.retry-spinner {
+    flex-shrink: 0;
+}
+
+/* 覆盖 ProgressSpinner 的默认颜色,使其融入主题系统 */
+.retry-spinner :deep(circle) {
+    /* 主色调圆弧 */
+    stroke: var(--primary);
 }
 
 .error-icon {
