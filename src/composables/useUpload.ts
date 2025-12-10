@@ -230,13 +230,13 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
    * @param filePaths 文件路径列表
    * @param config 用户配置
    * @param enabledServices 启用的图床服务列表
-   * @param maxConcurrent 最大并发数（默认3）
+   * @param maxConcurrent 最大并发数（默认5，提升吞吐量）
    */
   async function processUploadQueue(
     filePaths: string[],
     config: UserConfig,
     enabledServices: ServiceType[],
-    maxConcurrent: number = 3
+    maxConcurrent: number = 5
   ): Promise<void> {
     if (!queueManager) {
       console.error('[并发上传] 上传队列管理器未初始化');
@@ -302,7 +302,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
             );
           }
 
-          // 更新每个服务的状态(成功和失败)
+          // ✅ 原子化状态更新：一次性更新所有服务的状态
           const item = queueManager!.getItem(itemId);
           if (item) {
             const updatedServiceProgress = { ...item.serviceProgress };
@@ -310,11 +310,12 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
             result.results.forEach(serviceResult => {
               if (updatedServiceProgress[serviceResult.serviceId]) {
                 if (serviceResult.status === 'success' && serviceResult.result) {
-                  // 成功：更新链接和状态
+                  // 成功：构建完整的状态对象
                   let link = serviceResult.result.url;
                   if (serviceResult.serviceId === 'weibo' && activePrefix.value) {
                     link = activePrefix.value + link;
                   }
+
                   updatedServiceProgress[serviceResult.serviceId] = {
                     ...updatedServiceProgress[serviceResult.serviceId],
                     status: '✓ 完成',
@@ -326,14 +327,14 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
                   updatedServiceProgress[serviceResult.serviceId] = {
                     ...updatedServiceProgress[serviceResult.serviceId],
                     status: '✗ 失败',
-                    progress: 0,  // 失败时进度重置为0
+                    progress: 0,
                     error: serviceResult.error || '上传失败'
                   };
                 }
               }
             });
 
-            // 批量更新所有服务的状态
+            // 一次性更新所有服务的状态
             queueManager!.updateItem(itemId, {
               serviceProgress: updatedServiceProgress
             });
@@ -425,29 +426,44 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
     console.log(`[并发上传] 实际需要上传的文件数: ${uploadTasks.length}/${filePaths.length}`);
 
-    // 使用并发限制执行上传任务
-    const executing: Promise<void>[] = [];
+    // ✅ 改进的并发控制：使用信号量模式避免竞态条件
+    let activeCount = 0;
+    let taskIndex = 0;
+    const results: PromiseSettledResult<void>[] = [];
 
-    for (const task of uploadTasks) {
-      // 修复竞态条件：在闭包中捕获 promise 引用，确保正确删除
-      const promise = task().finally(() => {
-        const index = executing.indexOf(promise);
-        if (index > -1) {
-          executing.splice(index, 1);
+    return new Promise<void>((resolve) => {
+      const runNext = () => {
+        // 所有任务都已启动且完成
+        if (taskIndex >= uploadTasks.length && activeCount === 0) {
+          console.log(`[并发上传] 所有文件处理完成`);
+          resolve();
+          return;
         }
-      });
 
-      executing.push(promise);
+        // 在并发限制内启动新任务
+        while (activeCount < maxConcurrent && taskIndex < uploadTasks.length) {
+          const currentIndex = taskIndex++;
+          const task = uploadTasks[currentIndex];
 
-      if (executing.length >= maxConcurrent) {
-        await Promise.race(executing);
-      }
-    }
+          activeCount++;
 
-    // 等待所有剩余任务完成
-    await Promise.all(executing);
+          task()
+            .then(() => {
+              results.push({ status: 'fulfilled', value: undefined });
+            })
+            .catch((error) => {
+              results.push({ status: 'rejected', reason: error });
+              console.error(`[并发上传] 任务 ${currentIndex} 失败:`, error);
+            })
+            .finally(() => {
+              activeCount--;
+              runNext(); // 递归启动下一个任务
+            });
+        }
+      };
 
-    console.log(`[并发上传] 所有文件处理完成`);
+      runNext(); // 启动初始批次
+    });
   }
 
   /**

@@ -509,11 +509,11 @@ pub async fn upload_to_nami(
         });
     }
 
-    // 发送步骤1进度：获取动态Headers
+    // 发送步骤1进度：获取动态Headers (0%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
         "progress": 0,
-        "total": file_size,
+        "total": 100,
         "step": "获取动态Headers中...",
         "step_index": 1,
         "total_steps": 5
@@ -523,11 +523,11 @@ pub async fn upload_to_nami(
     println!("[Nami] 获取动态 Headers...");
     let dynamic_headers = fetch_nami_token(cookie.clone(), auth_token.clone()).await?;
 
-    // 发送步骤2进度：获取STS凭证
+    // 发送步骤2进度：获取STS凭证 (20%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
-        "progress": 0,
-        "total": file_size,
+        "progress": 20,
+        "total": 100,
         "step": "获取STS凭证中...",
         "step_index": 2,
         "total_steps": 5
@@ -538,11 +538,11 @@ pub async fn upload_to_nami(
     let credentials = get_sts_credentials(&client, &file_key, &cookie, &auth_token, &dynamic_headers).await?;
     println!("[Nami] STS 凭证获取成功");
 
-    // 发送步骤3进度：初始化分片上传
+    // 发送步骤3进度：初始化分片上传 (40%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
-        "progress": 0,
-        "total": file_size,
+        "progress": 40,
+        "total": 100,
         "step": "初始化分片上传中...",
         "step_index": 3,
         "total_steps": 5
@@ -553,11 +553,11 @@ pub async fn upload_to_nami(
     println!("[Nami] 初始化分片上传...");
     let upload_id = init_multipart_upload(&client, &credentials, &file_key, content_type).await?;
 
-    // 发送步骤4进度：上传分片
+    // 发送步骤4进度：上传分片 (60%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
-        "progress": 0,
-        "total": file_size,
+        "progress": 60,
+        "total": 100,
         "step": "上传分片中...",
         "step_index": 4,
         "total_steps": 5
@@ -567,11 +567,11 @@ pub async fn upload_to_nami(
     println!("[Nami] 上传分片...");
     let etag = upload_part(&client, &credentials, &file_key, &upload_id, 1, &buffer).await?;
 
-    // 发送步骤5进度：完成上传
+    // 发送步骤5进度：完成上传 (80%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
-        "progress": 0,
-        "total": file_size,
+        "progress": 80,
+        "total": 100,
         "step": "完成上传中...",
         "step_index": 5,
         "total_steps": 5

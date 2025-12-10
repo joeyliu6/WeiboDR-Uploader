@@ -76,11 +76,21 @@ async fn get_aid_info() -> Result<AidInfo, String> {
 
 #[tauri::command]
 pub async fn upload_to_jd(
-    _window: Window,
-    _id: String,
+    window: Window,
+    id: String,
     file_path: String,
 ) -> Result<JDUploadResult, String> {
     println!("[JD] 开始上传文件: {}", file_path);
+
+    // 发送进度: 0% - 读取文件
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 0,
+        "total": 100,
+        "step": "读取文件...",
+        "step_index": 1,
+        "total_steps": 4
+    }));
 
     // 1. 读取文件
     let mut file = File::open(&file_path).await
@@ -116,6 +126,16 @@ pub async fn upload_to_jd(
         return Err("只支持 JPG、PNG、GIF 格式的图片".to_string());
     }
 
+    // 发送进度: 25% - 获取凭证
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 25,
+        "total": 100,
+        "step": "获取上传凭证...",
+        "step_index": 2,
+        "total_steps": 4
+    }));
+
     // 4. 获取 aid 和 pin
     println!("[JD] 正在获取 aid 和 pin...");
     let aid_info = get_aid_info().await?;
@@ -141,6 +161,16 @@ pub async fn upload_to_jd(
         .text("clientType", "comet")
         .text("pin", aid_info.pin);
 
+    // 发送进度: 50% - 正在上传
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 50,
+        "total": 100,
+        "step": "正在上传...",
+        "step_index": 3,
+        "total_steps": 4
+    }));
+
     // 6. 发送请求到京东上传 API
     let client = reqwest::Client::new();
     let response = client
@@ -154,6 +184,16 @@ pub async fn upload_to_jd(
         .send()
         .await
         .map_err(|e| format!("上传请求失败: {}", e))?;
+
+    // 发送进度: 75% - 处理响应
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 75,
+        "total": 100,
+        "step": "处理响应...",
+        "step_index": 4,
+        "total_steps": 4
+    }));
 
     // 7. 解析响应
     let response_text = response.text().await

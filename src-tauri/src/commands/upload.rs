@@ -24,6 +24,12 @@ struct ProgressPayload {
     id: String,
     progress: u64,
     total: u64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    step: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    step_index: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    total_steps: Option<u32>,
 }
 
 /// 使用 quick-xml 进行健壮的 XML 解析
@@ -168,15 +174,25 @@ use crate::HttpClient;
 pub async fn upload_file_stream(
     window: Window,
     id: String,
-    file_path: String, 
+    file_path: String,
     weibo_cookie: String,
     http_client: tauri::State<'_, HttpClient>
 ) -> Result<UploadResponse, AppError> {
-    
+
+    // 发送步骤1进度：读取文件 (0%)
+    let _ = window.emit("upload://progress", ProgressPayload {
+        id: id.clone(),
+        progress: 0,
+        total: 100,
+        step: Some("读取文件...".to_string()),
+        step_index: Some(1),
+        total_steps: Some(3),
+    });
+
     let path = Path::new(&file_path);
     // Unused variable file_name
     let _file_name = path.file_name().and_then(|n| n.to_str()).unwrap_or("image.jpg");
-    
+
     let file = File::open(&file_path).await?;
     let metadata = file.metadata().await?;
     let total_len = metadata.len();
@@ -210,11 +226,14 @@ pub async fn upload_file_stream(
                     current_progress
                 };
 
-                // 发送进度事件到前端
+                // 发送进度事件到前端(带步骤信息)
                 let _ = window_clone.emit("upload://progress", ProgressPayload {
                     id: id_clone.clone(),
                     progress: safe_progress,
                     total: total_len_clone,
+                    step: Some("正在上传...".to_string()),
+                    step_index: Some(2),
+                    total_steps: Some(3),
                 });
             } else {
                 eprintln!("[上传] 警告: Mutex 锁被污染，跳过进度更新");
@@ -240,6 +259,16 @@ pub async fn upload_file_stream(
         .await?;
 
     let text = res.text().await?;
+
+    // 发送步骤3进度：处理响应 (95%)
+    let _ = window.emit("upload://progress", ProgressPayload {
+        id: id.clone(),
+        progress: 95,
+        total: 100,
+        step: Some("处理响应...".to_string()),
+        step_index: Some(3),
+        total_steps: Some(3),
+    });
 
     // ✅ 修复: 删除此处的100%事件发送
     // 只有parse_weibo_response成功返回后，前端才会在收到Ok结果时设置100%

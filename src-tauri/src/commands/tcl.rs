@@ -22,11 +22,21 @@ struct TCLApiResponse {
 
 #[tauri::command]
 pub async fn upload_to_tcl(
-    _window: Window,
-    _id: String,
+    window: Window,
+    id: String,
     file_path: String,
 ) -> Result<TCLUploadResult, String> {
     println!("[TCL] 开始上传文件: {}", file_path);
+
+    // 发送进度: 0% - 读取文件
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 0,
+        "total": 100,
+        "step": "读取文件...",
+        "step_index": 1,
+        "total_steps": 3
+    }));
 
     // 1. 读取文件
     let mut file = File::open(&file_path).await
@@ -72,6 +82,16 @@ pub async fn upload_to_tcl(
     let form = multipart::Form::new()
         .part("file", part);
 
+    // 发送进度: 33% - 正在上传
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 33,
+        "total": 100,
+        "step": "正在上传...",
+        "step_index": 2,
+        "total_steps": 3
+    }));
+
     // 4. 发送请求到 TCL API
     let client = reqwest::Client::new();
     let response = client
@@ -80,6 +100,16 @@ pub async fn upload_to_tcl(
         .send()
         .await
         .map_err(|e| format!("请求失败: {}", e))?;
+
+    // 发送进度: 66% - 处理响应
+    let _ = window.emit("upload://progress", serde_json::json!({
+        "id": id,
+        "progress": 66,
+        "total": 100,
+        "step": "处理响应...",
+        "step_index": 3,
+        "total_steps": 3
+    }));
 
     // 5. 解析响应
     let response_text = response.text().await

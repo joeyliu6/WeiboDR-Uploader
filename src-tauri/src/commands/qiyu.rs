@@ -29,11 +29,11 @@ pub async fn upload_to_qiyu(
 ) -> Result<QiyuUploadResult, String> {
     println!("[Qiyu] 开始上传文件: {}", file_path);
 
-    // 发送步骤1进度：获取上传凭证
+    // 发送步骤1进度：获取上传凭证 (0%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
         "progress": 0,
-        "total": 0,
+        "total": 100,
         "step": "获取上传凭证中...",
         "step_index": 1,
         "total_steps": 2
@@ -84,11 +84,11 @@ pub async fn upload_to_qiyu(
     );
     println!("[Qiyu] 上传 URL: {}", upload_url);
 
-    // 发送步骤2进度：上传文件
+    // 发送步骤2进度：上传文件 (50%)
     let _ = window.emit("upload://progress", serde_json::json!({
         "id": id,
-        "progress": 0,
-        "total": file_size,
+        "progress": 50,
+        "total": 100,
         "step": "上传文件中...",
         "step_index": 2,
         "total_steps": 2

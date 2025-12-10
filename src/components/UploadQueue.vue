@@ -7,6 +7,7 @@ import Button from 'primevue/button';
 import { useToast } from '../composables/useToast';
 import { useQueueState } from '../composables/useQueueState';
 import type { QueueItem } from '../uploadQueue';
+import { deepClone, deepMerge } from '../utils/deepClone';
 
 const toast = useToast();
 const { queueItems } = useQueueState();  // 使用全局队列状态
@@ -171,32 +172,19 @@ const copyToClipboard = async (text: string | undefined) => {
 
 defineExpose({
   addFile: (item: QueueItem) => {
-      queueItems.value.unshift(item);
+      // ✅ 深拷贝队列项，避免引用共享
+      queueItems.value.unshift(deepClone(item));
   },
   updateItem: (id: string, updates: Partial<QueueItem>) => {
       const index = queueItems.value.findIndex(i => i.id === id);
       if (index !== -1) {
           const item = queueItems.value[index];
 
-          // ✅ 修复: 深拷贝 serviceProgress，避免引用共享
-          const updatedServiceProgress = updates.serviceProgress
-            ? {
-                ...item.serviceProgress,
-                ...Object.fromEntries(
-                  Object.entries(updates.serviceProgress).map(([key, value]) => [
-                    key,
-                    { ...item.serviceProgress?.[key as keyof typeof item.serviceProgress], ...value }
-                  ])
-                )
-              }
-            : item.serviceProgress;
+          // ✅ 使用深度合并，完全避免引用共享
+          const mergedItem = deepMerge(item, updates);
 
-          // 使用展开运算符创建新对象，而不是 Object.assign 修改原对象
-          queueItems.value[index] = {
-              ...item,
-              ...updates,
-              serviceProgress: updatedServiceProgress
-          };
+          // 替换队列项（触发响应式更新）
+          queueItems.value[index] = mergedItem;
 
           // Update thumbUrl if PID is available and not set
           const updatedItem = queueItems.value[index];
@@ -317,24 +305,17 @@ defineExpose({
                 v-tooltip.top="'复制链接'"
               />
 
-              <ProgressSpinner
-                v-else-if="item.serviceProgress[service]?.isRetrying"
-                strokeWidth="6"
-                class="retry-spinner"
-                style="width: 18px; height: 18px"
-                v-tooltip.top="'重传中...'"
-              />
-
               <Button
-                v-else-if="item.serviceProgress[service]?.status?.includes('✗') || item.serviceProgress[service]?.status?.includes('失败')"
+                v-else-if="item.serviceProgress[service]?.status?.includes('✗') || item.serviceProgress[service]?.status?.includes('失败') || item.serviceProgress[service]?.isRetrying"
                 @click="handleRetry(item.id, service)"
-                icon="pi pi-refresh"
+                :icon="item.serviceProgress[service]?.isRetrying ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'"
+                :disabled="item.serviceProgress[service]?.isRetrying"
                 severity="danger"
                 text
                 rounded
                 size="small"
                 class="action-btn retry-btn"
-                v-tooltip.top="'重试此服务'"
+                :v-tooltip.top="item.serviceProgress[service]?.isRetrying ? '重传中...' : '重试此服务'"
               />
             </div>
           </div>
@@ -551,10 +532,11 @@ defineExpose({
 
 .progress-bar :deep(.p-progressbar-value) {
     border-radius: 3px;
-    transition: all 0.3s ease;
+    /* 使用 Material Design 标准缓动函数 */
+    transition: width 0.4s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
-/* 成功状态 - 渐变绿色 */
+/* 成功状态 - 渐变绿色 + 快速冲刺 */
 .progress-bar.success :deep(.p-progressbar-value) {
     background: linear-gradient(
         90deg,
@@ -562,6 +544,8 @@ defineExpose({
         #14f195 50%,
         var(--success) 100%
     );
+    /* 成功时使用弹性缓动,增加冲击感 */
+    transition: width 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
 }
 
 /* 失败状态 - 红色 */
@@ -569,7 +553,7 @@ defineExpose({
     background-color: var(--error);
 }
 
-/* 上传中状态 - 渐变蓝色 + 滑动动画 */
+/* 上传中状态 - 渐变蓝色 + 滑动动画 + 平滑过渡 */
 .progress-bar.uploading :deep(.p-progressbar-value) {
     background: linear-gradient(
         90deg,
@@ -579,6 +563,8 @@ defineExpose({
     );
     background-size: 200% 100%;
     animation: progressShimmer 1.5s ease-in-out infinite;
+    /* 与光泽动画配合的平滑过渡 */
+    transition: width 0.5s cubic-bezier(0.25, 0.46, 0.45, 0.94);
 }
 
 /* 跳过状态 - 灰色 */

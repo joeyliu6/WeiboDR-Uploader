@@ -67,26 +67,10 @@ export type UploadProgressCallback = (progress: {
  * 上传队列管理器类
  */
 export class UploadQueueManager {
-  private app: App | null = null;
-  private vm: InstanceType<typeof UploadQueueVue> | null = null;
-  private queueState = useQueueState();  // 新架构：使用全局状态管理
+  private queueState = useQueueState();  // 统一使用全局状态管理
 
-  constructor(queueListElementId?: string) {
-    // 新架构：如果没有提供 elementId，说明组件已经通过 Vue 模板挂载
-    // 只需要提供数据管理功能，不需要挂载组件
-    if (queueListElementId) {
-      const el = document.getElementById(queueListElementId);
-      if (!el) {
-        console.error(`[UploadQueue] 队列列表元素不存在: ${queueListElementId}`);
-        throw new Error(`Element #${queueListElementId} not found`);
-      }
-
-      // Mount Vue App (仅旧架构使用)
-      this.app = createApp(UploadQueueVue);
-      this.vm = this.app.mount(el) as InstanceType<typeof UploadQueueVue>;
-    } else {
-      console.log('[UploadQueue] 使用新架构模式 - 组件由 Vue 模板管理');
-    }
+  constructor() {
+    console.log('[UploadQueue] 初始化队列管理器（新架构）');
   }
 
   /**
@@ -95,7 +79,7 @@ export class UploadQueueManager {
    * @returns 是否存在重复（仅允许失败项重新上传）
    */
   private isFileInQueue(filePath: string): boolean {
-    const allItems = this.vm ? this.vm.getAllItems() : this.queueState.queueItems.value;
+    const allItems = this.queueState.queueItems.value;
     // 只检查 pending、uploading 和 success 状态的项
     // 失败(error)的项不算重复，允许重新上传
     return allItems.some(item =>
@@ -110,7 +94,7 @@ export class UploadQueueManager {
    * @returns 重复文件数量
    */
   private getDuplicateCount(filePath: string): number {
-    const allItems = this.vm ? this.vm.getAllItems() : this.queueState.queueItems.value;
+    const allItems = this.queueState.queueItems.value;
     return allItems.filter(item => item.filePath === filePath).length;
   }
 
@@ -157,19 +141,15 @@ export class UploadQueueManager {
       r2Status: enabledServices.includes('r2') ? '等待中...' : '已跳过',
     };
 
-    // 根据架构模式选择添加方式
-    if (this.vm) {
-      this.vm.addFile(item);
-    } else {
-      this.queueState.addItem(item);
-    }
+    // 添加到队列
+    this.queueState.addItem(item);
 
     console.log(`[UploadQueue] 添加文件到队列: ${fileName} (图床: ${enabledServices.join(', ')})`);
     return id;
   }
 
   /**
-   * 更新某个图床的上传进度
+   * 更新某个图床的上传进度（简化版，使用 CSS transition）
    */
   updateServiceProgress(
     itemId: string,
@@ -188,9 +168,8 @@ export class UploadQueueManager {
     const safePercent = Math.max(0, Math.min(100, percent));
 
     // 构建状态文本
-    let statusText = `${safePercent}%`;
+    let statusText = `${Math.round(safePercent)}%`;
     if (step && stepIndex && totalSteps) {
-      // 显示步骤信息，例如："获取凭证中... (1/2)"
       statusText = `${step} (${stepIndex}/${totalSteps})`;
     } else if (step) {
       statusText = step;
@@ -215,9 +194,9 @@ export class UploadQueueManager {
 
     // 如果整体状态是 error，且收到进度更新，说明正在重试，改为 uploading
     if (item.status === 'error') {
-        updates.status = 'uploading';
+      updates.status = 'uploading';
     } else if (item.status !== 'success') {
-        updates.status = 'uploading';
+      updates.status = 'uploading';
     }
 
     // 向后兼容
@@ -377,11 +356,7 @@ export class UploadQueueManager {
    * 清空队列
    */
   clearQueue(): void {
-    if (this.vm) {
-      this.vm.clear();
-    } else {
-      this.queueState.clearQueue();
-    }
+    this.queueState.clearQueue();
     console.log('[UploadQueue] 队列已清空');
   }
 
@@ -389,33 +364,21 @@ export class UploadQueueManager {
    * 获取队列大小
    */
   getQueueSize(): number {
-    if (this.vm) {
-      return this.vm.count();
-    } else {
-      return this.queueState.queueItems.value.length;
-    }
+    return this.queueState.queueItems.value.length;
   }
 
   /**
    * 获取队列项
    */
   getItem(itemId: string): QueueItem | undefined {
-    if (this.vm) {
-      return this.vm.getItem(itemId);
-    } else {
-      return this.queueState.getItem(itemId);
-    }
+    return this.queueState.getItem(itemId);
   }
 
   /**
    * 更新队列项
    */
   updateItem(itemId: string, updates: Partial<QueueItem>): void {
-    if (this.vm) {
-      this.vm.updateItem(itemId, updates);
-    } else {
-      this.queueState.updateItem(itemId, updates);
-    }
+    this.queueState.updateItem(itemId, updates);
   }
 
   /**
@@ -498,11 +461,11 @@ export class UploadQueueManager {
   }
 
   /**
-   * 设置重试回调
+   * 设置重试回调（保留接口兼容性）
    */
   setRetryCallback(callback: (itemId: string, serviceId?: ServiceType) => void): void {
-    if (this.vm && typeof this.vm.setRetryCallback === 'function') {
-      this.vm.setRetryCallback(callback);
-    }
+    // 在新架构中，重试回调直接在 UploadView 中处理
+    // 这里保留方法以保持接口兼容
+    console.log('[UploadQueue] 重试回调将由 UploadView 处理');
   }
 }

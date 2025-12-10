@@ -46,8 +46,8 @@ export interface MultiUploadResult {
  * 负责协调多个图床的并行上传，处理失败重试等逻辑
  */
 export class MultiServiceUploader {
-  /** 最大并发上传数（同时上传的图床数量） */
-  private readonly MAX_CONCURRENT_UPLOADS = 3;
+  /** 最大并发上传数（已移除限制，所有图床并发上传以提升用户体验） */
+  // private readonly MAX_CONCURRENT_UPLOADS = 3;  // 已废弃
 
   /**
    * 并行上传到多个图床（限制最大并发数）
@@ -98,8 +98,8 @@ export class MultiServiceUploader {
       );
     }
 
-    // 2. 分批并发上传到所有图床（最多同时3个）
-    console.log(`[MultiUploader] 将上传到 ${validServices.length} 个图床，并发数: ${this.MAX_CONCURRENT_UPLOADS}`);
+    // 2. 并发上传到所有图床（无并发限制，提升用户体验）
+    console.log(`[MultiUploader] 将上传到 ${validServices.length} 个图床，全部并发上传`);
 
     // 创建所有上传任务
     const uploadTasks = validServices.map((serviceId) => async () => {
@@ -107,10 +107,20 @@ export class MultiServiceUploader {
         const uploader = UploaderFactory.create(serviceId);
         const serviceConfig = config.services[serviceId];
 
+        // 立即触发进度回调,显示"开始上传"状态
+        if (onProgress) {
+          onProgress(serviceId, 0, '准备上传...', 0, 2);
+        }
+
         // 验证配置
         const validation = await uploader.validateConfig(serviceConfig);
         if (!validation.valid) {
           throw new Error(`配置验证失败: ${validation.errors?.join(', ')}`);
+        }
+
+        // 配置验证通过,更新进度
+        if (onProgress) {
+          onProgress(serviceId, 10, '开始上传...', 1, 2);
         }
 
         // 上传
@@ -173,36 +183,8 @@ export class MultiServiceUploader {
       }
     });
 
-    // 3. 使用并发控制执行上传任务
-    const executing: Promise<any>[] = [];
-    const uploadResults: any[] = [];
-
-    for (const task of uploadTasks) {
-      // 使用IIFE创建独立闭包，捕获promise引用，避免indexOf在并发场景下找错对象
-      const promise = (async () => {
-        const result = await task();
-        uploadResults.push(result);
-        return result;
-      })();
-
-      executing.push(promise);
-
-      // 在闭包中移除当前promise（避免indexOf竞态条件）
-      promise.finally(() => {
-        const index = executing.indexOf(promise);
-        if (index > -1) {
-          executing.splice(index, 1);
-        }
-      });
-
-      // 当达到最大并发数时，等待至少一个任务完成
-      if (executing.length >= this.MAX_CONCURRENT_UPLOADS) {
-        await Promise.race(executing);
-      }
-    }
-
-    // 等待所有剩余任务完成
-    await Promise.all(executing);
+    // 3. 并发执行所有上传任务（所有图床同时上传）
+    const uploadResults = await Promise.all(uploadTasks.map(task => task()));
 
     // 4. 确定主力图床（第一个成功的）
     const primaryResult = uploadResults.find(r => r.status === 'success');
@@ -260,7 +242,7 @@ export class MultiServiceUploader {
     filePath: string,
     serviceId: ServiceType,
     config: UserConfig,
-    onProgress?: (percent: number) => void
+    onProgress?: (percent: number, step?: string, stepIndex?: number, totalSteps?: number) => void
   ): Promise<UploadResult> {
     console.log(`[MultiUploader] 重试上传到 ${serviceId}`);
 
