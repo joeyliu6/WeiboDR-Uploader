@@ -72,6 +72,11 @@ export abstract class BaseUploader implements IUploader {
    * 通过 Rust 后端上传文件（共享方法）
    * 处理进度监听、命令调用、错误处理等通用逻辑
    *
+   * 包含进度平滑机制：
+   * - 在后端静默期间自动蠕动（Auto-Creep），避免进度条假死
+   * - 后端发来真实进度时直接使用，保持与 Rust 后端兼容
+   * - 配合 CSS transition 实现丝滑视觉效果
+   *
    * @param filePath 文件绝对路径
    * @param params 传递给 Rust 命令的参数（不包括 id 和 filePath）
    * @param onProgress 进度回调函数
@@ -94,7 +99,39 @@ export abstract class BaseUploader implements IUploader {
 
     console.log(`[${this.serviceName}] 开始上传... (ID: ${uploadId})`);
 
-    // 2. 设置进度监听器
+    // 2. 进度平滑状态
+    let lastReportedPercent = 0;       // 上次报告的真实进度
+    let currentVisualPercent = 0;      // 当前视觉进度（用于蠕动）
+    let lastStep: string | undefined;  // 上次步骤描述
+    let lastStepIndex: number | undefined;
+    let lastTotalSteps: number | undefined;
+    let autoCreepInterval: ReturnType<typeof setInterval> | null = null;
+
+    // 3. 设置自动蠕动机制（Auto-Creep）
+    // 在后端静默期间，每 200ms 增加少量进度，避免视觉假死
+    if (onProgress) {
+      // 初始状态：显示准备中
+      onProgress(0, '准备上传...');
+
+      autoCreepInterval = setInterval(() => {
+        // 只在进度未达到 95% 且未完成时蠕动
+        if (currentVisualPercent < 95 && currentVisualPercent >= lastReportedPercent) {
+          // 蠕动增量：距离目标越近，增量越小
+          const creepAmount = Math.max(0.1, (95 - currentVisualPercent) * 0.01);
+          currentVisualPercent = Math.min(currentVisualPercent + creepAmount, 95);
+
+          // 回调蠕动进度（保留1位小数）
+          onProgress(
+            Number(currentVisualPercent.toFixed(1)),
+            lastStep,
+            lastStepIndex,
+            lastTotalSteps
+          );
+        }
+      }, 200);
+    }
+
+    // 4. 设置进度监听器
     let unlisten: UnlistenFn | undefined;
 
     if (onProgress) {
@@ -110,14 +147,26 @@ export abstract class BaseUploader implements IUploader {
               );
             }
 
-            // 计算百分比并回调
-            const percent = event.payload.total > 0
+            // 计算后端真实百分比
+            const realPercent = event.payload.total > 0
               ? Math.round((event.payload.progress / event.payload.total) * 100)
               : 0;
 
-            // 传递步骤信息给外部回调
+            // 更新步骤信息
+            lastStep = event.payload.step;
+            lastStepIndex = event.payload.step_index;
+            lastTotalSteps = event.payload.total_steps;
+
+            // 核心逻辑：进度条永不倒退
+            // - 如果蠕动进度 > 真实进度：保持蠕动进度
+            // - 如果蠕动进度 < 真实进度：追上真实进度
+            const displayPercent = Math.max(realPercent, currentVisualPercent);
+            currentVisualPercent = displayPercent;
+            lastReportedPercent = displayPercent; // 更新蠕动基准为当前显示进度
+
+            // 传递显示进度给外部回调（永不倒退）
             onProgress(
-              percent,
+              displayPercent,
               event.payload.step,
               event.payload.step_index,
               event.payload.total_steps
@@ -131,12 +180,17 @@ export abstract class BaseUploader implements IUploader {
     }
 
     try {
-      // 3. 调用 Rust 命令
+      // 5. 调用 Rust 命令
       const result = await invoke(this.getRustCommand(), {
         id: uploadId,
         filePath,
         ...params
       });
+
+      // 6. 上传成功，立即设置 100%
+      if (onProgress) {
+        onProgress(100, '完成', lastTotalSteps, lastTotalSteps);
+      }
 
       console.log(`[${this.serviceName}] 上传成功:`, result);
       return result;
@@ -147,7 +201,11 @@ export abstract class BaseUploader implements IUploader {
       const errorMessage = error.message || error.toString();
       throw new Error(`${this.serviceName}上传失败: ${errorMessage}`);
     } finally {
-      // 4. 清理进度监听器（防止内存泄漏）
+      // 7. 清理资源（防止内存泄漏）
+      if (autoCreepInterval !== null) {
+        clearInterval(autoCreepInterval);
+        autoCreepInterval = null;
+      }
       if (unlisten) {
         unlisten();
       }
