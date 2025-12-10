@@ -50,15 +50,22 @@ pub async fn upload_to_tcl(
         .ok_or("无法获取文件扩展名")?
         .to_lowercase();
 
-    if !["jpg", "jpeg", "png", "gif"].contains(&ext.as_str()) {
-        return Err("只支持 JPG、PNG、GIF 格式的图片".to_string());
+    if !["jpg", "jpeg", "png", "gif", "heic", "mp4", "mov"].contains(&ext.as_str()) {
+        return Err("只支持 JPG、JPEG、PNG、GIF、HEIC、MP4、MOV 格式".to_string());
     }
 
     // 注意：暂不验证文件大小限制，因为限制还不确定
 
     // 3. 构建 multipart form
+    // 将扩展名转为小写（TCL API 不支持大写扩展名）
+    let normalized_file_name = if let Some(dot_pos) = file_name.rfind('.') {
+        format!("{}.{}", &file_name[..dot_pos], ext)
+    } else {
+        file_name.to_string()
+    };
+
     let part = multipart::Part::bytes(buffer)
-        .file_name(file_name.to_string())
+        .file_name(normalized_file_name)
         .mime_str("image/*")
         .map_err(|e| format!("无法设置 MIME 类型: {}", e))?;
 

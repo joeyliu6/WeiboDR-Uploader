@@ -1,18 +1,17 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { writeText } from '@tauri-apps/api/clipboard';
 import type { ServiceType } from '../config/types';
 import ProgressBar from 'primevue/progressbar';
 import Button from 'primevue/button';
 import { useToast } from '../composables/useToast';
 import { useQueueState } from '../composables/useQueueState';
-import type { UploadQueueManager } from '../uploadQueue';
+import type { QueueItem, UploadQueueManager } from '../uploadQueue';
 
 const toast = useToast();
 const { queueItems } = useQueueState();  // 使用全局队列状态
 
-// 队列管理器实例（仅用于兼容旧代码）
-let queueManagerInstance: UploadQueueManager | null = null;
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+let queueManagerInstance: UploadQueueManager | null = null; // 保留用于兼容性
 
 // 重试回调函数
 let retryCallback: ((itemId: string) => void) | null = null;
@@ -22,38 +21,6 @@ const handleRetry = (itemId: string) => {
     retryCallback(itemId);
   }
 };
-
-// 单个图床服务的进度状态
-export interface ServiceProgress {
-  serviceId: ServiceType;
-  progress: number;
-  status: string;
-  link?: string;
-  error?: string;
-}
-
-// 队列项类型（新架构 - 支持多图床）
-export interface QueueItem {
-  id: string;
-  fileName: string;
-  filePath: string;
-  enabledServices?: ServiceType[];  // 启用的图床列表
-  serviceProgress?: Record<ServiceType, ServiceProgress>;  // 各图床独立进度
-  status: 'pending' | 'uploading' | 'success' | 'error';
-  errorMessage?: string;
-  thumbUrl?: string;
-
-  // 向后兼容字段
-  uploadToR2?: boolean;
-  weiboProgress?: number;
-  r2Progress?: number;
-  weiboStatus?: string;
-  r2Status?: string;
-  weiboPid?: string;
-  weiboLink?: string;
-  r2Link?: string;
-  baiduLink?: string;
-}
 
 // 图床名称映射
 const serviceNames: Record<ServiceType, string> = {
@@ -116,6 +83,81 @@ const formatStatus = (status: string | undefined): string => {
   return status.length > 8 ? status.substring(0, 7) + '..' : status;
 };
 
+// 计算整体状态（含部分成功）
+const getOverallStatus = (item: QueueItem): 'success' | 'error' | 'partial-success' | 'uploading' | 'pending' => {
+  if (item.status === 'pending' || item.status === 'uploading') {
+    return item.status;
+  }
+
+  if (!item.serviceProgress || !item.enabledServices) {
+    return item.status;
+  }
+
+  let successCount = 0;
+  let failedCount = 0;
+
+  const serviceProgress = item.serviceProgress; // 类型守卫
+  item.enabledServices.forEach(serviceId => {
+    const progress = serviceProgress[serviceId];
+    if (progress) {
+      const status = progress.status || '';
+      if (status.includes('✓') || status.includes('完成')) {
+        successCount++;
+      } else if (status.includes('✗') || status.includes('失败')) {
+        failedCount++;
+      }
+    }
+  });
+
+  // 判断整体状态
+  if (successCount > 0 && failedCount > 0) {
+    return 'partial-success'; // 部分成功
+  } else if (successCount > 0 && failedCount === 0) {
+    return 'success'; // 全部成功
+  } else if (failedCount > 0) {
+    return 'error'; // 全部失败
+  }
+
+  return item.status;
+};
+
+// 计算汇总文本
+const getSummaryText = (item: QueueItem): string | null => {
+  if (!item.serviceProgress || !item.enabledServices) return null;
+  if (item.status === 'pending' || item.status === 'uploading') return null;
+
+  let successCount = 0;
+  let failedCount = 0;
+
+  const serviceProgress = item.serviceProgress; // 类型守卫
+  item.enabledServices.forEach(serviceId => {
+    const status = serviceProgress[serviceId]?.status || '';
+    if (status.includes('✓') || status.includes('完成')) successCount++;
+    else if (status.includes('✗') || status.includes('失败')) failedCount++;
+  });
+
+  const total = item.enabledServices.length;
+
+  if (successCount === total) {
+    return `全部完成 (${total}/${total})`;
+  } else if (failedCount === total) {
+    return `全部失败 (0/${total})`;
+  } else if (successCount > 0) {
+    return `部分成功 (${successCount}/${total})`;
+  }
+
+  return null;
+};
+
+// 获取状态图标
+const getStatusIcon = (status: string): string => {
+  if (status.includes('✓') || status.includes('完成')) return 'pi pi-check-circle';
+  if (status.includes('✗') || status.includes('失败')) return 'pi pi-times-circle';
+  if (status.includes('跳过')) return 'pi pi-minus-circle';
+  if (status.includes('%') || status.includes('中')) return 'pi pi-spin pi-spinner';
+  return '';
+};
+
 // 直接使用全局队列状态，不需要本地 items
 
 const copyToClipboard = async (text: string | undefined) => {
@@ -165,7 +207,19 @@ defineExpose({
     </div>
 
     <!-- 队列项列表 -->
-    <div v-for="item in queueItems" :key="item.id" class="upload-item" :class="[item.status, { 'upload-success': item.status === 'success', 'upload-error': item.status === 'error' }]">
+    <div
+      v-for="item in queueItems"
+      :key="item.id"
+      class="upload-item"
+      :class="[
+        item.status,
+        {
+          'upload-success': getOverallStatus(item) === 'success',
+          'upload-error': getOverallStatus(item) === 'error',
+          'upload-partial-success': getOverallStatus(item) === 'partial-success'
+        }
+      ]"
+    >
       
       <!-- Preview Column -->
       <div class="preview">
@@ -182,7 +236,27 @@ defineExpose({
       </div>
 
       <!-- Filename Column -->
-      <div class="filename" :title="item.fileName">{{ item.fileName }}</div>
+      <div class="filename-section">
+        <div class="filename" :title="item.fileName">{{ item.fileName }}</div>
+
+        <!-- 整体状态汇总 -->
+        <div
+          v-if="getSummaryText(item)"
+          class="status-summary"
+          :class="{
+            'summary-success': getOverallStatus(item) === 'success',
+            'summary-error': getOverallStatus(item) === 'error',
+            'summary-partial': getOverallStatus(item) === 'partial-success'
+          }"
+        >
+          <i
+            :class="getOverallStatus(item) === 'partial-success'
+              ? 'pi pi-exclamation-triangle'
+              : (getOverallStatus(item) === 'success' ? 'pi pi-check-circle' : 'pi pi-times-circle')"
+          ></i>
+          <span>{{ getSummaryText(item) }}</span>
+        </div>
+      </div>
 
       <!-- Progress Column -->
       <div class="progress-section">
@@ -205,6 +279,11 @@ defineExpose({
               :class="getStatusClass(item.serviceProgress[service]?.status || '')"
               :title="item.serviceProgress[service]?.status"
             >
+              <i
+                v-if="getStatusIcon(item.serviceProgress[service]?.status || '')"
+                :class="getStatusIcon(item.serviceProgress[service]?.status || '')"
+                class="status-icon"
+              ></i>
               {{ formatStatus(item.serviceProgress[service]?.status) }}
             </span>
           </div>
@@ -215,12 +294,18 @@ defineExpose({
           <div class="progress-row">
             <label>微博</label>
             <ProgressBar :value="item.weiboProgress" :showValue="false" class="progress-bar" />
-            <span class="status" :class="{ success: item.weiboStatus?.includes('✓'), error: item.weiboStatus?.includes('✗') }" :title="item.weiboStatus">{{ formatStatus(item.weiboStatus) }}</span>
+            <span class="status" :class="{ success: item.weiboStatus?.includes('✓'), error: item.weiboStatus?.includes('✗') }" :title="item.weiboStatus">
+              <i v-if="getStatusIcon(item.weiboStatus || '')" :class="getStatusIcon(item.weiboStatus || '')" class="status-icon"></i>
+              {{ formatStatus(item.weiboStatus) }}
+            </span>
           </div>
           <div class="progress-row" v-if="item.uploadToR2">
             <label>R2</label>
             <ProgressBar :value="item.r2Progress" :showValue="false" class="progress-bar" />
-            <span class="status" :class="{ success: item.r2Status?.includes('✓'), error: item.r2Status?.includes('✗'), skipped: item.r2Status === '已跳过' }" :title="item.r2Status">{{ formatStatus(item.r2Status) }}</span>
+            <span class="status" :class="{ success: item.r2Status?.includes('✓'), error: item.r2Status?.includes('✗'), skipped: item.r2Status === '已跳过' }" :title="item.r2Status">
+              <i v-if="getStatusIcon(item.r2Status || '')" :class="getStatusIcon(item.r2Status || '')" class="status-icon"></i>
+              {{ formatStatus(item.r2Status) }}
+            </span>
           </div>
         </template>
       </div>
@@ -233,7 +318,7 @@ defineExpose({
           @click="handleRetry(item.id)"
           :label="item.retryCount && item.maxRetries ? `重试 (${item.retryCount}/${item.maxRetries})` : '重试'"
           :icon="item.isRetrying ? 'pi pi-spin pi-spinner' : 'pi pi-refresh'"
-          :disabled="item.isRetrying || (item.retryCount && item.maxRetries && item.retryCount >= item.maxRetries)"
+          :disabled="!!item.isRetrying || !!(item.retryCount && item.maxRetries && item.retryCount >= item.maxRetries)"
           severity="warning"
           size="small"
           class="retry-btn"
@@ -314,11 +399,20 @@ defineExpose({
 .upload-item.upload-success {
     border-left: 4px solid var(--success);
     background: rgba(16, 185, 129, 0.05);
+    animation: successPulse 0.6s ease-out;
 }
 
 .upload-item.upload-error {
     border-left: 4px solid var(--error);
     background: rgba(239, 68, 68, 0.05);
+    animation: errorShake 0.5s ease-out;
+}
+
+/* 部分成功状态 */
+.upload-item.upload-partial-success {
+    border-left: 4px solid var(--warning);
+    background: rgba(234, 179, 8, 0.05);
+    animation: partialWarning 0.4s ease-out;
 }
 
 .preview {
@@ -352,15 +446,58 @@ defineExpose({
     100% { transform: rotate(360deg); }
 }
 
-.filename {
+/* 文件名区域 */
+.filename-section {
     flex: 1;
     min-width: 100px;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.filename {
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
     font-size: 0.9em;
     font-weight: 500;
     color: var(--text-primary);
+}
+
+/* 整体状态汇总 */
+.status-summary {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    font-size: 11px;
+    padding: 2px 6px;
+    border-radius: 3px;
+    font-weight: 500;
+    width: fit-content;
+    animation: fadeIn 0.3s ease-out;
+}
+
+.status-summary i {
+    font-size: 10px;
+    flex-shrink: 0;
+}
+
+.summary-success {
+    color: var(--success);
+    background: rgba(16, 185, 129, 0.15);
+    border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+.summary-error {
+    color: var(--error);
+    background: rgba(239, 68, 68, 0.15);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+.summary-partial {
+    color: var(--warning);
+    background: rgba(234, 179, 8, 0.15);
+    border: 1px solid rgba(234, 179, 8, 0.3);
 }
 
 .progress-section {
@@ -387,30 +524,59 @@ defineExpose({
     white-space: nowrap;
 }
 
-/* PrimeVue ProgressBar 样式覆盖 */
+/* PrimeVue ProgressBar 深度定制 */
 .progress-bar {
-    height: 4px !important;
-    border-radius: 2px;
+    height: 5px !important; /* 从 4px 增加到 5px */
+    border-radius: 3px;
 }
 
-/* 颜色编码进度条 */
+.progress-bar :deep(.p-progressbar) {
+    background: rgba(51, 65, 85, 0.5); /* 未完成部分半透明 */
+    border-radius: 3px;
+}
+
+.progress-bar :deep(.p-progressbar-value) {
+    border-radius: 3px;
+    transition: all 0.3s ease;
+}
+
+/* 成功状态 - 渐变绿色 */
 .progress-bar.success :deep(.p-progressbar-value) {
-    background-color: var(--success);
+    background: linear-gradient(
+        90deg,
+        var(--success) 0%,
+        #14f195 50%,
+        var(--success) 100%
+    );
 }
 
+/* 失败状态 - 红色 */
 .progress-bar.error :deep(.p-progressbar-value) {
     background-color: var(--error);
 }
 
+/* 上传中状态 - 渐变蓝色 + 滑动动画 */
 .progress-bar.uploading :deep(.p-progressbar-value) {
-    background-color: var(--primary);
+    background: linear-gradient(
+        90deg,
+        var(--primary) 0%,
+        var(--accent) 50%,
+        var(--primary) 100%
+    );
+    background-size: 200% 100%;
+    animation: progressShimmer 1.5s ease-in-out infinite;
 }
 
+/* 跳过状态 - 灰色 */
 .progress-bar.skipped :deep(.p-progressbar-value) {
     background-color: var(--text-muted);
 }
 
+/* 状态文本 */
 .status {
+    display: flex;
+    align-items: center;
+    gap: 4px;
     text-align: right;
     white-space: nowrap;
     overflow: hidden;
@@ -419,8 +585,16 @@ defineExpose({
     font-family: var(--font-mono);
     color: var(--text-secondary);
     opacity: 0.9;
+    animation: fadeIn 0.3s ease-out;
 }
 
+/* 状态图标 */
+.status-icon {
+    flex-shrink: 0;
+    font-size: 10px;
+}
+
+/* 状态颜色 */
 .status.success { color: var(--success); }
 .status.error { color: var(--error); }
 .status.uploading { color: var(--primary); font-weight: 500; }
@@ -447,5 +621,52 @@ defineExpose({
     height: 24px;
     color: var(--error);
     flex-shrink: 0;
+}
+
+/* ========== 动画效果 ========== */
+
+/* 成功光晕动画 */
+@keyframes successPulse {
+    0% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.4);
+    }
+    70% {
+        box-shadow: 0 0 0 6px rgba(16, 185, 129, 0);
+    }
+    100% {
+        box-shadow: 0 0 0 0 rgba(16, 185, 129, 0);
+    }
+}
+
+/* 失败抖动动画 */
+@keyframes errorShake {
+    0%, 100% { transform: translateX(0); }
+    10%, 30%, 50%, 70% { transform: translateX(-3px); }
+    20%, 40%, 60% { transform: translateX(3px); }
+}
+
+/* 部分失败微抖动动画 */
+@keyframes partialWarning {
+    0%, 100% { transform: translateX(0); }
+    25% { transform: translateX(-2px); }
+    75% { transform: translateX(2px); }
+}
+
+/* 淡入动画 */
+@keyframes fadeIn {
+    from {
+        opacity: 0;
+        transform: translateX(4px);
+    }
+    to {
+        opacity: 1;
+        transform: translateX(0);
+    }
+}
+
+/* 进度条光泽滑动动画 */
+@keyframes progressShimmer {
+    0%, 100% { background-position: 200% 0; }
+    50% { background-position: 0% 0; }
 }
 </style>

@@ -133,8 +133,15 @@ pub async fn upload_to_nowcoder(
     let url = format!("https://www.nowcoder.com/uploadImage?type=1&_={}", timestamp);
 
     // 4. 构建 multipart form
+    // 将扩展名转为小写（避免服务器不支持大写扩展名）
+    let normalized_file_name = if let Some(dot_pos) = file_name.rfind('.') {
+        format!("{}.{}", &file_name[..dot_pos], ext)
+    } else {
+        file_name.to_string()
+    };
+
     let part = multipart::Part::bytes(buffer)
-        .file_name(file_name.to_string())
+        .file_name(normalized_file_name)
         .mime_str("image/*")
         .map_err(|e| format!("无法设置 MIME 类型: {}", e))?;
 

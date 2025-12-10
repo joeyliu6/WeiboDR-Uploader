@@ -349,7 +349,7 @@ onUnmounted(() => {
             <div class="sc-icon"><i class="pi pi-image"></i></div>
             <div class="sc-content">
                 <h3>TCL 图床</h3>
-                <p>无需配置，直接使用。支持 JPG/PNG/GIF。</p>
+                <p>无需配置，直接使用。支持 JPG/JPEG/PNG/GIF/HEIC/MP4/MOV 格式。</p>
                 <Tag value="开箱即用" severity="success" />
             </div>
         </div>
