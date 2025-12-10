@@ -442,8 +442,8 @@ defineExpose({
 
 /* 文件名区域 */
 .filename-section {
-    flex: 1;
-    min-width: 100px;
+    width: 140px;
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     gap: 4px;
@@ -498,19 +498,19 @@ defineExpose({
     display: flex;
     flex-direction: column;
     justify-content: center;
-    gap: 8px;
-    flex: 1; /* 让它占据剩余空间 */
-    margin-left: 10px;
+    gap: 6px;
+    flex: 1;
+    min-width: 0;
 }
 
 .progress-row {
     display: grid;
     /* Label | ProgressBar | Status Text | Action Button */
-    grid-template-columns: 40px 1fr 60px 32px;
-    gap: 12px;
+    grid-template-columns: 36px 1fr 48px 28px;
+    gap: 8px;
     align-items: center;
     font-size: 12px;
-    height: 24px; /* 稍微增加高度以容纳按钮 */
+    height: 22px;
 }
 
 .progress-row label {
