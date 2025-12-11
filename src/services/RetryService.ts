@@ -50,6 +50,16 @@ export class RetryService {
       return;
     }
 
+    // 重试前检测网络
+    if (!navigator.onLine) {
+      this.options.toast.warn(
+        '网络未连接',
+        '请检查网络连接后再重试',
+        3000
+      );
+      return;
+    }
+
     console.log(`[重试] 单独重试 ${item.fileName} -> ${serviceId}`);
 
     // 并发控制
@@ -121,6 +131,16 @@ export class RetryService {
         '重试次数已达上限',
         `${item.fileName} 已重试 ${maxRetries} 次，无法继续重试`,
         5000
+      );
+      return;
+    }
+
+    // 重试前检测网络
+    if (!navigator.onLine) {
+      this.options.toast.warn(
+        '网络未连接',
+        '请检查网络连接后再重试',
+        3000
       );
       return;
     }

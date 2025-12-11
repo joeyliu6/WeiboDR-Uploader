@@ -1,21 +1,44 @@
 <script setup lang="ts">
-import { onMounted, computed } from 'vue';
+import { onMounted, onUnmounted, computed } from 'vue';
 import MainLayout from './components/layout/MainLayout.vue';
 import Toast from 'primevue/toast';
 import ConfirmDialog from 'primevue/confirmdialog';
 import { useThemeManager } from './composables/useTheme';
+import { useToast } from './composables/useToast';
 
 const { currentTheme, initializeTheme } = useThemeManager();
+const toast = useToast();
 
 // 计算根元素的类名
 const rootClass = computed(() => {
   return currentTheme.value === 'dark' ? 'dark-theme' : 'light-theme';
 });
 
+// 网络状态监听处理函数
+function handleOffline() {
+  toast.warn('网络已断开', '请检查网络连接');
+}
+
+function handleOnline() {
+  toast.success('网络已恢复', '可以继续上传');
+}
+
 onMounted(async () => {
   // 初始化主题系统
   await initializeTheme();
   console.log('[App] Theme initialized:', currentTheme.value);
+
+  // 添加网络状态监听
+  window.addEventListener('offline', handleOffline);
+  window.addEventListener('online', handleOnline);
+  console.log('[App] Network listeners registered');
+});
+
+onUnmounted(() => {
+  // 清理网络状态监听
+  window.removeEventListener('offline', handleOffline);
+  window.removeEventListener('online', handleOnline);
+  console.log('[App] Network listeners cleaned up');
 });
 </script>
 

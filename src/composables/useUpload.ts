@@ -21,6 +21,36 @@ const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
 
 /**
+ * 检测网络是否联通
+ * 通过请求百度favicon来判断网络连通性
+ */
+async function checkNetworkConnectivity(): Promise<boolean> {
+  // 1. 快速预判
+  if (!navigator.onLine) {
+    return false;
+  }
+
+  // 2. 尝试加载百度的小资源
+  try {
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 1500); // 1.5秒超时
+
+    await fetch('https://www.baidu.com/favicon.ico', {
+      method: 'HEAD',
+      mode: 'no-cors',
+      cache: 'no-cache',
+      signal: controller.signal
+    });
+
+    clearTimeout(timeoutId);
+    return true;
+  } catch (error) {
+    console.warn('网络连通性检测失败:', error);
+    return false;
+  }
+}
+
+/**
  * 上传管理 Composable
  */
 export function useUploadManager(queueManager?: UploadQueueManager) {
@@ -87,7 +117,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       }
     },
     500, // 500ms 防抖延迟
-    (error) => {
+    (_error) => {
       toast.warn('保存失败', '图床选择保存失败，请重试');
     }
   );
@@ -155,6 +185,21 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
       console.log('[上传] 接收到文件:', filePaths);
 
+      // 文件类型验证
+      const { valid, invalid } = await filterValidFiles(filePaths);
+
+      if (valid.length === 0) {
+        console.warn('[上传] 没有有效的图片文件');
+        toast.warn('没有有效的图片', '请选择图片文件（jpg, png, gif, webp, bmp）');
+        return;
+      }
+
+      if (invalid.length > 0) {
+        toast.warn('部分文件无效', `已过滤 ${invalid.length} 个非图片文件`);
+      }
+
+      console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
+
       // 获取配置
       let config: UserConfig | null = null;
       try {
@@ -170,21 +215,6 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         console.warn('[上传] 配置不存在，使用默认配置');
         config = DEFAULT_CONFIG;
       }
-
-      // 文件类型验证
-      const { valid, invalid } = await filterValidFiles(filePaths);
-
-      if (valid.length === 0) {
-        console.warn('[上传] 没有有效的图片文件');
-        toast.warn('没有有效的图片', '请选择图片文件（jpg, png, gif, webp, bmp）');
-        return;
-      }
-
-      if (invalid.length > 0) {
-        toast.warn('部分文件无效', `已过滤 ${invalid.length} 个非图片文件`);
-      }
-
-      console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
 
       // 关键修改：使用配置中的服务列表，而不是界面状态
       const enabledServices = config.enabledServices || selectedServices.value;
@@ -206,7 +236,68 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
       console.log(`[上传] 启用的图床:`, enabledServices);
 
-      // 标记为上传中
+      // ⭐ 立即将所有文件加入队列（用户立即看到反馈）
+      if (!queueManager) {
+        console.error('[上传] 队列管理器未初始化');
+        toast.error('上传错误', '队列管理器未初始化');
+        return;
+      }
+
+      const queueItems = valid.map(filePath => {
+        const fileName = filePath.split(/[/\\]/).pop() || filePath;
+        const itemId = queueManager!.addFile(filePath, fileName, [...enabledServices]);
+        return { itemId, filePath, fileName };
+      }).filter(item => item.itemId); // 过滤重复文件
+
+      if (queueItems.length === 0) {
+        console.log('[上传] 所有文件都是重复的');
+        return;
+      }
+
+      console.log(`[上传] 已添加 ${queueItems.length} 个文件到队列`);
+
+      // ⭐ 异步检测网络（不阻塞UI）
+      const isNetworkAvailable = await checkNetworkConnectivity();
+
+      if (!isNetworkAvailable) {
+        // 网络不通：将所有队列项标记为失败
+        queueItems.forEach(({ itemId }) => {
+          // 获取队列项
+          const item = queueManager!.getItem(itemId!);
+          if (item && item.serviceProgress) {
+            // 更新所有图床的状态为失败
+            const updatedServiceProgress = { ...item.serviceProgress };
+            enabledServices.forEach(serviceId => {
+              if (updatedServiceProgress[serviceId]) {
+                updatedServiceProgress[serviceId] = {
+                  ...updatedServiceProgress[serviceId],
+                  status: '✗ 失败',
+                  progress: 0,
+                  error: '网络连接失败，请检查网络后重试'
+                };
+              }
+            });
+            queueManager!.updateItem(itemId!, {
+              serviceProgress: updatedServiceProgress
+            });
+          }
+
+          // 标记整体状态为失败
+          queueManager!.markItemFailed(
+            itemId!,
+            '网络连接失败，请检查网络后重试'
+          );
+        });
+
+        toast.error(
+          '网络连接失败',
+          `${queueItems.length}个文件未能上传，请检查网络后重试`
+        );
+        return;
+      }
+
+      // 网络正常，开始上传
+      console.log('[上传] 网络检测通过，开始上传');
       isUploading.value = true;
 
       // 并发处理上传队列
