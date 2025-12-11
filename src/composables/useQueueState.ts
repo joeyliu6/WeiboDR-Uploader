@@ -16,7 +16,7 @@ export function useQueueState() {
    * 添加队列项
    */
   const addItem = (item: QueueItem) => {
-    queueItems.value.push(item);
+    queueItems.value.unshift(item);
   };
 
   /**

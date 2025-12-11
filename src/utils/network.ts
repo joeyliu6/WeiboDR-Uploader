@@ -9,12 +9,18 @@
  * @returns Promise<boolean> - true 表示网络联通，false 表示网络断开
  */
 export async function checkNetworkConnectivity(): Promise<boolean> {
-  // 1. 快速预判
-  if (!navigator.onLine) {
-    return false;
+  // 1. 快速成功路径：如果浏览器报告在线，直接返回 true
+  // 注意：不使用 navigator.onLine 作为快速失败路径，因为它可能误判
+  // （例如 Windows 显示"未连接"但实际可以通过代理上网）
+  if (navigator.onLine) {
+    console.log('[网络检测] 浏览器报告在线，跳过检测');
+    return true;
   }
 
-  // 2. 多端点检测（国内外混合，提高成功率）
+  // 2. 即使浏览器报告离线，也尝试检测端点（防止误判）
+  console.log('[网络检测] 浏览器报告离线，尝试检测端点...');
+
+  // 多端点检测（国内外混合，提高成功率）
   const endpoints = [
     'https://www.baidu.com/favicon.ico',        // 百度
     'https://www.qq.com/favicon.ico',           // 腾讯

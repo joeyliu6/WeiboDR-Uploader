@@ -271,8 +271,8 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       console.log('[上传] 网络检测通过，开始上传');
       isUploading.value = true;
 
-      // 并发处理上传队列
-      await processUploadQueue(valid, config, enabledServices);
+      // 并发处理上传队列（传入已创建的队列项）
+      await processUploadQueue(queueItems, config, enabledServices);
 
       console.log('[上传] 上传队列处理完成');
 
@@ -289,13 +289,13 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
   /**
    * 并发处理上传队列（多图床并行上传）
-   * @param filePaths 文件路径列表
+   * @param queueItems 已创建的队列项列表
    * @param config 用户配置
    * @param enabledServices 启用的图床服务列表
    * @param maxConcurrent 最大并发数（默认5，提升吞吐量）
    */
   async function processUploadQueue(
-    filePaths: string[],
+    queueItems: Array<{ itemId: string | null; filePath: string; fileName: string }>,
     config: UserConfig,
     enabledServices: ServiceType[],
     maxConcurrent: number = 5
@@ -306,18 +306,15 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       return;
     }
 
-    console.log(`[并发上传] 开始处理 ${filePaths.length} 个文件，启用图床:`, enabledServices);
+    console.log(`[并发上传] 开始处理 ${queueItems.length} 个文件，启用图床:`, enabledServices);
 
     const multiServiceUploader = new MultiServiceUploader();
 
-    // 为每个文件创建队列项
-    const uploadTasks = filePaths.map(filePath => {
-      const fileName = filePath.split(/[/\\]/).pop() || filePath;
-      const itemId = queueManager!.addFile(filePath, fileName, [...enabledServices]);  // 传递数组副本
-
-      // 检查是否因为重复而跳过
+    // 为每个队列项创建上传任务
+    const uploadTasks = queueItems.map(({ itemId, filePath, fileName }) => {
+      // itemId 在创建时已经过重复检查
       if (!itemId) {
-        console.log(`[并发上传] 跳过重复文件: ${fileName}`);
+        console.log(`[并发上传] 跳过无效队列项: ${fileName}`);
         return null; // 返回 null 表示跳过
       }
 
@@ -525,7 +522,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       };
     }).filter(task => task !== null); // 过滤掉 null 值
 
-    console.log(`[并发上传] 实际需要上传的文件数: ${uploadTasks.length}/${filePaths.length}`);
+    console.log(`[并发上传] 实际需要上传的文件数: ${uploadTasks.length}/${queueItems.length}`);
 
     // ✅ 改进的并发控制：使用信号量模式避免竞态条件
     let activeCount = 0;
