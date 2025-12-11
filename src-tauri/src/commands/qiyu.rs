@@ -8,7 +8,7 @@ use serde::Serialize;
 use reqwest::Client;
 use tokio::fs::File;
 use tokio::io::AsyncReadExt;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
 use super::qiyu_token::fetch_qiyu_token;
 
@@ -97,6 +97,7 @@ pub async fn upload_to_qiyu(
     // 6. 发送上传请求（直接 POST 二进制数据）
     let client = Client::builder()
         .danger_accept_invalid_certs(true)
+        .timeout(Duration::from_secs(45))
         .build()
         .map_err(|e| format!("创建 HTTP 客户端失败: {}", e))?;
 

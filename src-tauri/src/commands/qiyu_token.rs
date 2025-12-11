@@ -4,6 +4,7 @@
 
 use serde::{Deserialize, Serialize};
 use tauri::api::process::{Command, CommandEvent};
+use tokio::time::{timeout, Duration};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QiyuToken {
@@ -40,20 +41,28 @@ pub async fn check_chrome_installed() -> Result<bool, String> {
     let mut output = String::new();
     let mut stderr_output = String::new();
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line) => {
-                output.push_str(&line);
+    // 添加 45 秒超时控制
+    let result = timeout(Duration::from_secs(45), async {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    output.push_str(&line);
+                }
+                CommandEvent::Stderr(line) => {
+                    stderr_output.push_str(&line);
+                    stderr_output.push('\n');
+                }
+                CommandEvent::Terminated(status) => {
+                    println!("[QiyuToken] Sidecar 退出，状态: {:?}", status);
+                }
+                _ => {}
             }
-            CommandEvent::Stderr(line) => {
-                stderr_output.push_str(&line);
-                stderr_output.push('\n');
-            }
-            CommandEvent::Terminated(status) => {
-                println!("[QiyuToken] Sidecar 退出，状态: {:?}", status);
-            }
-            _ => {}
         }
+    }).await;
+
+    // 检查是否超时
+    if result.is_err() {
+        return Err("检测 Chrome 超时（45秒），请检查网络连接".to_string());
     }
 
     // 输出 stderr 日志
@@ -97,20 +106,28 @@ pub async fn fetch_qiyu_token() -> Result<QiyuToken, String> {
     let mut output = String::new();
     let mut stderr_output = String::new();
 
-    while let Some(event) = rx.recv().await {
-        match event {
-            CommandEvent::Stdout(line) => {
-                output.push_str(&line);
+    // 添加 45 秒超时控制
+    let result = timeout(Duration::from_secs(45), async {
+        while let Some(event) = rx.recv().await {
+            match event {
+                CommandEvent::Stdout(line) => {
+                    output.push_str(&line);
+                }
+                CommandEvent::Stderr(line) => {
+                    stderr_output.push_str(&line);
+                    stderr_output.push('\n');
+                }
+                CommandEvent::Terminated(status) => {
+                    println!("[QiyuToken] Sidecar 退出，状态: {:?}", status);
+                }
+                _ => {}
             }
-            CommandEvent::Stderr(line) => {
-                stderr_output.push_str(&line);
-                stderr_output.push('\n');
-            }
-            CommandEvent::Terminated(status) => {
-                println!("[QiyuToken] Sidecar 退出，状态: {:?}", status);
-            }
-            _ => {}
         }
+    }).await;
+
+    // 检查是否超时
+    if result.is_err() {
+        return Err("获取 Token 超时（45秒），请检查网络连接或稍后重试".to_string());
     }
 
     // 输出 stderr 日志（包含进度信息）
