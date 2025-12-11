@@ -57,7 +57,9 @@ const isStatusError = (status: string | undefined): boolean => {
 
 const isStatusUploading = (status: string | undefined): boolean => {
   if (!status) return false;
-  return status.includes('%') || status.includes('中');
+  // 排除"等待中"，只匹配真正的上传中状态
+  if (status.includes('等待中')) return false;
+  return status.includes('%') || status.includes('上传') || status.includes('准备');
 };
 
 // 统计各状态数量
