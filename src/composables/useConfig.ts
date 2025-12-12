@@ -21,6 +21,11 @@ import { useToast } from './useToast';
 // --- STORES ---
 const configStore = new Store('.settings.dat');
 
+// --- 全局单例状态（所有组件共享） ---
+const config: Ref<UserConfig> = ref<UserConfig>({ ...DEFAULT_CONFIG });
+const isLoading = ref(false);
+const isSaving = ref(false);
+
 /**
  * Cookie 更新事件的 payload 类型
  */
@@ -42,15 +47,6 @@ interface TestConnectionResult {
  */
 export function useConfigManager() {
   const toast = useToast();
-
-  // 配置对象
-  const config: Ref<UserConfig> = ref<UserConfig>({ ...DEFAULT_CONFIG });
-
-  // 加载状态
-  const isLoading = ref(false);
-
-  // 保存状态
-  const isSaving = ref(false);
 
   /**
    * 加载配置

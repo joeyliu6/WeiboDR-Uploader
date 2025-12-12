@@ -53,6 +53,15 @@ watch(serviceFilter, async () => {
   if (!isChecking.value) await preloadImageInfo();
 });
 
+// 监听链接前缀配置变化，自动刷新预览列表
+watch(
+  () => config.value.linkPrefixConfig,
+  async () => {
+    if (!isChecking.value) await preloadImageInfo();
+  },
+  { deep: true }
+);
+
 // 统计数据
 const stats = ref({ total: 0, valid: 0, invalid: 0, pending: 0 });
 const progress = ref(0);
