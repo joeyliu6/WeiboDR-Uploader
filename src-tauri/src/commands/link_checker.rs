@@ -55,9 +55,15 @@ fn classify_error(status_code: Option<u16>, error: Option<&reqwest::Error>) -> (
     ("network".to_string(), Some("未知错误".to_string()))
 }
 
+/// 判断是否为百度代理链接
+fn is_baidu_proxy_link(link: &str) -> bool {
+    link.contains("image.baidu.com")
+}
+
 /// 检测单个图片链接是否有效
 ///
 /// 使用 HEAD 请求检测链接，减少流量消耗
+/// 对于百度代理链接，使用 GET + Range 头请求（百度不支持 HEAD）
 /// 超时设置为 10 秒，避免长时间等待
 #[tauri::command]
 pub async fn check_image_link(
@@ -82,18 +88,30 @@ pub async fn check_image_link(
     // 记录开始时间
     let start_time = Instant::now();
 
-    // 发送 HEAD 请求（不下载图片内容，仅检查状态）
-    match http_client.0
-        .head(&link)
-        .timeout(std::time::Duration::from_secs(10))  // 10秒超时
-        .send()
-        .await
-    {
+    // 百度代理链接使用 GET + Range 请求，其他使用 HEAD 请求
+    let response_result = if is_baidu_proxy_link(&link) {
+        eprintln!("[链接检测] 百度代理链接，使用 Range 请求");
+        http_client.0
+            .get(&link)
+            .header("Range", "bytes=0-0")
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+    } else {
+        http_client.0
+            .head(&link)
+            .timeout(std::time::Duration::from_secs(10))
+            .send()
+            .await
+    };
+
+    match response_result {
         Ok(response) => {
             let elapsed = start_time.elapsed().as_millis() as u64;
             let status = response.status();
             let status_code = status.as_u16();
-            let is_valid = status.is_success();  // 2xx 状态码
+            // 2xx 状态码有效，206 Partial Content 也是有效的
+            let is_valid = status.is_success();
 
             let (error_type, suggestion) = classify_error(Some(status_code), None);
 
