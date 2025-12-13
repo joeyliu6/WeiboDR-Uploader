@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onActivated, watch, nextTick } from 'vue';
 import { writeText } from '@tauri-apps/api/clipboard';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
@@ -43,8 +43,6 @@ watch(() => historyManager.allHistoryItems.value, clearThumbCache);
 // 监听前缀配置变化时清空缓存
 watch(() => configManager.config.value?.linkPrefixConfig, clearThumbCache, { deep: true });
 
-// watch 监听器停止函数
-const watchers = ref<(() => void)[]>([]);
 
 // 视图选项
 const viewOptions = ref([
@@ -127,8 +125,6 @@ const stopWatchSelection = watch([isAllSelected, isSomeSelected], () => {
   }
 });
 
-// 保存所有 watch 停止函数
-watchers.value = [stopWatchViewMode, stopWatchFilter, stopWatchSearch, stopWatchSelection];
 
 // 全选/取消全选
 const handleSelectAll = () => {
@@ -183,25 +179,22 @@ const handleClearHistory = async () => {
 // 加载历史记录
 onMounted(async () => {
   console.log('[HistoryView] 组件已挂载，开始加载历史记录');
-  await historyManager.loadHistory();
+  await historyManager.loadHistory();  // 首次加载（或使用缓存）
   await nextTick();
   isFirstMount.value = false;
 });
 
-// 视图激活时刷新历史记录（KeepAlive 缓存后的刷新）
+// 视图激活时检查是否需要刷新（使用单例缓存）
 onActivated(async () => {
   if (!isFirstMount.value) {
-    console.log('[HistoryView] 视图已激活，刷新历史记录');
+    // 由于使用单例模式，loadHistory 会自动判断是否需要重新加载
+    // 如果数据已缓存，会直接返回，避免重复解密
     await historyManager.loadHistory();
   }
 });
 
-// 视图失活时清理监听器（KeepAlive 缓存时的清理）
-onDeactivated(() => {
-  console.log('[HistoryView] 视图已失活，清理 watchers');
-  watchers.value.forEach(stop => stop());
-  watchers.value = [];
-});
+// 注意：不再清理 watchers，因为使用单例模式后状态是共享的
+// watchers 需要保持活跃以响应 UI 交互
 
 // 格式化时间
 const formatTime = (timestamp: number) => {

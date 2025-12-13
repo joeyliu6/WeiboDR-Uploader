@@ -13,6 +13,7 @@ import Button from 'primevue/button';
 import Message from 'primevue/message';
 import Divider from 'primevue/divider';
 import { useToast } from '../composables/useToast';
+import { invalidateCache } from '../composables/useHistory';
 
 // 使用 PrimeVue Toast
 const toast = useToast();
@@ -343,6 +344,9 @@ async function importHistoryLocal() {
     await historyStore.set('uploads', mergedItems);
     await historyStore.save();
 
+    // 使缓存失效，让其他视图在下次激活时重新加载
+    invalidateCache();
+
     const addedCount = mergedItems.length - currentItems.length;
     toast.success(
       `导入完成：共 ${mergedItems.length} 条记录`,
@@ -477,6 +481,9 @@ async function downloadHistoryCloud() {
 
     await historyStore.set('uploads', mergedItems);
     await historyStore.save();
+
+    // 使缓存失效，让其他视图在下次激活时重新加载
+    invalidateCache();
 
     const addedCount = mergedItems.length - currentItems.length;
     historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条)`;

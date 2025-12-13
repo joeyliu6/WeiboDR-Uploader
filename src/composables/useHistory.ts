@@ -1,5 +1,5 @@
 // src/composables/useHistory.ts
-// 历史记录管理 Composable
+// 历史记录管理 Composable（单例模式）
 
 import { ref, computed, type Ref } from 'vue';
 import { save as saveDialog } from '@tauri-apps/api/dialog';
@@ -29,6 +29,44 @@ export interface HistoryState {
   gridLoadedCount: number;
   gridBatchSize: number;
   selectedItems: Set<string>;
+}
+
+// ============================================
+// 单例共享状态（模块级别）
+// ============================================
+
+// 所有历史记录项（共享）
+const sharedAllHistoryItems: Ref<HistoryItem[]> = ref([]);
+
+// 历史记录状态（共享）
+const sharedHistoryState: Ref<HistoryState> = ref({
+  viewMode: 'table',
+  currentFilter: 'all',
+  displayedItems: [],
+  gridLoadedCount: 0,
+  gridBatchSize: 50,
+  selectedItems: new Set<string>()
+});
+
+// 加载中状态（共享）
+const sharedIsLoading = ref(false);
+
+// 搜索词（共享）
+const sharedSearchTerm = ref('');
+
+// 数据是否已加载（用于缓存判断）
+const isDataLoaded = ref(false);
+
+// 数据版本号（用于追踪变化）
+const dataVersion = ref(0);
+
+/**
+ * 使缓存失效，下次 loadHistory 将强制重新加载
+ * 导出为模块级别函数，可在任何地方调用（包括异步函数）
+ */
+export function invalidateCache(): void {
+  isDataLoaded.value = false;
+  console.log('[历史记录] 缓存已失效');
 }
 
 /**
@@ -87,30 +125,18 @@ function migrateHistoryItem(item: any): HistoryItem {
 }
 
 /**
- * 历史记录管理 Composable
+ * 历史记录管理 Composable（单例模式）
+ * 所有组件共享同一份数据，避免重复加载
  */
 export function useHistoryManager() {
   const toast = useToast();
   const { confirm } = useConfirm();
 
-  // 所有历史记录项
-  const allHistoryItems: Ref<HistoryItem[]> = ref([]);
-
-  // 历史记录状态
-  const historyState: Ref<HistoryState> = ref({
-    viewMode: 'table',
-    currentFilter: 'all',
-    displayedItems: [],
-    gridLoadedCount: 0,
-    gridBatchSize: 50,
-    selectedItems: new Set<string>()
-  });
-
-  // 加载中状态
-  const isLoading = ref(false);
-
-  // 搜索词
-  const searchTerm = ref('');
+  // 使用共享状态（单例）
+  const allHistoryItems = sharedAllHistoryItems;
+  const historyState = sharedHistoryState;
+  const isLoading = sharedIsLoading;
+  const searchTerm = sharedSearchTerm;
 
   // 计算属性：筛选后的项目
   const filteredItems = computed(() => {
@@ -129,8 +155,15 @@ export function useHistoryManager() {
 
   /**
    * 加载历史记录
+   * @param forceReload 是否强制重新加载（忽略缓存）
    */
-  async function loadHistory(): Promise<void> {
+  async function loadHistory(forceReload = false): Promise<void> {
+    // 如果数据已加载且不强制刷新，直接返回
+    if (isDataLoaded.value && !forceReload) {
+      console.log('[历史记录] 数据已缓存，跳过加载');
+      return;
+    }
+
     try {
       isLoading.value = true;
 
@@ -138,10 +171,11 @@ export function useHistoryManager() {
       if (!items || items.length === 0) {
         allHistoryItems.value = [];
         historyState.value.displayedItems = [];
+        isDataLoaded.value = true;
         return;
       }
 
-      // 迁移数据
+      // 迁移数据（只检查是否需要迁移，不每次都保存）
       const migratedItems = items.map(migrateHistoryItem);
       const needsSave = items.some(item =>
         !item.id ||
@@ -151,7 +185,9 @@ export function useHistoryManager() {
         !item.primaryService
       );
 
+      // 只在真正需要迁移时才保存
       if (needsSave) {
+        console.log('[历史记录] 检测到旧格式数据，执行迁移');
         await historyStore.set('uploads', migratedItems);
         await historyStore.save();
       }
@@ -161,6 +197,10 @@ export function useHistoryManager() {
 
       // 应用当前筛选
       applyFilter();
+
+      // 标记数据已加载
+      isDataLoaded.value = true;
+      dataVersion.value++;
 
     } catch (error) {
       console.error('[历史记录] 加载失败:', error);
@@ -241,8 +281,9 @@ export function useHistoryManager() {
       console.log('[历史记录] ✓ 删除成功:', itemId);
       toast.success('删除成功', '历史记录已删除');
 
-      // 重新加载历史记录
-      await loadHistory();
+      // 使缓存失效并重新加载
+      invalidateCache();
+      await loadHistory(true);
 
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
@@ -269,7 +310,10 @@ export function useHistoryManager() {
       await historyStore.save();
 
       toast.success('清空成功', '所有历史记录已清空');
-      await loadHistory();
+
+      // 使缓存失效并重新加载
+      invalidateCache();
+      await loadHistory(true);
 
     } catch (error) {
       console.error('[历史记录] 清空失败:', error);
@@ -422,8 +466,9 @@ export function useHistoryManager() {
       toast.success('删除成功', `已删除 ${selectedIds.length} 条记录`);
       console.log(`[批量操作] 已删除 ${selectedIds.length} 条记录`);
 
-      // 重新加载历史记录
-      await loadHistory();
+      // 使缓存失效并重新加载
+      invalidateCache();
+      await loadHistory(true);
 
     } catch (error: any) {
       console.error('[批量操作] 删除失败:', error);
@@ -512,9 +557,11 @@ export function useHistoryManager() {
     filteredItems,
     selectedIds,
     hasSelection,
+    isDataLoaded,  // 导出数据加载状态
 
     // 方法
     loadHistory,
+    invalidateCache,  // 导出缓存失效方法
     setFilter,
     setSearchTerm,
     deleteHistoryItem,

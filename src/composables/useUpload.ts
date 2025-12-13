@@ -14,6 +14,7 @@ import {
 import { MultiServiceUploader, MultiUploadResult, SingleServiceResult } from '../core/MultiServiceUploader';
 import { UploadQueueManager } from '../uploadQueue';
 import { useToast } from './useToast';
+import { invalidateCache } from './useHistory';
 import { debounceWithError } from '../utils/debounce';
 import { checkNetworkConnectivity } from '../utils/network';
 
@@ -617,6 +618,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         await historyStore.set('uploads', items);
         await historyStore.save();
         console.log('[历史记录] 已保存历史记录:', newItem.localFileName);
+
+        // 使历史记录缓存失效，下次切换到浏览界面时会重新加载
+        invalidateCache();
       } catch (saveError: any) {
         console.error('[历史记录] 保存历史记录失败:', saveError?.message || String(saveError));
         throw new Error(`保存历史记录失败: ${saveError?.message || String(saveError)}`);
