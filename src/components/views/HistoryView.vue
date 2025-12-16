@@ -4,7 +4,10 @@ import { writeText } from '@tauri-apps/api/clipboard';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
-import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall';
+import DataView from 'primevue/dataview';
+import IconField from 'primevue/iconfield';
+import InputIcon from 'primevue/inputicon';
+import InputText from 'primevue/inputtext';
 import Checkbox from 'primevue/checkbox';
 import Select from 'primevue/select';
 import Dialog from 'primevue/dialog';
@@ -17,6 +20,7 @@ import { useToast } from '../../composables/useToast';
 import { useConfigManager } from '../../composables/useConfig';
 import { debounce } from '../../utils/debounce';
 import { getThumbnailUrl } from '../../services/ThumbnailService';
+import 'primeicons/primeicons.css';
 
 // 【性能优化】DateTimeFormat 提取到组件外，全局复用
 // 避免每次渲染时创建新实例，减少 GC 压力
@@ -435,13 +439,6 @@ const toggleGridSelection = (item: HistoryItem): void => {
 const getPreviewUrl = (item: HistoryItem): string | undefined => {
   return getThumbUrl(item);
 };
-
-// === 虚拟瀑布流配置 ===
-
-// 计算项目高度（正方形布局，高度等于宽度）
-const calcItemHeight = (_item: HistoryItem, itemWidth: number): number => {
-  return itemWidth;
-};
 </script>
 
 <template>
@@ -470,20 +467,19 @@ const calcItemHeight = (_item: HistoryItem, itemWidth: number): number => {
 
         <!-- 中间区域：搜索 + 筛选 -->
         <div class="strip-center">
-          <div class="search-bar">
-            <i class="pi pi-search search-icon"></i>
-            <input
+          <IconField iconPosition="left" class="search-field">
+            <InputIcon class="pi pi-search" />
+            <InputText
               v-model="localSearchTerm"
-              type="text"
               placeholder="搜索文件名..."
-              class="search-input"
+              class="search-input-prime"
             />
-            <i
+            <InputIcon
               v-if="localSearchTerm"
               class="pi pi-times clear-icon"
               @click="localSearchTerm = ''; historyManager.searchTerm.value = ''"
-            ></i>
-          </div>
+            />
+          </IconField>
 
           <Select
             :model-value="historyManager.historyState.value.currentFilter"
@@ -683,81 +679,95 @@ const calcItemHeight = (_item: HistoryItem, itemWidth: number): number => {
         </Column>
       </DataTable>
 
-      <!-- 网格视图（虚拟瀑布流） -->
-      <div
+      <!-- 网格视图（纯 CSS 瀑布流） -->
+      <DataView
         v-else-if="!historyManager.isLoading.value"
-        ref="waterfallContainerRef"
-        class="history-grid-view virtual-waterfall-container"
+        :value="historyManager.filteredItems.value"
+        layout="list"
+        class="waterfall-dataview"
+        :pt="{
+          content: { class: 'waterfall-content' }
+        }"
       >
-        <!-- 空状态 -->
-        <div v-if="historyManager.filteredItems.value.length === 0" class="empty-state">
-          <i class="pi pi-folder-open"></i>
-          <p>{{ historyManager.allHistoryItems.value.length === 0 ? '暂无历史记录' : '未找到匹配的记录' }}</p>
-        </div>
+        <template #empty>
+          <div class="empty-state">
+            <i class="pi pi-folder-open"></i>
+            <p>{{ historyManager.allHistoryItems.value.length === 0 ? '暂无历史记录' : '未找到匹配的记录' }}</p>
+          </div>
+        </template>
 
-        <!-- 虚拟瀑布流 -->
-        <VirtualWaterfall
-          v-else
-          :items="historyManager.filteredItems.value"
-          :calc-item-height="calcItemHeight"
-          row-key="id"
-          :gap="12"
-          :item-min-width="140"
-        >
-          <template #default="{ item }: { item: HistoryItem }">
+        <template #list="slotProps">
+          <div
+            v-for="item in slotProps.items"
+            :key="item.id"
+            class="waterfall-item-wrapper"
+          >
             <div
-              class="grid-tile"
+              class="waterfall-card"
               :class="{ selected: isGridSelected(item) }"
-              @click="toggleGridSelection(item)"
             >
               <!-- 图片区域 -->
-              <div class="tile-image">
-                <!-- 图片已加载 -->
+              <div class="card-image-container" @click="toggleGridSelection(item)">
                 <img
                   v-if="getPreviewUrl(item)"
                   :src="getPreviewUrl(item)"
                   :alt="item.localFileName"
+                  class="waterfall-image"
                   loading="lazy"
                   @click.stop="openLightbox(item)"
                   @error="(e: any) => e.target.src = '/placeholder.png'"
                 />
-                <!-- 图片加载中：骨架屏动画 -->
-                <div v-else class="tile-skeleton">
+                <!-- 图片加载中：骨架屏 -->
+                <div v-else class="card-skeleton">
                   <Skeleton width="100%" height="100%" animation="wave" />
+                </div>
+
+                <!-- 覆盖层 (Glassmorphism) -->
+                <div class="card-overlay">
+                  <div class="overlay-actions">
+                    <Button
+                      icon="pi pi-copy"
+                      class="p-button-rounded p-button-text p-button-sm overlay-btn"
+                      @click.stop="handleCopyLink(item)"
+                      v-tooltip.top="'复制链接'"
+                    />
+                    <Button
+                      icon="pi pi-external-link"
+                      class="p-button-rounded p-button-text p-button-sm overlay-btn"
+                      @click.stop="openLightbox(item)"
+                      v-tooltip.top="'查看大图'"
+                    />
+                  </div>
                 </div>
               </div>
 
               <!-- 选中指示器 -->
-              <div v-if="isGridSelected(item)" class="tile-selection-overlay">
+              <div v-if="isGridSelected(item)" class="card-selection-overlay">
                 <i class="pi pi-check-circle"></i>
               </div>
 
-              <!-- HUD 悬浮层 -->
-              <div class="tile-hud">
-                <div class="hud-top">
-                  <span class="hud-filename" :title="item.localFileName">
-                    {{ item.localFileName }}
-                  </span>
+              <!-- 信息区域 -->
+              <div class="card-info">
+                <div class="info-top">
+                  <span class="filename" :title="item.localFileName">{{ item.localFileName }}</span>
                 </div>
-                <div class="hud-bottom">
-                  <button
-                    @click.stop="handleCopyLink(item)"
-                    :title="'复制链接'"
-                  >
-                    <i class="pi pi-copy"></i>
-                  </button>
-                  <button
-                    @click.stop="openLightbox(item)"
-                    :title="'查看大图'"
-                  >
-                    <i class="pi pi-eye"></i>
-                  </button>
+                <div class="info-bottom">
+                  <span class="date">{{ formatTime(item.timestamp) }}</span>
+                  <div class="service-badges-mini">
+                    <Tag
+                      v-for="serviceId in getSuccessfulServices(item).slice(0, 2)"
+                      :key="serviceId"
+                      :value="getServiceName(serviceId)"
+                      severity="secondary"
+                      class="mini-badge"
+                    />
+                  </div>
                 </div>
               </div>
             </div>
-          </template>
-        </VirtualWaterfall>
-      </div>
+          </div>
+        </template>
+      </DataView>
 
       <!-- Lightbox 图片查看器 -->
       <Dialog
@@ -910,46 +920,48 @@ const calcItemHeight = (_item: HistoryItem, itemWidth: number): number => {
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 
-/* 搜索框（胶囊样式） */
-.search-bar {
-  display: flex;
-  align-items: center;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 20px;
-  padding: 0 12px;
+/* PrimeVue 搜索框样式 */
+.search-field {
   width: 280px;
-  height: 32px;
-  transition: all 0.2s;
+  transition: width 0.3s ease;
 }
 
-.search-bar:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+.search-field:focus-within {
   width: 320px;
 }
 
-.search-input {
-  border: none;
-  background: transparent;
-  outline: none;
-  flex: 1;
+/* 深度定制 PrimeVue InputText */
+:deep(.search-input-prime.p-inputtext) {
+  background: var(--bg-input);
+  border: 1px solid transparent;
+  border-radius: 20px;
+  padding: 0.5rem 2.5rem;
   font-size: 13px;
   color: var(--text-primary);
-  margin: 0 8px;
+  transition: all 0.2s;
+  height: 32px;
 }
 
-.search-icon,
-.clear-icon {
+:deep(.search-input-prime.p-inputtext:focus) {
+  background: var(--bg-card);
+  border-color: var(--primary);
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.1);
+}
+
+:deep(.search-input-prime.p-inputtext::placeholder) {
+  color: var(--text-secondary);
+}
+
+:deep(.search-field .p-icon) {
   color: var(--text-secondary);
   font-size: 13px;
 }
 
-.clear-icon {
+:deep(.search-field .pi-times) {
   cursor: pointer;
 }
 
-.clear-icon:hover {
+:deep(.search-field .pi-times:hover) {
   color: var(--text-primary);
 }
 
@@ -1174,199 +1186,208 @@ const calcItemHeight = (_item: HistoryItem, itemWidth: number): number => {
   filter: brightness(1.1);
 }
 
-/* === 网格视图（虚拟瀑布流）=== */
-.history-grid-view {
+/* === 网格视图（纯 CSS 瀑布流）=== */
+
+/* DataView 容器 */
+.waterfall-dataview {
   background: var(--bg-card);
   border-radius: 12px;
-  overflow: hidden;
-  padding: 20px;
-}
-
-/* 虚拟瀑布流容器 - 必须指定固定高度 */
-.virtual-waterfall-container {
-  height: calc(100vh - 200px);
-  min-height: 400px;
   overflow-y: auto;
-  /* 性能优化：启用 GPU 加速 */
-  transform: translateZ(0);
-  /* 性能优化：限制布局计算范围 */
-  contain: layout style paint;
+  max-height: calc(100vh - 200px);
+  padding: 1rem;
 }
 
-/* 隐藏虚拟瀑布流的滚动条（由容器控制） */
-:deep(.virtual-waterfall-container > div) {
-  scrollbar-width: none;
-  -ms-overflow-style: none;
+/* 滚动条样式 */
+.waterfall-dataview::-webkit-scrollbar {
+  width: 6px;
 }
 
-:deep(.virtual-waterfall-container > div::-webkit-scrollbar) {
-  display: none;
+.waterfall-dataview::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-/* Instagram 网格容器 */
-.instagram-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
-  gap: 12px;  /* 用户指定 12px */
+.waterfall-dataview::-webkit-scrollbar-thumb {
+  background: var(--border-subtle);
+  border-radius: 3px;
+}
+
+/* 使用 :deep 穿透 PrimeVue 结构构建瀑布流 */
+:deep(.waterfall-content) {
+  /* CSS Masonry Magic */
+  column-count: 4;
+  column-gap: 1rem;
+  background: transparent !important;
+
+  /* 响应式断点 */
+  @media (max-width: 1200px) { column-count: 3; }
+  @media (max-width: 800px) { column-count: 2; }
+  @media (max-width: 500px) { column-count: 1; }
+}
+
+/* 瀑布流项包装器 */
+.waterfall-item-wrapper {
+  /* 避免元素在列之间断开 */
+  break-inside: avoid;
+  margin-bottom: 1rem;
+  /* hack：确保元素不会被切断 */
+  display: inline-block;
   width: 100%;
 }
 
-/* 网格格子（正方形） */
-.grid-tile {
-  position: relative;
-  aspect-ratio: 1;  /* 正方形 */
+/* 瀑布流卡片 */
+.waterfall-card {
+  background: var(--bg-secondary);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
   overflow: hidden;
-  cursor: pointer;
-  background: var(--bg-input);
-  border-radius: 8px;
-  transition: transform 0.2s;
-  /* 性能优化：启用 GPU 加速，减少重绘 */
-  transform: translateZ(0);
-  will-change: transform;
-  /* 性能优化：隔离布局计算 */
-  contain: layout style;
+  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
+  position: relative;
 }
 
-.grid-tile:hover {
-  z-index: 2;
-  transform: scale(1.02);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+.waterfall-card:hover {
+  transform: translateY(-2px);
+  border-color: var(--primary);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
 }
 
-/* 选中状态：蓝色边框框住 */
-.grid-tile.selected {
-  box-shadow: inset 0 0 0 3px var(--primary);
-}
-
-/* 图片铺满 */
-.tile-image {
-  width: 100%;
-  height: 100%;
-}
-
-.tile-image img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
-}
-
-/* 骨架屏容器 */
-.tile-skeleton {
-  width: 100%;
-  height: 100%;
-  position: absolute;
-  top: 0;
-  left: 0;
-}
-
-/* 骨架屏样式优化 */
-:deep(.tile-skeleton .p-skeleton) {
-  border-radius: 8px;
-  height: 100% !important;
-}
-
-/* 保留旧的占位符样式（兼容） */
-.tile-placeholder {
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  color: var(--text-muted);
-  font-size: 3rem;
-  opacity: 0.3;
-}
-
-/* 选中指示器 */
-.tile-selection-overlay {
-  position: absolute;
-  top: 6px;
-  right: 6px;
-  color: var(--primary);
-  background: white;
-  border-radius: 50%;
-  width: 20px;
-  height: 20px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-}
-
-/* HUD 悬浮层（默认隐藏） */
-.tile-hud {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
-  top: 0;
-  background: rgba(0, 0, 0, 0.4);
-  opacity: 0;
-  transition: opacity 0.2s;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  padding: 10px;
-}
-
-.grid-tile:hover .tile-hud {
+.waterfall-card:hover .card-overlay {
   opacity: 1;
 }
 
-/* HUD 顶部（文件名） */
-.hud-top {
-  text-align: left;
+/* 选中状态 */
+.waterfall-card.selected {
+  border-color: var(--primary);
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
-.hud-filename {
-  color: white;
-  font-size: 11px;
-  font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
+/* 图片容器 */
+.card-image-container {
+  position: relative;
+  width: 100%;
+  background: var(--bg-input);
+  min-height: 100px;
+  cursor: pointer;
 }
 
-/* HUD 底部（操作按钮） */
-.hud-bottom {
+/* 定制 Image 组件样式 */
+:deep(.waterfall-image) {
+  width: 100%;
+  height: auto;
+  display: block;
+  object-fit: cover;
+}
+
+/* 骨架屏 */
+.card-skeleton {
+  width: 100%;
+  min-height: 150px;
+}
+
+:deep(.card-skeleton .p-skeleton) {
+  width: 100%;
+  height: 100%;
+}
+
+/* 覆盖层（毛玻璃效果） */
+.card-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(2px);
+  opacity: 0;
+  transition: opacity 0.2s ease;
   display: flex;
-  justify-content: flex-end;
-  gap: 8px;
+  align-items: flex-end;
+  padding: 0.5rem;
+  justify-content: center;
 }
 
-.hud-bottom button {
-  background: rgba(255, 255, 255, 0.2);
-  border: 1px solid rgba(255, 255, 255, 0.4);
-  color: white;
-  width: 28px;
-  height: 28px;
-  border-radius: 4px;
+.overlay-actions {
+  display: flex;
+  gap: 0.5rem;
+  background: rgba(255, 255, 255, 0.9);
+  padding: 4px 8px;
+  border-radius: 20px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+:root.dark-theme .overlay-actions {
+  background: rgba(30, 30, 30, 0.9);
+}
+
+.overlay-btn {
+  width: 28px !important;
+  height: 28px !important;
+  color: var(--text-primary) !important;
+}
+
+.overlay-btn:hover {
+  background: rgba(0, 0, 0, 0.1) !important;
+}
+
+/* 选中指示器 */
+.card-selection-overlay {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  color: var(--primary);
+  background: white;
+  border-radius: 50%;
+  width: 24px;
+  height: 24px;
   display: flex;
   align-items: center;
   justify-content: center;
-  cursor: pointer;
-  transition: all 0.2s;
+  font-size: 16px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+  z-index: 10;
 }
 
-.hud-bottom button:hover {
-  background: white;
-  color: black;
+/* 信息区域 */
+.card-info {
+  padding: 0.75rem;
 }
 
-/* 移动端：HUD 始终显示 */
-@media (hover: none) {
-  .tile-hud {
-    opacity: 1;
-    background: linear-gradient(
-      to bottom,
-      rgba(0, 0, 0, 0.4) 0%,
-      rgba(0, 0, 0, 0.6) 100%
-    );
-  }
+.info-top {
+  margin-bottom: 0.5rem;
+}
+
+.filename {
+  font-size: 0.85rem;
+  font-weight: 500;
+  color: var(--text-primary);
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.info-bottom {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.date {
+  font-size: 0.7rem;
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
+}
+
+.service-badges-mini {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+}
+
+.mini-badge {
+  font-size: 0.65rem !important;
+  padding: 2px 6px !important;
+  height: auto !important;
 }
 
 /* 滚动条 */
