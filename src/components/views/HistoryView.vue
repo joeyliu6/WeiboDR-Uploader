@@ -4,7 +4,6 @@ import { writeText } from '@tauri-apps/api/clipboard';
 import DataTable from 'primevue/datatable';
 import Column from 'primevue/column';
 import Button from 'primevue/button';
-import DataView from 'primevue/dataview';
 import IconField from 'primevue/iconfield';
 import InputIcon from 'primevue/inputicon';
 import InputText from 'primevue/inputtext';
@@ -13,6 +12,7 @@ import Select from 'primevue/select';
 import Dialog from 'primevue/dialog';
 import Tag from 'primevue/tag';
 import Skeleton from 'primevue/skeleton';
+import { VirtualWaterfall } from '@lhlyu/vue-virtual-waterfall';
 import type { HistoryItem, ServiceType } from '../../config/types';
 import { getActivePrefix } from '../../config/types';
 import { useHistoryManager, type ViewMode } from '../../composables/useHistory';
@@ -142,7 +142,12 @@ const handleHeaderCheckboxChange = (checked: boolean) => {
 // 筛选器通过 Select 的 @update:model-value 直接调用 setFilter
 
 // 监听本地搜索词变化（防抖）- 保留，用于搜索功能
+// 搜索时需要加载全部数据以确保搜索范围完整
 watch(localSearchTerm, (newTerm) => {
+  if (newTerm.trim()) {
+    // 有搜索词时，确保加载全部数据
+    historyManager.loadAll();
+  }
   debouncedSearch(newTerm);
 });
 
@@ -439,6 +444,39 @@ const toggleGridSelection = (item: HistoryItem): void => {
 const getPreviewUrl = (item: HistoryItem): string | undefined => {
   return getThumbUrl(item);
 };
+
+// === 虚拟滚动相关 ===
+
+// 网格视图：计算每个卡片的高度（用于虚拟瀑布流）
+// 使用固定的图片容器高度，确保计算高度与实际渲染高度一致
+const CARD_IMAGE_HEIGHT = 150;  // 固定图片容器高度
+const CARD_INFO_HEIGHT = 72;    // 信息区域高度（包含 padding）
+const CARD_BORDER = 2;          // 边框
+
+const calcItemHeight = (_item: HistoryItem, _itemWidth: number): number => {
+  return CARD_IMAGE_HEIGHT + CARD_INFO_HEIGHT + CARD_BORDER;
+};
+
+// 网格列数（响应式）
+const gridGap = 16;
+const gridColumnWidth = 200;
+
+// === 无限滚动相关 ===
+
+// 处理滚动触底加载更多
+const handleScroll = (event: Event) => {
+  const target = event.target as HTMLElement;
+  if (!target) return;
+
+  const { scrollTop, scrollHeight, clientHeight } = target;
+  const threshold = 200;  // 距离底部 200px 时开始加载
+
+  if (scrollHeight - scrollTop - clientHeight < threshold) {
+    if (historyManager.hasMore.value && !historyManager.isLoadingMore.value) {
+      historyManager.loadMore();
+    }
+  }
+};
 </script>
 
 <template>
@@ -567,15 +605,17 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
         </div>
       </div>
 
-      <!-- 表格视图 -->
+      <!-- 表格视图（使用分页） -->
       <DataTable
         v-else-if="historyManager.historyState.value.viewMode === 'table'"
         key="table-view"
         :value="historyManager.filteredItems.value"
         dataKey="id"
+        scrollable
+        scrollHeight="calc(100vh - 220px)"
         paginator
-        :rows="20"
-        :rowsPerPageOptions="[10, 20, 50, 100]"
+        :rows="50"
+        :rowsPerPageOptions="[20, 50, 100]"
         sortField="timestamp"
         :sortOrder="-1"
         class="history-table minimal-table"
@@ -679,29 +719,29 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
         </Column>
       </DataTable>
 
-      <!-- 网格视图（纯 CSS 瀑布流） -->
-      <DataView
+      <!-- 网格视图（虚拟瀑布流） -->
+      <div
         v-else-if="!historyManager.isLoading.value"
-        :value="historyManager.filteredItems.value"
-        layout="list"
-        class="waterfall-dataview"
-        :pt="{
-          content: { class: 'waterfall-content' }
-        }"
+        class="virtual-waterfall-container"
+        @scroll="handleScroll"
       >
-        <template #empty>
-          <div class="empty-state">
-            <i class="pi pi-folder-open"></i>
-            <p>{{ historyManager.allHistoryItems.value.length === 0 ? '暂无历史记录' : '未找到匹配的记录' }}</p>
-          </div>
-        </template>
+        <!-- 空状态 -->
+        <div v-if="historyManager.filteredItems.value.length === 0" class="empty-state">
+          <i class="pi pi-folder-open"></i>
+          <p>{{ historyManager.allHistoryItems.value.length === 0 ? '暂无历史记录' : '未找到匹配的记录' }}</p>
+        </div>
 
-        <template #list="slotProps">
-          <div
-            v-for="item in slotProps.items"
-            :key="item.id"
-            class="waterfall-item-wrapper"
-          >
+        <!-- 虚拟瀑布流 -->
+        <VirtualWaterfall
+          v-else
+          :items="historyManager.filteredItems.value"
+          :calcItemHeight="calcItemHeight"
+          :gap="gridGap"
+          :itemMinWidth="gridColumnWidth"
+          rowKey="id"
+          class="virtual-waterfall"
+        >
+          <template #default="{ item }: { item: HistoryItem }">
             <div
               class="waterfall-card"
               :class="{ selected: isGridSelected(item) }"
@@ -765,9 +805,21 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
                 </div>
               </div>
             </div>
-          </div>
-        </template>
-      </DataView>
+          </template>
+        </VirtualWaterfall>
+
+        <!-- 加载更多提示 -->
+        <div v-if="historyManager.isLoadingMore.value" class="loading-more">
+          <i class="pi pi-spin pi-spinner"></i>
+          <span>加载中...</span>
+        </div>
+        <div v-else-if="historyManager.hasMore.value && historyManager.filteredItems.value.length > 0" class="load-more-hint">
+          <span>向下滚动加载更多 ({{ historyManager.filteredItems.value.length }}/{{ historyManager.totalCount.value }})</span>
+        </div>
+        <div v-else-if="historyManager.filteredItems.value.length > 0" class="load-complete">
+          <span>已加载全部 {{ historyManager.totalCount.value }} 条记录</span>
+        </div>
+      </div>
 
       <!-- Lightbox 图片查看器 -->
       <Dialog
@@ -1186,56 +1238,63 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
   filter: brightness(1.1);
 }
 
-/* === 网格视图（纯 CSS 瀑布流）=== */
+/* === 网格视图（虚拟瀑布流）=== */
 
-/* DataView 容器 */
-.waterfall-dataview {
+/* 虚拟瀑布流容器 */
+.virtual-waterfall-container {
   background: var(--bg-card);
   border-radius: 12px;
-  overflow-y: auto;
-  max-height: calc(100vh - 200px);
+  height: calc(100vh - 200px);
+  overflow: auto;
   padding: 1rem;
 }
 
+/* 虚拟瀑布流组件 */
+.virtual-waterfall {
+  width: 100%;
+  height: 100%;
+}
+
 /* 滚动条样式 */
-.waterfall-dataview::-webkit-scrollbar {
+.virtual-waterfall-container::-webkit-scrollbar,
+:deep(.virtual-waterfall)::-webkit-scrollbar {
   width: 6px;
 }
 
-.waterfall-dataview::-webkit-scrollbar-track {
+:deep(.virtual-waterfall)::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.waterfall-dataview::-webkit-scrollbar-thumb {
+:deep(.virtual-waterfall)::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: 4px;
 }
 
-.waterfall-dataview::-webkit-scrollbar-thumb:hover {
+:deep(.virtual-waterfall)::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 
-/* 使用 :deep 穿透 PrimeVue 结构构建瀑布流 */
-:deep(.waterfall-content) {
-  /* CSS Masonry Magic */
-  column-count: 4;
-  column-gap: 1rem;
-  background: transparent !important;
-
-  /* 响应式断点 */
-  @media (max-width: 1200px) { column-count: 3; }
-  @media (max-width: 800px) { column-count: 2; }
-  @media (max-width: 500px) { column-count: 1; }
+/* 加载更多提示样式 */
+.loading-more,
+.load-more-hint,
+.load-complete {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 16px;
+  color: var(--text-secondary);
+  font-size: 13px;
 }
 
-/* 瀑布流项包装器 */
-.waterfall-item-wrapper {
-  /* 避免元素在列之间断开 */
-  break-inside: avoid;
-  margin-bottom: 1rem;
-  /* hack：确保元素不会被切断 */
-  display: inline-block;
-  width: 100%;
+.loading-more i {
+  font-size: 16px;
+  color: var(--primary);
+}
+
+.load-complete {
+  color: var(--text-muted);
+  font-size: 12px;
 }
 
 /* 瀑布流卡片 */
@@ -1264,27 +1323,34 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
   box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
 }
 
-/* 图片容器 */
+/* 图片容器 - 固定高度确保虚拟滚动计算准确 */
 .card-image-container {
   position: relative;
   width: 100%;
+  height: 150px;  /* 固定高度，与 CARD_IMAGE_HEIGHT 常量一致 */
   background: var(--bg-input);
-  min-height: 100px;
   cursor: pointer;
+  overflow: hidden;
 }
 
 /* 定制 Image 组件样式 */
 :deep(.waterfall-image) {
   width: 100%;
-  height: auto;
+  height: 100%;
   display: block;
+  object-fit: cover;
+}
+
+.waterfall-image {
+  width: 100%;
+  height: 100%;
   object-fit: cover;
 }
 
 /* 骨架屏 */
 .card-skeleton {
   width: 100%;
-  min-height: 150px;
+  height: 100%;
 }
 
 :deep(.card-skeleton .p-skeleton) {

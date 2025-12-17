@@ -8,11 +8,19 @@ import { writeText } from '@tauri-apps/api/clipboard';
 import type { HistoryItem, ServiceType, UserConfig } from '../config/types';
 import { getActivePrefix } from '../config/types';
 import { Store } from '../store';
+import { shardedHistoryStore } from '../services/ShardedHistoryStore';
 import { useToast } from './useToast';
 import { useConfirm } from './useConfirm';
 import { useConfigManager } from './useConfig';
 
 const historyStore = new Store('.history.dat');
+
+// === 分片存储配置 ===
+// 当历史记录超过此阈值时，自动启用分片存储
+const SHARDED_STORAGE_THRESHOLD = 5000;
+// 是否已完成迁移到分片存储
+const isShardedStorageEnabled = ref(false);
+const isMigrating = ref(false);
 
 /**
  * 视图模式类型
@@ -69,6 +77,66 @@ const isDataLoaded = ref(false);
 
 // 数据版本号（用于追踪变化）
 const dataVersion = ref(0);
+
+// === 分页加载相关 ===
+const PAGE_SIZE = 500;  // 每页加载数量
+const currentPage = ref(1);  // 当前页码
+const totalCount = ref(0);  // 总记录数
+const hasMore = ref(true);  // 是否还有更多数据
+const isLoadingMore = ref(false);  // 是否正在加载更多
+
+// 完整数据缓存（用于搜索和筛选，延迟加载）
+const fullDataCache = shallowRef<HistoryItem[]>([]);
+
+// === 搜索优化：预处理索引 ===
+// 缓存文件名的小写版本，避免每次搜索都调用 toLowerCase()
+const searchIndex = new Map<string, string>();  // ID -> 小写文件名
+
+/**
+ * 构建搜索索引
+ */
+function buildSearchIndex(items: HistoryItem[]): void {
+  searchIndex.clear();
+  for (const item of items) {
+    searchIndex.set(item.id, item.localFileName.toLowerCase());
+  }
+  console.log(`[历史记录] 搜索索引已构建: ${searchIndex.size} 条`);
+}
+
+/**
+ * 检查并执行迁移到分片存储
+ */
+async function checkAndMigrateToShardedStorage(items: HistoryItem[]): Promise<void> {
+  // 如果已启用分片存储或正在迁移，跳过
+  if (isShardedStorageEnabled.value || isMigrating.value) {
+    return;
+  }
+
+  // 检查是否需要迁移
+  if (items.length < SHARDED_STORAGE_THRESHOLD) {
+    return;
+  }
+
+  console.log(`[历史记录] 数据量达到 ${items.length} 条，开始迁移到分片存储...`);
+
+  try {
+    isMigrating.value = true;
+
+    // 初始化分片存储
+    await shardedHistoryStore.init();
+
+    // 执行迁移
+    await shardedHistoryStore.migrateFromLegacy(items);
+
+    isShardedStorageEnabled.value = true;
+    console.log('[历史记录] 迁移到分片存储完成');
+
+  } catch (error) {
+    console.error('[历史记录] 迁移到分片存储失败:', error);
+  } finally {
+    isMigrating.value = false;
+  }
+}
 
 /**
  * 使缓存失效，下次 loadHistory 将强制重新加载
@@ -176,23 +244,29 @@ export function useHistoryManager() {
     selectedItems: selectedIdsSet.value
   }));
 
-  // 计算属性：筛选后的项目
+  // 计算属性：筛选后的项目（使用预处理索引优化搜索）
   const filteredItems = computed(() => {
     let items = historyStateInternal.value.displayedItems;
 
-    // 应用搜索过滤
+    // 应用搜索过滤（使用预处理索引）
     if (searchTerm.value.trim()) {
       const term = searchTerm.value.toLowerCase().trim();
-      items = items.filter(item =>
-        item.localFileName.toLowerCase().includes(term)
-      );
+      items = items.filter(item => {
+        // 优先使用索引缓存的小写文件名
+        const cachedName = searchIndex.get(item.id);
+        if (cachedName !== undefined) {
+          return cachedName.includes(term);
+        }
+        // 回退到实时转换（新添加的项目可能还没在索引中）
+        return item.localFileName.toLowerCase().includes(term);
+      });
     }
 
     return items;
   });
 
   /**
-   * 加载历史记录
+   * 加载历史记录（支持分页加载）
    * @param forceReload 是否强制重新加载（忽略缓存）
    */
   async function loadHistory(forceReload = false): Promise<void> {
@@ -205,10 +279,17 @@ export function useHistoryManager() {
     try {
       isLoading.value = true;
 
+      // 重置分页状态
+      currentPage.value = 1;
+      hasMore.value = true;
+
       let items = await historyStore.get<any[]>('uploads');
       if (!items || items.length === 0) {
         allHistoryItems.value = [];
+        fullDataCache.value = [];
         historyStateInternal.value.displayedItems = [];
+        totalCount.value = 0;
+        hasMore.value = false;
         isDataLoaded.value = true;
         return;
       }
@@ -231,7 +312,26 @@ export function useHistoryManager() {
       }
 
       // 按时间倒序排列
-      allHistoryItems.value = migratedItems.sort((a, b) => b.timestamp - a.timestamp);
+      const sortedItems = migratedItems.sort((a, b) => b.timestamp - a.timestamp);
+
+      // 记录总数
+      totalCount.value = sortedItems.length;
+
+      // 缓存完整数据（用于搜索和筛选）
+      fullDataCache.value = sortedItems;
+
+      // 构建搜索索引
+      buildSearchIndex(sortedItems);
+
+      // 检查是否需要迁移到分片存储（后台执行，不阻塞加载）
+      checkAndMigrateToShardedStorage(sortedItems).catch(() => {});
+
+      // 【分页优化】只加载第一页数据到显示列表
+      const firstPageItems = sortedItems.slice(0, PAGE_SIZE);
+      allHistoryItems.value = firstPageItems;
+      hasMore.value = sortedItems.length > PAGE_SIZE;
+
+      console.log(`[历史记录] 加载完成: 显示 ${firstPageItems.length}/${totalCount.value} 条`);
 
       // 应用当前筛选
       applyFilter();
@@ -244,10 +344,54 @@ export function useHistoryManager() {
       console.error('[历史记录] 加载失败:', error);
       toast.error('加载失败', String(error));
       allHistoryItems.value = [];
+      fullDataCache.value = [];
       historyStateInternal.value.displayedItems = [];
     } finally {
       isLoading.value = false;
     }
+  }
+
+  /**
+   * 加载更多数据（无限滚动）
+   */
+  async function loadMore(): Promise<void> {
+    if (!hasMore.value || isLoadingMore.value) {
+      return;
+    }
+
+    try {
+      isLoadingMore.value = true;
+      currentPage.value++;
+
+      const start = (currentPage.value - 1) * PAGE_SIZE;
+      const end = start + PAGE_SIZE;
+      const moreItems = fullDataCache.value.slice(start, end);
+
+      if (moreItems.length > 0) {
+        // 追加到现有数据
+        allHistoryItems.value = [...allHistoryItems.value, ...moreItems];
+        applyFilter();
+        console.log(`[历史记录] 加载更多: ${allHistoryItems.value.length}/${totalCount.value} 条`);
+      }
+
+      hasMore.value = end < fullDataCache.value.length;
+    } finally {
+      isLoadingMore.value = false;
+    }
+  }
+
+  /**
+   * 加载全部数据（用于搜索时需要全量数据）
+   */
+  async function loadAll(): Promise<void> {
+    if (allHistoryItems.value.length >= fullDataCache.value.length) {
+      return;  // 已加载全部
+    }
+
+    console.log('[历史记录] 加载全部数据用于搜索');
+    allHistoryItems.value = [...fullDataCache.value];
+    hasMore.value = false;
+    applyFilter();
   }
 
   /**
@@ -626,8 +770,15 @@ export function useHistoryManager() {
     hasSelection,
     isDataLoaded,  // 导出数据加载状态
 
+    // 分页加载状态
+    totalCount,
+    hasMore,
+    isLoadingMore,
+
     // 方法
     loadHistory,
+    loadMore,  // 加载更多（无限滚动）
+    loadAll,   // 加载全部（用于搜索）
     invalidateCache,  // 导出缓存失效方法
     setFilter,
     setSearchTerm,
