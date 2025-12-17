@@ -68,7 +68,7 @@ const refreshFiles = async () => {
 
   try {
     // 1. 检查 R2 配置
-    const r2Config = configManager.config.value.services.r2;
+    const r2Config = configManager.config.value.services?.r2;
     if (!r2Config?.accountId || !r2Config?.accessKeyId ||
         !r2Config?.secretAccessKey || !r2Config?.bucketName || !r2Config?.publicDomain) {
       errorMessage.value = '请先在"设置"中完整配置 R2 服务';
