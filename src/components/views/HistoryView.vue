@@ -408,6 +408,30 @@ const getLargeImageUrl = (item: HistoryItem): string => {
   return result.result.url;
 };
 
+// 获取中等尺寸图 URL（用于悬浮预览，微博使用 bmiddle 约 440px）
+const getMediumImageUrl = (item: HistoryItem): string => {
+  const result = item.results.find(r =>
+    r.serviceId === item.primaryService && r.status === 'success'
+  );
+
+  if (!result?.result?.url) return '';
+
+  // 微博图床：使用 bmiddle 尺寸
+  if (result.serviceId === 'weibo' && result.result.fileKey) {
+    let mediumUrl = `https://tvax1.sinaimg.cn/bmiddle/${result.result.fileKey}.jpg`;
+
+    const activePrefix = getActivePrefix(configManager.config.value);
+    if (activePrefix) {
+      mediumUrl = `${activePrefix}${mediumUrl}`;
+    }
+
+    return mediumUrl;
+  }
+
+  // 非微博图床：使用原始 URL
+  return result.result.url;
+};
+
 // 打开 Lightbox
 const openLightbox = (item: HistoryItem): void => {
   lightboxItem.value = item;
@@ -647,18 +671,32 @@ const handleScroll = (event: Event) => {
           </template>
         </Column>
 
-        <!-- 预览列（36px 缩略图） -->
+        <!-- 预览列（36px 缩略图 + 悬浮预览） -->
         <Column header="预览" style="width: 60px">
           <template #body="slotProps">
-            <div class="thumb-box" @click="openLightbox(slotProps.data)">
-              <img
+            <div class="thumb-preview-wrapper">
+              <div class="thumb-box" @click="openLightbox(slotProps.data)">
+                <img
+                  v-if="getThumbUrl(slotProps.data)"
+                  :src="getThumbUrl(slotProps.data)"
+                  :alt="slotProps.data.localFileName"
+                  loading="lazy"
+                  @error="(e: any) => e.target.src = '/placeholder.png'"
+                />
+                <i v-else class="pi pi-image thumb-placeholder"></i>
+              </div>
+              <!-- 悬浮预览层 -->
+              <div
                 v-if="getThumbUrl(slotProps.data)"
-                :src="getThumbUrl(slotProps.data)"
-                :alt="slotProps.data.localFileName"
-                loading="lazy"
-                @error="(e: any) => e.target.src = '/placeholder.png'"
-              />
-              <i v-else class="pi pi-image thumb-placeholder"></i>
+                class="thumb-hover-preview"
+              >
+                <img
+                  :src="getMediumImageUrl(slotProps.data)"
+                  :alt="slotProps.data.localFileName"
+                  loading="lazy"
+                  @error="(e: any) => e.target.style.display = 'none'"
+                />
+              </div>
             </div>
           </template>
         </Column>
@@ -1138,6 +1176,40 @@ const handleScroll = (event: Event) => {
   align-items: center;
   justify-content: center;
   height: 100%;
+}
+
+/* 缩略图悬浮预览容器 */
+.thumb-preview-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+/* 悬浮预览层 */
+.thumb-hover-preview {
+  position: absolute;
+  z-index: 1000;
+  left: calc(100% + 8px);
+  top: 50%;
+  transform: translateY(-50%);
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.2s ease, visibility 0.2s ease;
+  pointer-events: none;
+}
+
+.thumb-preview-wrapper:hover .thumb-hover-preview {
+  opacity: 1;
+  visibility: visible;
+}
+
+.thumb-hover-preview img {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  object-fit: contain;
 }
 
 /* 文件名单元格 */
