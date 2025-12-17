@@ -577,7 +577,7 @@ onActivated(() => {
 
 /* 滚动条 */
 .r2-manager-view::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .r2-manager-view::-webkit-scrollbar-track {

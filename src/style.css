@@ -2076,7 +2076,7 @@ button:focus-visible {
 
 ::-webkit-scrollbar-thumb {
   background-color: rgba(0, 0, 0, 0.2);
-  border-radius: 10px;
+  border-radius: 4px;
   border: 1px solid transparent;
   background-clip: content-box;
 }

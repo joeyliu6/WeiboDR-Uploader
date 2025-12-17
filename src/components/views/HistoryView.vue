@@ -1208,7 +1208,11 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
 
 .waterfall-dataview::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
-  border-radius: 3px;
+  border-radius: 4px;
+}
+
+.waterfall-dataview::-webkit-scrollbar-thumb:hover {
+  background: var(--text-muted);
 }
 
 /* 使用 :deep 穿透 PrimeVue 结构构建瀑布流 */
@@ -1392,7 +1396,7 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
 
 /* 滚动条 */
 .history-view::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .history-view::-webkit-scrollbar-track {

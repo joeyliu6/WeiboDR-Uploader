@@ -416,7 +416,7 @@ onUnmounted(() => {
 
 /* 滚动条 */
 .upload-view::-webkit-scrollbar {
-  width: 8px;
+  width: 6px;
 }
 
 .upload-view::-webkit-scrollbar-track {
