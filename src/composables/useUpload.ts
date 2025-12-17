@@ -600,13 +600,14 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         fileName = filePath.split(/[/\\]/).pop() || '未知文件';
       }
 
-      // 创建历史记录项
+      // 创建历史记录项（只保存成功的图床结果，失败的不污染历史记录）
+      const successfulResults = uploadResult.results.filter(r => r.status === 'success');
       const newItem: HistoryItem = {
         id: `${Date.now()}_${Math.random().toString(36).substring(7)}`,
         localFileName: fileName,
         timestamp: Date.now(),
         filePath: filePath,
-        results: uploadResult.results,
+        results: successfulResults,
         primaryService: uploadResult.primaryService,
         generatedLink: uploadResult.primaryUrl || ''
       };
