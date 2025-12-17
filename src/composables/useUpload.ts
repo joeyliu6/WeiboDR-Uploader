@@ -163,12 +163,12 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
 
       if (valid.length === 0) {
         console.warn('[上传] 没有有效的图片文件');
-        toast.warn('没有有效的图片', '请选择图片文件（jpg, png, gif, webp, bmp）');
+        toast.warn('未检测到图片', '请选择有效的图片文件（支持 JPG, PNG, GIF, WEBP, BMP）');
         return;
       }
 
       if (invalid.length > 0) {
-        toast.warn('部分文件无效', `已过滤 ${invalid.length} 个非图片文件`);
+        toast.warn('部分格式不支持', `已自动忽略 ${invalid.length} 个不支持的文件`);
       }
 
       console.log(`[上传] 有效文件: ${valid.length}个，无效文件: ${invalid.length}个`);
@@ -179,7 +179,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         config = await configStore.get<UserConfig>('config');
       } catch (error) {
         console.error('[上传] 读取配置失败:', error);
-        toast.error('读取配置失败', '请重试');
+        toast.error('配置加载异常', '读取配置文件失败，请刷新或稍后重试');
         return;
       }
 
@@ -195,7 +195,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       // 验证是否选中了图床服务
       if (enabledServices.length === 0) {
         console.warn('[上传] 没有选择任何图床');
-        toast.error('配置缺失', '请至少选择一个图床服务！');
+        toast.error('未配置图床', '请前往设置页启用至少一个图床服务');
         return;
       }
 
@@ -263,8 +263,8 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         });
 
         toast.error(
-          '网络连接失败',
-          `${queueItems.length}个文件未能上传，请检查网络后重试`,
+          '网络请求失败',
+          `${queueItems.length} 个文件请求超时或中断，请检查网络`,
           6000
         );
         return;
@@ -399,8 +399,8 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
               .join('、');
 
             toast.warn(
-              '部分图床上传失败',
-              `${fileName} 的 ${failedServiceNames} 上传失败，但主力图床已成功`,
+              '部分服务上传失败',
+              `${fileName}: ${failedServiceNames} 上传失败，其余图床已完成`,
               5000
             );
           }
@@ -470,32 +470,29 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
             // Cookie 相关错误（通常是微博）
             const serviceName = failedServices.length > 0 ? failedServices.join('、') : '微博';
             toast.error(
-              `${serviceName} Cookie 已过期`,
-              '请前往设置页面更新 Cookie 后重试',
+              `${serviceName} 授权失效`,
+              '登录凭证/Cookie 已过期，请前往更新',
               6000
             );
           } else if (errorMsg.includes('认证失败') || errorMsg.includes('authentication')) {
             // 认证错误
             const serviceName = failedServices.length > 0 ? failedServices.join('、') : '图床';
             toast.error(
-              `${serviceName}认证失败`,
-              '请检查配置信息是否正确',
+              `${serviceName} 鉴权失败`,
+              '请检查 AK/SK 或 Token 配置是否正确',
               5000
             );
           } else if (errorMsg.includes('所有图床上传均失败')) {
-            // 所有图床都失败 - 显示失败的图床列表
-            const servicesText = failedServices.length > 0
-              ? failedServices.join('、')
-              : '所有图床';
+            // 所有图床都失败
             toast.error(
-              '上传失败',
-              `${fileName} 的 ${servicesText} 上传均失败，请检查网络连接和服务配置`,
+              '全线上传失败',
+              `${fileName} 未能上传至任何图床`,
               5000
             );
           } else {
             // 通用错误
             toast.error(
-              '上传失败',
+              '上传异常',
               `${fileName}: ${errorMsg}`,
               5000
             );

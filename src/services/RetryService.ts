@@ -47,7 +47,7 @@ export class RetryService {
   ): Promise<void> {
     const item = this.options.queueManager.getItem(itemId);
     if (!item) {
-      this.options.toast.error('重试失败', '找不到队列项');
+      this.options.toast.error('重试失败', '队列项不存在');
       return;
     }
 
@@ -57,7 +57,7 @@ export class RetryService {
     const isNetworkAvailable = await checkNetworkConnectivity();
     if (!isNetworkAvailable) {
       this.options.toast.error(
-        '网络连接失败',
+        '网络请求失败',
         '请检查网络后重试',
         3000
       );
@@ -99,7 +99,7 @@ export class RetryService {
         weibo: '微博', r2: 'R2', tcl: 'TCL', jd: '京东',
         nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
       };
-      this.options.toast.success('重试成功', `${serviceLabels[serviceId]} 上传成功`);
+      this.options.toast.success('修复成功', `${serviceLabels[serviceId]} 已补充上传成功`);
 
     } catch (error) {
       await this.handleSingleServiceFailure(itemId, serviceId, item, error);
@@ -114,7 +114,7 @@ export class RetryService {
   async retryAll(itemId: string, config: UserConfig): Promise<void> {
     const item = this.options.queueManager.getItem(itemId);
     if (!item) {
-      this.options.toast.error('重试失败', '找不到队列项');
+      this.options.toast.error('重试失败', '队列项不存在');
       return;
     }
 
@@ -130,8 +130,8 @@ export class RetryService {
 
     if (currentRetryCount >= maxRetries) {
       this.options.toast.error(
-        '重试次数已达上限',
-        `${item.fileName} 已重试 ${maxRetries} 次，无法继续重试`,
+        '重试次数已用尽',
+        `${item.fileName} 已尝试 ${maxRetries} 次，请检查配置后手动重试`,
         5000
       );
       return;
@@ -143,7 +143,7 @@ export class RetryService {
     const isNetworkAvailable = await checkNetworkConnectivity();
     if (!isNetworkAvailable) {
       this.options.toast.error(
-        '网络连接失败',
+        '网络请求失败',
         '请检查网络后重试',
         3000
       );
@@ -168,8 +168,8 @@ export class RetryService {
     });
 
     this.options.toast.info(
-      '重试中',
-      `正在重新上传 ${item.fileName} (${currentRetryCount + 1}/${maxRetries})`
+      '正在重试',
+      `${item.fileName} 正在重新上传 (${currentRetryCount + 1}/${maxRetries})`
     );
 
     // 重置状态
@@ -214,8 +214,8 @@ export class RetryService {
           .join('、');
 
         this.options.toast.warn(
-          '部分图床上传失败',
-          `${item.fileName} 的 ${failedServiceNames} 上传失败，但主力图床已成功`,
+          '部分服务上传失败',
+          `${item.fileName}: ${failedServiceNames} 上传失败，其余图床已完成`,
           5000
         );
       }
@@ -300,7 +300,7 @@ export class RetryService {
       weibo: '微博', r2: 'R2', tcl: 'TCL', jd: '京东',
       nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
     };
-    this.options.toast.error('重试失败', `${serviceLabels[serviceId]}: ${errorMsg}`);
+    this.options.toast.error('重试依然失败', `${serviceLabels[serviceId]}: ${errorMsg}`);
   }
 
   /**
@@ -380,20 +380,20 @@ export class RetryService {
     if (errorMsg.includes('Cookie') || errorMsg.includes('100006')) {
       const serviceName = failedServices.length > 0 ? failedServices.join('、') : '微博';
       this.options.toast.error(
-        `${serviceName} Cookie 已过期`,
-        '请前往设置页面更新 Cookie 后重试',
+        `${serviceName} 授权失效`,
+        '登录凭证/Cookie 已过期，请前往更新',
         6000
       );
     } else if (errorMsg.includes('认证失败') || errorMsg.includes('authentication')) {
       const serviceName = failedServices.length > 0 ? failedServices.join('、') : '图床';
       this.options.toast.error(
-        `${serviceName}认证失败`,
-        '请检查配置信息是否正确',
+        `${serviceName} 鉴权失败`,
+        '请检查 AK/SK 或 Token 配置是否正确',
         5000
       );
     } else {
       this.options.toast.error(
-        '重试失败',
+        '重试依然失败',
         `${item.fileName}: ${errorMsg}`,
         5000
       );
