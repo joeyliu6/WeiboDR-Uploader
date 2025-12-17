@@ -13,12 +13,19 @@ import Tag from 'primevue/tag';
 import { useToast } from '../../composables/useToast';
 import { useThemeManager } from '../../composables/useTheme';
 import { useConfigManager } from '../../composables/useConfig';
+import { useHistoryManager } from '../../composables/useHistory';
 import type { ThemeMode, UserConfig, ServiceType } from '../../config/types';
 import { DEFAULT_PREFIXES } from '../../config/types';
 
 const toast = useToast();
 const { currentTheme, setTheme } = useThemeManager();
 const configManager = useConfigManager();
+const historyManager = useHistoryManager();
+
+// 清空历史记录
+const handleClearHistory = async () => {
+  await historyManager.clearHistory();
+};
 
 // Cookie 监听器清理函数
 const cookieUnlisten = ref<UnlistenFn | null>(null);
@@ -269,6 +276,20 @@ onUnmounted(() => {
               <label :for="'svc-'+svc">{{ serviceNames[svc] }}</label>
             </div>
           </div>
+        </div>
+
+        <Divider />
+
+        <div class="form-group">
+          <label class="group-label">数据管理</label>
+          <p class="helper-text">管理上传历史记录。</p>
+          <Button
+            label="清空历史记录"
+            icon="pi pi-trash"
+            severity="danger"
+            outlined
+            @click="handleClearHistory"
+          />
         </div>
       </div>
 

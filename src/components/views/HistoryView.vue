@@ -206,11 +206,6 @@ const handleCopyLink = async (item: HistoryItem) => {
   }
 };
 
-// 清空历史
-const handleClearHistory = async () => {
-  await historyManager.clearHistory();
-};
-
 // 加载历史记录
 onMounted(async () => {
   console.log('[HistoryView] 组件已挂载，开始加载历史记录');
@@ -597,17 +592,6 @@ const handleScroll = (event: Event) => {
               v-tooltip.bottom="'取消选择'"
             />
           </div>
-
-          <div class="v-divider"></div>
-
-          <Button
-            icon="pi pi-trash"
-            class="icon-only-btn danger-hover"
-            text
-            rounded
-            @click="handleClearHistory"
-            v-tooltip.bottom="'清空所有历史'"
-          />
         </div>
       </div>
 
@@ -1139,7 +1123,11 @@ const handleScroll = (event: Event) => {
 }
 
 :deep(.minimal-table .p-datatable-tbody > tr:hover) {
-  background: var(--hover-overlay-subtle) !important;
+  background: rgba(59, 130, 246, 0.08) !important;
+}
+
+:root.dark-theme :deep(.minimal-table .p-datatable-tbody > tr:hover) {
+  background: rgba(59, 130, 246, 0.15) !important;
 }
 
 /* 单元格样式 */
