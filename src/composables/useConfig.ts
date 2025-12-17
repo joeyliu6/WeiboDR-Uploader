@@ -3,7 +3,7 @@
 
 import { ref, Ref } from 'vue';
 import { invoke } from '@tauri-apps/api/tauri';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { listen, UnlistenFn, emit } from '@tauri-apps/api/event';
 import { WebviewWindow } from '@tauri-apps/api/window';
 import { getClient, ResponseType } from '@tauri-apps/api/http';
 import { Store } from '../store';
@@ -129,6 +129,9 @@ export function useConfigManager() {
 
         // 更新内存中的配置
         config.value = { ...newConfig };
+
+        // 发送配置更新事件，通知其他组件刷新状态
+        await emit('config-updated', { timestamp: Date.now() });
 
         console.log('[配置管理] ✓ 配置保存成功');
         if (!silent) {

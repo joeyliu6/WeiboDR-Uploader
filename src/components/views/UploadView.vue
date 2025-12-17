@@ -23,6 +23,9 @@ const uploadQueueRef = ref<InstanceType<typeof UploadQueue>>();
 // 文件拖拽监听器清理函数
 const fileDropUnlisteners = ref<UnlistenFn[]>([]);
 
+// 配置更新监听器清理函数
+const configUnlisten = ref<UnlistenFn | null>(null);
+
 // 配置存储
 const configStore = new Store('.settings.dat');
 
@@ -159,6 +162,10 @@ onMounted(async () => {
   await uploadManager.loadServiceButtonStates();
   console.log('[UploadView] 服务按钮状态已加载');
 
+  // 设置配置更新监听器（设置页面修改配置后自动刷新）
+  configUnlisten.value = await uploadManager.setupConfigListener();
+  console.log('[UploadView] 配置更新监听器已设置');
+
   // 设置文件拖拽监听
   await setupTauriFileDropListener();
 
@@ -168,6 +175,12 @@ onMounted(async () => {
 
 // 组件卸载时清理监听器
 onUnmounted(() => {
+  // 清理配置更新监听器
+  if (configUnlisten.value) {
+    configUnlisten.value();
+    configUnlisten.value = null;
+  }
+
   // 清理所有文件拖拽监听器
   fileDropUnlisteners.value.forEach(unlisten => unlisten());
   fileDropUnlisteners.value = [];

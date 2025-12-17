@@ -4,6 +4,7 @@
 import { ref, Ref, computed } from 'vue';
 import { dialog, invoke } from '@tauri-apps/api';
 import { basename } from '@tauri-apps/api/path';
+import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { Store } from '../store';
 import {
   UserConfig,
@@ -773,6 +774,18 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     return selectedServices.value.includes(serviceId);
   });
 
+  /**
+   * 设置配置更新监听器
+   * 当设置页面修改配置后，自动刷新服务按钮状态
+   * @returns 清理函数
+   */
+  async function setupConfigListener(): Promise<UnlistenFn> {
+    return await listen('config-updated', async () => {
+      console.log('[上传管理] 收到配置更新事件，刷新服务按钮状态');
+      await loadServiceButtonStates();
+    });
+  }
+
   return {
     // 状态
     selectedServices,
@@ -790,6 +803,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     handleFilesUpload,
     loadServiceButtonStates,
     toggleServiceSelection,
-    saveHistoryItem
+    saveHistoryItem,
+    setupConfigListener
   };
 }
