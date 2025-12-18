@@ -74,17 +74,17 @@ export class UploadQueueManager {
   }
 
   /**
-   * 检查文件是否已在队列中（排除失败的项）
+   * 检查文件是否正在上传中
    * @param filePath 文件路径
-   * @returns 是否存在重复（仅允许失败项重新上传）
+   * @returns 是否正在上传（pending/uploading 状态），已完成的项允许再次上传
    */
   private isFileInQueue(filePath: string): boolean {
     const allItems = this.queueState.queueItems.value;
-    // 只检查 pending、uploading 和 success 状态的项
-    // 失败(error)的项不算重复，允许重新上传
+    // 只检查 pending 和 uploading 状态的项
+    // 成功(success)和失败(error)的项不算重复，允许再次上传
     return allItems.some(item =>
       item.filePath === filePath &&
-      (item.status === 'pending' || item.status === 'uploading' || item.status === 'success')
+      (item.status === 'pending' || item.status === 'uploading')
     );
   }
 
