@@ -357,6 +357,119 @@ export class RetryService {
   }
 
   /**
+   * 获取队列项中失败的服务列表
+   */
+  private getFailedServices(item: QueueItem): ServiceType[] {
+    const failed: ServiceType[] = [];
+    if (item.serviceProgress) {
+      for (const [serviceId, progress] of Object.entries(item.serviceProgress)) {
+        if (progress.status?.includes('失败') || progress.status?.includes('✗')) {
+          failed.push(serviceId as ServiceType);
+        }
+      }
+    }
+    return failed;
+  }
+
+  /**
+   * 批量重试所有失败的队列项（只重试失败的服务，不重传已成功的）
+   * @param failedItemIds 包含失败服务的队列项 ID 列表
+   * @param config 用户配置
+   * @returns 重试结果统计
+   */
+  async retryAllFailed(
+    failedItemIds: string[],
+    config: UserConfig
+  ): Promise<{ success: number; failed: number }> {
+    if (failedItemIds.length === 0) {
+      return { success: 0, failed: 0 };
+    }
+
+    // 收集所有需要重试的服务
+    const retryTasks: { itemId: string; serviceId: ServiceType }[] = [];
+    for (const itemId of failedItemIds) {
+      const item = this.options.queueManager.getItem(itemId);
+      if (item) {
+        const failedServices = this.getFailedServices(item);
+        for (const serviceId of failedServices) {
+          retryTasks.push({ itemId, serviceId });
+        }
+      }
+    }
+
+    if (retryTasks.length === 0) {
+      return { success: 0, failed: 0 };
+    }
+
+    console.log(`[批量重传] 开始重传 ${retryTasks.length} 个失败的图床`);
+
+    // 检测网络连通性
+    const isNetworkAvailable = await checkNetworkConnectivity();
+    if (!isNetworkAvailable) {
+      this.options.toast.error(
+        '网络请求失败',
+        '请检查网络后重试',
+        3000
+      );
+      return { success: 0, failed: retryTasks.length };
+    }
+
+    this.options.toast.info(
+      '批量重传中',
+      `正在重传 ${retryTasks.length} 个失败的图床...`
+    );
+
+    // 并发执行所有重试（只重试失败的服务）
+    const results = await Promise.allSettled(
+      retryTasks.map(({ itemId, serviceId }) =>
+        this.retrySingleService(itemId, serviceId, config)
+      )
+    );
+
+    // 统计结果
+    let successCount = 0;
+    let failedCount = 0;
+
+    results.forEach((_, index) => {
+      const { itemId, serviceId } = retryTasks[index];
+      const item = this.options.queueManager.getItem(itemId);
+      if (item?.serviceProgress?.[serviceId]) {
+        const status = item.serviceProgress[serviceId].status || '';
+        if (status.includes('完成') || status.includes('✓')) {
+          successCount++;
+        } else {
+          failedCount++;
+        }
+      } else {
+        failedCount++;
+      }
+    });
+
+    // 显示结果
+    if (failedCount === 0) {
+      this.options.toast.success(
+        '批量重传完成',
+        `全部 ${successCount} 个图床重传成功`
+      );
+    } else if (successCount === 0) {
+      this.options.toast.error(
+        '批量重传失败',
+        `全部 ${failedCount} 个图床重传失败`,
+        5000
+      );
+    } else {
+      this.options.toast.warn(
+        '批量重传部分完成',
+        `${successCount} 个成功，${failedCount} 个仍失败`,
+        5000
+      );
+    }
+
+    console.log(`[批量重传] 完成: ${successCount} 成功, ${failedCount} 失败`);
+    return { success: successCount, failed: failedCount };
+  }
+
+  /**
    * 处理全量重试失败
    */
   private async handleFullRetryFailure(

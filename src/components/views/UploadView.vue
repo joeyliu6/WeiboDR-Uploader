@@ -2,14 +2,20 @@
 import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import UploadQueue from '../UploadQueue.vue';
+import Dialog from 'primevue/dialog';
+import Button from 'primevue/button';
 import type { ServiceType } from '../../config/types';
 import { useToast } from '../../composables/useToast';
 import { useUploadManager } from '../../composables/useUpload';
+import { useQueueState } from '../../composables/useQueueState';
 import { UploadQueueManager } from '../../uploadQueue';
 import { RetryService } from '../../services/RetryService';
 import { Store } from '../../store';
 
 const toast = useToast();
+
+// 获取全局队列状态
+const { queueItems, clearQueue } = useQueueState();
 
 // 创建上传队列管理器实例
 const queueManager = new UploadQueueManager();
@@ -156,6 +162,77 @@ const setupRetryCallback = () => {
   }
 };
 
+// 计算属性：是否有失败项（检查整体状态和服务级别状态）
+const hasFailedItems = computed(() => {
+  return queueItems.value.some(item => {
+    // 检查整体状态
+    if (item.status === 'error') return true;
+    // 检查各服务进度中是否有失败
+    if (item.serviceProgress) {
+      return Object.values(item.serviceProgress).some(
+        progress => progress.status?.includes('失败') || progress.status?.includes('✗')
+      );
+    }
+    return false;
+  });
+});
+
+// 计算属性：队列是否有内容
+const hasQueueItems = computed(() => {
+  return queueItems.value.length > 0;
+});
+
+// 清空确认对话框状态
+const showClearConfirm = ref(false);
+
+// 批量重试状态
+const isBatchRetrying = ref(false);
+
+// 检查队列项是否有失败的服务
+const hasFailedServices = (item: typeof queueItems.value[0]): boolean => {
+  if (item.status === 'error') return true;
+  if (item.serviceProgress) {
+    return Object.values(item.serviceProgress).some(
+      progress => progress.status?.includes('失败') || progress.status?.includes('✗')
+    );
+  }
+  return false;
+};
+
+// 批量重试所有失败项
+const handleBatchRetry = async () => {
+  if (isBatchRetrying.value) return;
+
+  const failedItemIds = queueItems.value
+    .filter(item => hasFailedServices(item))
+    .map(item => item.id);
+
+  if (failedItemIds.length === 0) {
+    toast.info('无需重试', '没有失败的上传项');
+    return;
+  }
+
+  isBatchRetrying.value = true;
+  try {
+    const config = await configStore.get('config') || { services: {} };
+    await retryService.retryAllFailed(failedItemIds, config);
+  } finally {
+    isBatchRetrying.value = false;
+  }
+};
+
+// 显示清空确认对话框
+const handleClearQueue = () => {
+  showClearConfirm.value = true;
+};
+
+// 确认清空队列
+const confirmClearQueue = () => {
+  clearQueue();
+  showClearConfirm.value = false;
+  toast.success('已清空', '上传队列已清空');
+};
+
 // 加载配置
 onMounted(async () => {
   // 加载服务按钮状态
@@ -237,10 +314,56 @@ onUnmounted(() => {
             <i class="pi pi-list"></i>
             <span>上传队列</span>
           </h3>
+          <div class="queue-actions">
+            <button
+              v-if="hasFailedItems"
+              class="queue-action-btn retry-btn"
+              :disabled="isBatchRetrying"
+              @click="handleBatchRetry"
+            >
+              <i class="pi" :class="isBatchRetrying ? 'pi-spin pi-spinner' : 'pi-refresh'"></i>
+              <span>{{ isBatchRetrying ? '重传中...' : '批量重传' }}</span>
+            </button>
+            <button
+              v-if="hasQueueItems"
+              class="queue-action-btn clear-btn"
+              @click="handleClearQueue"
+            >
+              <i class="pi pi-trash"></i>
+              <span>清空列表</span>
+            </button>
+          </div>
         </div>
         <UploadQueue ref="uploadQueueRef" />
       </div>
     </div>
+
+    <!-- 清空确认对话框 -->
+    <Dialog
+      v-model:visible="showClearConfirm"
+      header="确认清空"
+      :modal="true"
+      :closable="true"
+      :style="{ width: '360px' }"
+    >
+      <div class="confirm-content">
+        <i class="pi pi-exclamation-triangle confirm-icon"></i>
+        <p>确定要清空上传队列吗？此操作不可恢复。</p>
+      </div>
+      <template #footer>
+        <Button
+          label="取消"
+          severity="secondary"
+          text
+          @click="showClearConfirm = false"
+        />
+        <Button
+          label="确定清空"
+          severity="danger"
+          @click="confirmClearQueue"
+        />
+      </template>
+    </Dialog>
   </div>
 </template>
 
@@ -408,6 +531,9 @@ onUnmounted(() => {
 }
 
 .queue-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
   margin-bottom: 16px;
 }
 
@@ -424,6 +550,74 @@ onUnmounted(() => {
 .queue-title i {
   color: var(--primary);
   font-size: 1.3rem;
+}
+
+/* 队列操作按钮区域 */
+.queue-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.queue-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: none;
+  border-radius: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: transparent;
+}
+
+.queue-action-btn i {
+  font-size: 14px;
+}
+
+/* 重试按钮 */
+.queue-action-btn.retry-btn {
+  color: var(--warning);
+}
+
+.queue-action-btn.retry-btn:hover:not(:disabled) {
+  background: rgba(245, 158, 11, 0.1);
+}
+
+.queue-action-btn.retry-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* 清空按钮 */
+.queue-action-btn.clear-btn {
+  color: var(--text-muted);
+}
+
+.queue-action-btn.clear-btn:hover {
+  color: var(--error);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* 确认对话框内容 */
+.confirm-content {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+}
+
+.confirm-content .confirm-icon {
+  color: var(--warning);
+  font-size: 1.5rem;
+  flex-shrink: 0;
+}
+
+.confirm-content p {
+  margin: 0;
+  color: var(--text-secondary);
+  line-height: 1.5;
 }
 
 /* 滚动条 */
