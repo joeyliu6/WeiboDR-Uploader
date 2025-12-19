@@ -28,6 +28,18 @@ export interface ThemeConfig {
 export type ServiceType = 'weibo' | 'r2' | 'jd' | 'tcl' | 'nowcoder' | 'qiyu' | 'zhihu' | 'nami';
 
 /**
+ * 私有图床服务列表
+ * 用户需要提供自己的存储凭证，数据存储在用户自己的账户中
+ */
+export const PRIVATE_SERVICES: ServiceType[] = ['r2'];
+
+/**
+ * 公共图床服务列表
+ * 使用公共平台的存储服务
+ */
+export const PUBLIC_SERVICES: ServiceType[] = ['weibo', 'zhihu', 'nami', 'qiyu', 'jd', 'tcl', 'nowcoder'];
+
+/**
  * 基础服务配置接口
  */
 export interface BaseServiceConfig {

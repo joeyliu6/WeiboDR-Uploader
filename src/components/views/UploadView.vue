@@ -5,6 +5,7 @@ import UploadQueue from '../UploadQueue.vue';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
 import type { ServiceType } from '../../config/types';
+import { PRIVATE_SERVICES, PUBLIC_SERVICES } from '../../config/types';
 import { useToast } from '../../composables/useToast';
 import { useUploadManager } from '../../composables/useUpload';
 import { useQueueState } from '../../composables/useQueueState';
@@ -62,6 +63,20 @@ const allServices: ServiceType[] = ['weibo', 'r2', 'tcl', 'jd', 'nowcoder', 'qiy
 // 可见的服务（在可用服务列表中的）
 const visibleServices = computed(() => {
   return allServices.filter(serviceId =>
+    uploadManager.availableServices.value.includes(serviceId)
+  );
+});
+
+// 可见的私有图床
+const visiblePrivateServices = computed(() => {
+  return PRIVATE_SERVICES.filter(serviceId =>
+    uploadManager.availableServices.value.includes(serviceId)
+  );
+});
+
+// 可见的公共图床
+const visiblePublicServices = computed(() => {
+  return PUBLIC_SERVICES.filter(serviceId =>
     uploadManager.availableServices.value.includes(serviceId)
   );
 });
@@ -286,24 +301,50 @@ onUnmounted(() => {
 
       <!-- 图床选择区域 -->
       <div class="upload-controls">
-        <div class="service-tags-wrapper">
-          <button
-            v-for="serviceId in visibleServices"
-            :key="serviceId"
-            class="service-tag"
-            :class="{
-              'is-selected': uploadManager.isServiceSelected.value(serviceId),
-              'is-configured': uploadManager.serviceConfigStatus.value[serviceId],
-              'not-configured': !uploadManager.serviceConfigStatus.value[serviceId]
-            }"
-            @click="toggleService(serviceId)"
-            v-ripple
-            v-tooltip.top="!uploadManager.serviceConfigStatus.value[serviceId] ? '请先在设置中配置' : ''"
-          >
-            <span class="status-dot"></span>
+        <!-- 私有图床 -->
+        <div v-if="visiblePrivateServices.length > 0" class="service-group">
+          <div class="service-group-label">私有图床</div>
+          <div class="service-tags-wrapper">
+            <button
+              v-for="serviceId in visiblePrivateServices"
+              :key="serviceId"
+              class="service-tag"
+              :class="{
+                'is-selected': uploadManager.isServiceSelected.value(serviceId),
+                'is-configured': uploadManager.serviceConfigStatus.value[serviceId],
+                'not-configured': !uploadManager.serviceConfigStatus.value[serviceId]
+              }"
+              @click="toggleService(serviceId)"
+              v-ripple
+              v-tooltip.top="!uploadManager.serviceConfigStatus.value[serviceId] ? '请先在设置中配置' : ''"
+            >
+              <span class="status-dot"></span>
+              <span class="tag-text">{{ serviceLabels[serviceId] }}</span>
+            </button>
+          </div>
+        </div>
 
-            <span class="tag-text">{{ serviceLabels[serviceId] }}</span>
-          </button>
+        <!-- 公共图床 -->
+        <div v-if="visiblePublicServices.length > 0" class="service-group">
+          <div class="service-group-label">公共图床</div>
+          <div class="service-tags-wrapper">
+            <button
+              v-for="serviceId in visiblePublicServices"
+              :key="serviceId"
+              class="service-tag"
+              :class="{
+                'is-selected': uploadManager.isServiceSelected.value(serviceId),
+                'is-configured': uploadManager.serviceConfigStatus.value[serviceId],
+                'not-configured': !uploadManager.serviceConfigStatus.value[serviceId]
+              }"
+              @click="toggleService(serviceId)"
+              v-ripple
+              v-tooltip.top="!uploadManager.serviceConfigStatus.value[serviceId] ? '请先在设置中配置' : ''"
+            >
+              <span class="status-dot"></span>
+              <span class="tag-text">{{ serviceLabels[serviceId] }}</span>
+            </button>
+          </div>
         </div>
       </div>
 
@@ -437,13 +478,21 @@ onUnmounted(() => {
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.service-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
 }
 
 .service-group-label {
-  font-size: 13px;
+  font-size: 12px;
   font-weight: 600;
-  color: var(--text-secondary);
-  margin-bottom: 12px;
+  color: var(--text-muted);
   text-transform: uppercase;
   letter-spacing: 0.05em;
 }
