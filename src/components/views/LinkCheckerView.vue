@@ -1269,6 +1269,18 @@ const handleBulkRepair = async () => {
     border-bottom: none;
 }
 
+.nested-table tr {
+    transition: background-color 0.15s ease;
+}
+
+.nested-table tr:hover {
+    background: rgba(59, 130, 246, 0.08);
+}
+
+:root.dark-theme .nested-table tr:hover {
+    background: rgba(59, 130, 246, 0.15);
+}
+
 .service-label {
     font-weight: 600;
     color: var(--text-secondary);
