@@ -85,14 +85,14 @@ const serviceNames: Record<ServiceType, string> = {
 // 测试状态
 const testingConnections = ref<Record<string, boolean>>({ weibo: false, r2: false, nowcoder: false, zhihu: false, nami: false, webdav: false });
 
-// 七鱼 Chrome 检测
-const qiyuChromeInstalled = ref(false);
-const isCheckingChrome = ref(false);
-const checkQiyuChrome = async () => {
-  isCheckingChrome.value = true;
-  try { qiyuChromeInstalled.value = await invoke('check_chrome_installed'); }
-  catch (e) { qiyuChromeInstalled.value = false; }
-  finally { isCheckingChrome.value = false; }
+// 七鱼可用性检测（完整检测：实际获取 Token）
+const qiyuAvailable = ref(false);
+const isCheckingQiyu = ref(false);
+const checkQiyuAvailability = async () => {
+  isCheckingQiyu.value = true;
+  try { qiyuAvailable.value = await invoke('check_qiyu_available'); }
+  catch (e) { qiyuAvailable.value = false; }
+  finally { isCheckingQiyu.value = false; }
 };
 
 // 京东可用性检测
@@ -217,7 +217,7 @@ onMounted(async () => {
   await loadSettings();
   // 并行检测所有图床可用性
   await Promise.all([
-    checkQiyuChrome(),
+    checkQiyuAvailability(),
     checkJdAvailable(),
     checkTclAvailable()
   ]);
@@ -408,8 +408,8 @@ onUnmounted(() => {
               <h3>七鱼图床</h3>
               <p>基于网易七鱼客服系统，Token 自动获取。</p>
               <div class="service-status">
-                <Tag :value="qiyuChromeInstalled ? '可用' : '需要浏览器'" :severity="qiyuChromeInstalled ? 'success' : 'warning'" />
-                <Button v-if="!qiyuChromeInstalled" label="检测" icon="pi pi-refresh" @click="checkQiyuChrome" :loading="isCheckingChrome" text size="small" />
+                <Tag :value="qiyuAvailable ? '可用' : '不可用'" :severity="qiyuAvailable ? 'success' : 'danger'" />
+                <Button v-if="!qiyuAvailable" label="检测" icon="pi pi-refresh" @click="checkQiyuAvailability" :loading="isCheckingQiyu" text size="small" />
               </div>
             </div>
           </div>

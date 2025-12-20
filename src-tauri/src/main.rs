@@ -121,6 +121,7 @@ fn main() {
             commands::qiyu::upload_to_qiyu,
             commands::qiyu_token::fetch_qiyu_token,
             commands::qiyu_token::check_chrome_installed,
+            commands::qiyu_token::check_qiyu_available,
             commands::zhihu::upload_to_zhihu,
             commands::zhihu::test_zhihu_connection,
             commands::nami::upload_to_nami,

@@ -92,6 +92,19 @@ pub async fn check_chrome_installed() -> Result<bool, String> {
     }
 }
 
+/// 检查七鱼图床是否可用（完整检测）
+/// 通过实际获取 Token 来验证上传能力
+#[tauri::command]
+pub async fn check_qiyu_available() -> bool {
+    match fetch_qiyu_token().await {
+        Ok(_) => true,
+        Err(e) => {
+            println!("[Qiyu] 可用性检测失败: {}", e);
+            false
+        }
+    }
+}
+
 /// 从七鱼页面获取新的上传 Token
 #[tauri::command]
 pub async fn fetch_qiyu_token() -> Result<QiyuToken, String> {
