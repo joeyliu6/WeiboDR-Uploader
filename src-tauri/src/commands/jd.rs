@@ -74,6 +74,19 @@ async fn get_aid_info() -> Result<AidInfo, String> {
     Ok(AidInfo { aid, pin })
 }
 
+/// 检查京东图床是否可用
+/// 通过调用 get_aid_info() 检测 API 是否可达
+#[tauri::command]
+pub async fn check_jd_available() -> bool {
+    match get_aid_info().await {
+        Ok(_) => true,
+        Err(e) => {
+            println!("[JD] 可用性检测失败: {}", e);
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn upload_to_jd(
     window: Window,

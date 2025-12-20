@@ -31,7 +31,7 @@ const handleClearHistory = async () => {
 const cookieUnlisten = ref<UnlistenFn | null>(null);
 
 // --- 导航状态管理 ---
-type SettingsTab = 'general' | 'r2' | 'public_services' | 'links' | 'webdav';
+type SettingsTab = 'general' | 'r2' | 'builtin' | 'cookie_auth' | 'links' | 'webdav';
 const activeTab = ref<SettingsTab>('general');
 
 const tabs = [
@@ -41,7 +41,8 @@ const tabs = [
   { id: 'r2', label: 'Cloudflare R2', icon: 'pi pi-cloud' },
   { type: 'separator' },
   { type: 'label', label: '公共图床' },
-  { id: 'public_services', label: '公共图床配置', icon: 'pi pi-globe' },
+  { id: 'builtin', label: '开箱即用', icon: 'pi pi-box' },
+  { id: 'cookie_auth', label: 'Cookie 认证', icon: 'pi pi-key' },
   { type: 'separator' },
   { type: 'label', label: '高级' },
   { id: 'links', label: '链接前缀', icon: 'pi pi-link' },
@@ -92,6 +93,26 @@ const checkQiyuChrome = async () => {
   try { qiyuChromeInstalled.value = await invoke('check_chrome_installed'); }
   catch (e) { qiyuChromeInstalled.value = false; }
   finally { isCheckingChrome.value = false; }
+};
+
+// 京东可用性检测
+const jdAvailable = ref(false);
+const isCheckingJd = ref(false);
+const checkJdAvailable = async () => {
+  isCheckingJd.value = true;
+  try { jdAvailable.value = await invoke('check_jd_available'); }
+  catch (e) { jdAvailable.value = false; }
+  finally { isCheckingJd.value = false; }
+};
+
+// TCL 可用性检测
+const tclAvailable = ref(false);
+const isCheckingTcl = ref(false);
+const checkTclAvailable = async () => {
+  isCheckingTcl.value = true;
+  try { tclAvailable.value = await invoke('check_tcl_available'); }
+  catch (e) { tclAvailable.value = false; }
+  finally { isCheckingTcl.value = false; }
 };
 
 // 加载配置
@@ -194,7 +215,12 @@ const resetToDefaultPrefixes = () => {
 // 监听 Cookie 更新
 onMounted(async () => {
   await loadSettings();
-  await checkQiyuChrome();
+  // 并行检测所有图床可用性
+  await Promise.all([
+    checkQiyuChrome(),
+    checkJdAvailable(),
+    checkTclAvailable()
+  ]);
   cookieUnlisten.value = await configManager.setupCookieListener(async (sid, cookie) => {
     if (sid === 'weibo') formData.value.weiboCookie = cookie;
     else if (['nowcoder', 'zhihu', 'nami'].includes(sid)) (formData.value as any)[sid].cookie = cookie;
@@ -347,121 +373,103 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeTab === 'public_services'" class="settings-section">
+      <div v-if="activeTab === 'builtin'" class="settings-section">
         <div class="section-header">
-          <h2>公共图床配置</h2>
-          <p class="section-desc">配置各公共图床服务的认证信息。</p>
+          <h2>开箱即用</h2>
+          <p class="section-desc">无需配置，直接使用的图床服务。</p>
         </div>
 
-        <!-- 开箱即用区域 -->
-        <div class="public-group">
-          <div class="public-group-header">
-            <i class="pi pi-box"></i>
-            <span>开箱即用</span>
-          </div>
-          <div class="service-cards-row">
-            <div class="service-card-flat">
-              <div class="sc-icon"><i class="pi pi-shopping-bag"></i></div>
-              <div class="sc-content">
-                <h3>京东图床</h3>
-                <p>速度极快，CDN 全球分发。最大支持 15MB。</p>
-                <Tag value="推荐" severity="info" />
+        <div class="service-cards-row">
+          <div class="service-card-flat">
+            <div class="sc-icon"><i class="pi pi-shopping-bag"></i></div>
+            <div class="sc-content">
+              <h3>京东图床</h3>
+              <p>速度极快，CDN 全球分发。最大支持 15MB。</p>
+              <div class="service-status">
+                <Tag :value="jdAvailable ? '可用' : '不可用'" :severity="jdAvailable ? 'success' : 'danger'" />
+                <Button v-if="!jdAvailable" label="检测" icon="pi pi-refresh" @click="checkJdAvailable" :loading="isCheckingJd" text size="small" />
               </div>
             </div>
-            <div class="service-card-flat">
-              <div class="sc-icon"><i class="pi pi-image"></i></div>
-              <div class="sc-content">
-                <h3>TCL 图床</h3>
-                <p>无需配置，直接使用。支持多种格式。</p>
-                <Tag value="开箱即用" severity="success" />
+          </div>
+          <div class="service-card-flat">
+            <div class="sc-icon"><i class="pi pi-image"></i></div>
+            <div class="sc-content">
+              <h3>TCL 图床</h3>
+              <p>无需配置，直接使用。支持多种格式。</p>
+              <div class="service-status">
+                <Tag :value="tclAvailable ? '可用' : '不可用'" :severity="tclAvailable ? 'success' : 'danger'" />
+                <Button v-if="!tclAvailable" label="检测" icon="pi pi-refresh" @click="checkTclAvailable" :loading="isCheckingTcl" text size="small" />
+              </div>
+            </div>
+          </div>
+          <div class="service-card-flat">
+            <div class="sc-icon"><i class="pi pi-comments"></i></div>
+            <div class="sc-content">
+              <h3>七鱼图床</h3>
+              <p>基于网易七鱼客服系统，Token 自动获取。</p>
+              <div class="service-status">
+                <Tag :value="qiyuChromeInstalled ? '可用' : '需要浏览器'" :severity="qiyuChromeInstalled ? 'success' : 'warning'" />
+                <Button v-if="!qiyuChromeInstalled" label="检测" icon="pi pi-refresh" @click="checkQiyuChrome" :loading="isCheckingChrome" text size="small" />
               </div>
             </div>
           </div>
         </div>
+      </div>
 
-        <Divider />
+      <div v-if="activeTab === 'cookie_auth'" class="settings-section">
+        <div class="section-header">
+          <h2>Cookie 认证</h2>
+          <p class="section-desc">需要提供 Cookie 的图床服务。</p>
+        </div>
 
-        <!-- Cookie 认证区域 -->
-        <div class="public-group">
-          <div class="public-group-header">
-            <i class="pi pi-key"></i>
-            <span>Cookie 认证</span>
-          </div>
-
-          <div class="sub-section">
-            <div class="flex justify-between items-center mb-2">
-              <h3>微博图床</h3>
-              <div class="actions-mini">
-                <Button label="获取" icon="pi pi-globe" @click="actions.login('weibo')" text size="small"/>
-                <Button label="测试" icon="pi pi-check" @click="actions.weibo" :loading="testingConnections.weibo" text size="small"/>
-              </div>
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>微博图床</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('weibo')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.weibo" :loading="testingConnections.weibo" text size="small"/>
             </div>
-            <div class="info-block warning mb-2">
-              <i class="pi pi-exclamation-circle"></i>
-              <div>Cookie 有效期通常为 30 天，过期后请重新获取。</div>
-            </div>
-            <Textarea v-model="formData.weiboCookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="SUB=...; (粘贴完整 Cookie)" />
           </div>
-
-          <Divider />
-
-          <div class="sub-section">
-            <div class="flex justify-between items-center mb-2">
-              <h3>知乎图床</h3>
-              <div class="actions-mini">
-                <Button label="获取" icon="pi pi-globe" @click="actions.login('zhihu')" text size="small"/>
-                <Button label="测试" icon="pi pi-check" @click="actions.zhihu" :loading="testingConnections.zhihu" text size="small"/>
-              </div>
-            </div>
-            <Textarea v-model="formData.zhihu.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="知乎 Cookie..." />
-          </div>
-
-          <Divider />
-
-          <div class="sub-section">
-            <div class="flex justify-between items-center mb-2">
-              <h3>牛客图床</h3>
-              <div class="actions-mini">
-                <Button label="获取" icon="pi pi-globe" @click="actions.login('nowcoder')" text size="small"/>
-                <Button label="测试" icon="pi pi-check" @click="actions.nowcoder" :loading="testingConnections.nowcoder" text size="small"/>
-              </div>
-            </div>
-            <Textarea v-model="formData.nowcoder.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="牛客 Cookie..." />
-          </div>
-
-          <Divider />
-
-          <div class="sub-section">
-            <div class="flex justify-between items-center mb-2">
-              <h3>纳米图床</h3>
-              <div class="actions-mini">
-                <Button label="获取" icon="pi pi-globe" @click="actions.login('nami')" text size="small"/>
-                <Button label="测试" icon="pi pi-check" @click="actions.nami" :loading="testingConnections.nami" text size="small"/>
-              </div>
-            </div>
-            <Textarea v-model="formData.nami.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="纳米 Cookie..." />
-          </div>
+          <Textarea v-model="formData.weiboCookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="SUB=...; (粘贴完整 Cookie)" />
         </div>
 
         <Divider />
 
-        <!-- 特殊配置区域 -->
-        <div class="public-group">
-          <div class="public-group-header">
-            <i class="pi pi-cog"></i>
-            <span>特殊配置</span>
-          </div>
-
-          <div class="sub-section">
-            <h3>七鱼图床</h3>
-            <div class="info-block" :class="qiyuChromeInstalled ? 'success' : 'danger'">
-              <i class="pi" :class="qiyuChromeInstalled ? 'pi-check-circle' : 'pi-times-circle'"></i>
-              <div>
-                {{ qiyuChromeInstalled ? '已检测到 Chrome/Edge 浏览器，功能正常。' : '未检测到 Chrome/Edge，无法自动获取 Token。' }}
-              </div>
-              <Button v-if="!qiyuChromeInstalled" label="重试" @click="checkQiyuChrome" :loading="isCheckingChrome" size="small" text />
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>知乎图床</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('zhihu')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.zhihu" :loading="testingConnections.zhihu" text size="small"/>
             </div>
           </div>
+          <Textarea v-model="formData.zhihu.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="知乎 Cookie..." />
+        </div>
+
+        <Divider />
+
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>牛客图床</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('nowcoder')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.nowcoder" :loading="testingConnections.nowcoder" text size="small"/>
+            </div>
+          </div>
+          <Textarea v-model="formData.nowcoder.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="牛客 Cookie..." />
+        </div>
+
+        <Divider />
+
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>纳米图床</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('nami')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.nami" :loading="testingConnections.nami" text size="small"/>
+            </div>
+          </div>
+          <Textarea v-model="formData.nami.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="纳米 Cookie..." />
         </div>
       </div>
 
@@ -922,14 +930,15 @@ onUnmounted(() => {
 }
 
 .service-cards-row {
-  display: grid;
-  grid-template-columns: repeat(2, 1fr);
+  display: flex;
+  flex-direction: column;
   gap: 16px;
 }
 
-@media (max-width: 700px) {
-  .service-cards-row {
-    grid-template-columns: 1fr;
-  }
+.service-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
 }
 </style>

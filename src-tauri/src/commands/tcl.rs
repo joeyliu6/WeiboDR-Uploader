@@ -20,6 +20,31 @@ struct TCLApiResponse {
     data: Option<String>,
 }
 
+/// 检查 TCL 图床是否可用
+/// 通过发送 GET 请求到 TCL 服务检测可达性
+#[tauri::command]
+pub async fn check_tcl_available() -> bool {
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build();
+
+    match client {
+        Ok(c) => {
+            match c.get("https://service2.tcl.com/").send().await {
+                Ok(response) => response.status().is_success() || response.status().as_u16() == 404,
+                Err(e) => {
+                    println!("[TCL] 可用性检测失败: {}", e);
+                    false
+                }
+            }
+        }
+        Err(e) => {
+            println!("[TCL] 创建 HTTP 客户端失败: {}", e);
+            false
+        }
+    }
+}
+
 #[tauri::command]
 pub async fn upload_to_tcl(
     window: Window,
