@@ -863,11 +863,11 @@ onUnmounted(() => {
             </div>
             <div class="form-item">
                 <label>Access Key ID</label>
-                <Password v-model="formData.r2.accessKeyId" @blur="saveSettings" :feedback="false" toggleMask class="w-full" />
+                <Password v-model="formData.r2.accessKeyId" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
             </div>
             <div class="form-item">
                 <label>Secret Access Key</label>
-                <Password v-model="formData.r2.secretAccessKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" />
+                <Password v-model="formData.r2.secretAccessKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
             </div>
             <div class="form-item span-full">
                 <label>自定义路径 (Optional)</label>
@@ -1598,5 +1598,32 @@ onUnmounted(() => {
   margin-left: auto;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* Password 组件眼睛图标放入框内 */
+:deep(.p-password) {
+  position: relative;
+  display: flex;
+  width: 100%;
+}
+
+:deep(.p-password .p-password-input) {
+  width: 100%;
+  padding-right: 40px; /* 为眼睛图标留出空间 */
+}
+
+:deep(.p-password .p-password-toggle-mask-btn) {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+
+:deep(.p-password .p-password-toggle-mask-btn:hover) {
+  color: var(--text-main);
 }
 </style>
