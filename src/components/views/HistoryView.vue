@@ -884,7 +884,7 @@ const handleScroll = (event: Event) => {
             <!-- 选中计数 -->
             <span class="fab-count">
               <i class="pi pi-check-circle"></i>
-              已选 {{ historyManager.selectedIds.value.length }} 项
+              {{ historyManager.selectedIds.value.length }}
             </span>
 
             <div class="fab-divider"></div>
@@ -893,11 +893,11 @@ const handleScroll = (event: Event) => {
             <div class="fab-copy-dropdown" ref="copyDropdownRef">
               <Button
                 icon="pi pi-copy"
-                label="复制链接"
                 text
                 size="small"
                 class="fab-btn"
                 @click.stop="toggleCopyMenu"
+                v-tooltip.top="'复制链接'"
               />
               <Transition name="dropdown">
                 <div v-if="copyMenuVisible" class="copy-menu">
@@ -920,22 +920,22 @@ const handleScroll = (event: Event) => {
             <!-- 导出 -->
             <Button
               icon="pi pi-download"
-              label="导出"
               text
               size="small"
               class="fab-btn"
               @click="handleBulkExport"
+              v-tooltip.top="'导出'"
             />
 
             <!-- 删除 -->
             <Button
               icon="pi pi-trash"
-              label="删除"
               severity="danger"
               text
               size="small"
               class="fab-btn fab-btn-danger"
               @click="showDeleteConfirm"
+              v-tooltip.top="'删除'"
             />
 
             <div class="fab-divider"></div>
