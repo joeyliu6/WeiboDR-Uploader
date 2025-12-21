@@ -1011,6 +1011,9 @@ const handleScroll = (event: Event) => {
   justify-content: space-between;
   padding: 0 20px;
   z-index: 10;
+  max-width: 850px;
+  margin: 0 auto;
+  width: 100%;
 }
 
 .strip-left,
