@@ -202,9 +202,8 @@ onActivated(() => {
 
 <template>
   <div class="r2-manager-view">
-    <div class="r2-manager-container">
-      <!-- 工具栏 -->
-      <div class="r2-toolbar">
+    <!-- 工具栏（固定顶部，不滚动） -->
+    <div class="r2-toolbar">
         <div class="r2-toolbar-title">
           <i class="pi pi-cloud"></i>
           <span>R2 存储管理</span>
@@ -246,75 +245,77 @@ onActivated(() => {
         </div>
       </div>
 
-      <!-- 加载状态 -->
-      <div v-if="loading" class="r2-loading">
-        <ProgressSpinner />
-        <p>加载中...</p>
-      </div>
-
-      <!-- 错误信息 -->
-      <Message v-if="errorMessage && !loading" severity="error" :closable="false">
-        {{ errorMessage }}
-      </Message>
-
-      <!-- 文件网格 -->
-      <div v-if="!loading && !errorMessage" class="r2-grid">
-        <div v-if="files.length === 0" class="r2-empty">
-          <i class="pi pi-inbox empty-icon"></i>
-          <p>暂无文件</p>
-          <p class="empty-hint">上传图片到 R2 后将在此显示</p>
+      <!-- 内容区域（可滚动） -->
+      <div class="r2-content">
+        <!-- 加载状态 -->
+        <div v-if="loading" class="r2-loading">
+          <ProgressSpinner />
+          <p>加载中...</p>
         </div>
 
-        <div
-          v-for="file in files"
-          :key="file.key"
-          class="r2-grid-item"
-        >
-          <Checkbox
-            v-model="file.selected"
-            :binary="true"
-            class="r2-item-checkbox"
-          />
+        <!-- 错误信息 -->
+        <Message v-if="errorMessage && !loading" severity="error" :closable="false">
+          {{ errorMessage }}
+        </Message>
 
-          <div class="r2-item-preview" @click="handlePreview(file)">
-            <img :src="file.url" :alt="file.name" class="r2-item-image" />
+        <!-- 文件网格 -->
+        <div v-if="!loading && !errorMessage" class="r2-grid">
+          <div v-if="files.length === 0" class="r2-empty">
+            <i class="pi pi-inbox empty-icon"></i>
+            <p>暂无文件</p>
+            <p class="empty-hint">上传图片到 R2 后将在此显示</p>
           </div>
 
-          <div class="r2-item-info">
-            <p class="r2-item-name" :title="file.name">{{ file.name }}</p>
-            <p class="r2-item-size">{{ formatSize(file.size) }}</p>
-          </div>
+          <div
+            v-for="file in files"
+            :key="file.key"
+            class="r2-grid-item"
+          >
+            <Checkbox
+              v-model="file.selected"
+              :binary="true"
+              class="r2-item-checkbox"
+            />
 
-          <div class="r2-item-actions">
-            <Button
-              icon="pi pi-eye"
-              @click="handlePreview(file)"
-              size="small"
-              text
-              rounded
-              v-tooltip.top="'预览'"
-            />
-            <Button
-              icon="pi pi-copy"
-              @click="handleCopyLink(file)"
-              size="small"
-              text
-              rounded
-              v-tooltip.top="'复制链接'"
-            />
-            <Button
-              icon="pi pi-trash"
-              @click="handleDeleteFile(file)"
-              severity="danger"
-              size="small"
-              text
-              rounded
-              v-tooltip.top="'删除'"
-            />
+            <div class="r2-item-preview" @click="handlePreview(file)">
+              <img :src="file.url" :alt="file.name" class="r2-item-image" />
+            </div>
+
+            <div class="r2-item-info">
+              <p class="r2-item-name" :title="file.name">{{ file.name }}</p>
+              <p class="r2-item-size">{{ formatSize(file.size) }}</p>
+            </div>
+
+            <div class="r2-item-actions">
+              <Button
+                icon="pi pi-eye"
+                @click="handlePreview(file)"
+                size="small"
+                text
+                rounded
+                v-tooltip.top="'预览'"
+              />
+              <Button
+                icon="pi pi-copy"
+                @click="handleCopyLink(file)"
+                size="small"
+                text
+                rounded
+                v-tooltip.top="'复制链接'"
+              />
+              <Button
+                icon="pi pi-trash"
+                @click="handleDeleteFile(file)"
+                severity="danger"
+                size="small"
+                text
+                rounded
+                v-tooltip.top="'删除'"
+              />
+            </div>
           </div>
         </div>
       </div>
-    </div>
 
     <!-- 预览对话框 -->
     <Dialog
@@ -359,27 +360,29 @@ onActivated(() => {
 </template>
 
 <style scoped>
+/* 外层容器：flex 布局，禁止滚动 */
 .r2-manager-view {
+  display: flex;
+  flex-direction: column;
   height: 100%;
-  overflow-y: auto;
-  padding: 20px;
+  overflow: hidden;
   background: var(--bg-app);
 }
 
-.r2-manager-container {
-  max-width: 850px;
-  margin: 0 auto;
-  display: flex;
-  flex-direction: column;
-  gap: 20px;
+/* 内容滚动容器 */
+.r2-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  padding: 20px 24px;
 }
 
 /* 工具栏 */
 .r2-toolbar {
+  flex-shrink: 0;
   background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  padding: 20px;
+  border-bottom: 1px solid var(--border-subtle);
+  padding: 20px 24px;
   display: flex;
   justify-content: space-between;
   align-items: center;
@@ -576,20 +579,20 @@ onActivated(() => {
 }
 
 /* 滚动条 */
-.r2-manager-view::-webkit-scrollbar {
-  width: 6px;
+.r2-content::-webkit-scrollbar {
+  width: 8px;
 }
 
-.r2-manager-view::-webkit-scrollbar-track {
-  background: var(--bg-input);
+.r2-content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
-.r2-manager-view::-webkit-scrollbar-thumb {
+.r2-content::-webkit-scrollbar-thumb {
   background: var(--border-subtle);
   border-radius: 4px;
 }
 
-.r2-manager-view::-webkit-scrollbar-thumb:hover {
+.r2-content::-webkit-scrollbar-thumb:hover {
   background: var(--text-muted);
 }
 </style>
