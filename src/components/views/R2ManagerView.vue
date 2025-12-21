@@ -67,6 +67,9 @@ const refreshFiles = async () => {
   errorMessage.value = '';
 
   try {
+    // 0. 确保配置已加载
+    await configManager.loadConfig();
+
     // 1. 检查 R2 配置
     const r2Config = configManager.config.value.services?.r2;
     if (!r2Config?.accountId || !r2Config?.accessKeyId ||
