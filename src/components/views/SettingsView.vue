@@ -396,7 +396,6 @@ onUnmounted(() => {
 
         <div class="service-cards-row">
           <div class="service-card-flat">
-            <div class="sc-icon"><i class="pi pi-shopping-bag"></i></div>
             <div class="sc-content">
               <h3>京东图床</h3>
               <p>速度极快，CDN 全球分发。最大支持 15MB。</p>
@@ -407,7 +406,6 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="service-card-flat">
-            <div class="sc-icon"><i class="pi pi-image"></i></div>
             <div class="sc-content">
               <h3>TCL 图床</h3>
               <p>无需配置，直接使用。支持多种格式。</p>
@@ -418,7 +416,6 @@ onUnmounted(() => {
             </div>
           </div>
           <div class="service-card-flat">
-            <div class="sc-icon"><i class="pi pi-comments"></i></div>
             <div class="sc-content">
               <h3>七鱼图床</h3>
               <p>基于网易七鱼客服系统，Token 自动获取。</p>
