@@ -546,10 +546,9 @@ const handleScroll = (event: Event) => {
   <div class="history-view">
     <!-- Dashboard Strip（固定顶部，不随表格滚动） -->
     <div class="dashboard-strip">
-        <!-- 左侧区域：标题 + 视图切换 -->
-        <div class="strip-left">
+        <!-- 左侧控制区 -->
+        <div class="controls-area">
           <span class="view-title">上传历史</span>
-          <div class="v-divider"></div>
 
           <div class="view-switcher">
             <button
@@ -563,10 +562,16 @@ const handleScroll = (event: Event) => {
               <i :class="opt.icon"></i>
             </button>
           </div>
-        </div>
 
-        <!-- 中间区域：搜索 + 筛选 -->
-        <div class="strip-center">
+          <Select
+            :model-value="historyManager.historyState.value.currentFilter"
+            @update:model-value="historyManager.setFilter($event)"
+            :options="serviceOptions"
+            optionLabel="label"
+            optionValue="value"
+            class="filter-select"
+          />
+
           <IconField iconPosition="left" class="search-field">
             <InputIcon class="pi pi-search" />
             <InputText
@@ -580,26 +585,21 @@ const handleScroll = (event: Event) => {
               @click="localSearchTerm = ''; historyManager.searchTerm.value = ''"
             />
           </IconField>
-
-          <Select
-            :model-value="historyManager.historyState.value.currentFilter"
-            @update:model-value="historyManager.setFilter($event)"
-            :options="serviceOptions"
-            optionLabel="label"
-            optionValue="value"
-            class="filter-select"
-          />
         </div>
 
-        <!-- 右侧区域：统计信息（批量操作已移至浮动栏） -->
-        <div class="strip-right">
-          <span class="stats-text">
-            共 {{ historyManager.filteredItems.value.length }} 项
-            <template v-if="historyManager.hasSelection.value">
-              <span class="stats-divider">·</span>
-              <span class="stats-selected">已选 {{ historyManager.selectedIds.value.length }}</span>
-            </template>
-          </span>
+        <!-- 右侧统计区 -->
+        <div class="stats-area">
+          <div class="stat-item">
+            <span class="stat-val">{{ historyManager.filteredItems.value.length }}</span>
+            <span class="stat-key">总数</span>
+          </div>
+          <template v-if="historyManager.hasSelection.value">
+            <div class="v-divider"></div>
+            <div class="stat-item selected">
+              <span class="stat-val">{{ historyManager.selectedIds.value.length }}</span>
+              <span class="stat-key">已选</span>
+            </div>
+          </template>
         </div>
     </div>
 
@@ -976,10 +976,7 @@ const handleScroll = (event: Event) => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 20px;
-  max-width: 850px;
-  margin: 0 auto;
-  width: 100%;
+  padding: 20px 24px;
 }
 
 /* history-container 滚动条样式 */
@@ -1009,40 +1006,62 @@ const handleScroll = (event: Event) => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 0 20px;
+  padding: 0 24px;
   z-index: 10;
-  max-width: 850px;
-  margin: 0 auto;
-  width: 100%;
 }
 
-.strip-left,
-.strip-center,
-.strip-right {
+/* 左侧控制区 */
+.controls-area {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-.strip-center {
-  flex: 1;
-  justify-content: center;
-  max-width: 600px;
+/* 右侧统计区 */
+.stats-area {
+  display: flex;
+  align-items: center;
+  gap: 24px;
+}
+
+/* 统计项 */
+.stat-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  line-height: 1;
+}
+
+.stat-val {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.stat-key {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.stat-item.selected .stat-val {
+  color: var(--primary);
+}
+
+/* 竖线分隔符 */
+.v-divider {
+  width: 1px;
+  height: 24px;
+  background-color: var(--border-subtle);
 }
 
 /* 视图标题 */
 .view-title {
   font-weight: 600;
   color: var(--text-primary);
-  font-size: 15px;
+  font-size: 16px;
   white-space: nowrap;
-}
-
-/* 竖线分隔符 */
-.v-divider {
-  width: 1px;
-  height: 20px;
-  background-color: var(--border-subtle);
 }
 
 /* 视图切换器 */
@@ -1150,26 +1169,6 @@ const handleScroll = (event: Event) => {
 :deep(.filter-select .p-select-label) {
   padding: 0.5rem 1rem;
   font-size: 13px;
-}
-
-/* 统计信息 */
-.stats-text {
-  font-size: 12px;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.stats-divider {
-  color: var(--text-tertiary);
-  margin: 0 2px;
-}
-
-.stats-selected {
-  color: var(--primary);
-  font-weight: 600;
 }
 
 /* 批量操作（保留兼容，但已移至浮动栏） */
