@@ -4,6 +4,7 @@
 import { BaseUploader } from '../base/BaseUploader';
 import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
 import { TCLServiceConfig } from '../../config/types';
+import { TCLRateLimiter } from './TCLRateLimiter';
 
 /**
  * Rust 返回的 TCL 上传结果
@@ -47,6 +48,9 @@ export class TCLUploader extends BaseUploader {
     this.log('info', '开始上传到 TCL', { filePath });
 
     try {
+      // 限制速率
+      await TCLRateLimiter.getInstance().acquire();
+
       // 调用基类的 Rust 上传方法
       // TCL 无需额外参数
       const rustResult = await this.uploadViaRust(

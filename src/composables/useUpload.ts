@@ -338,8 +338,24 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         try {
           console.log(`[并发上传] 开始上传: ${fileName}`);
 
+          // 跟踪历史记录 ID 和累积结果
+          // 预先生成历史记录 ID，用于解决并发保存的竞态条件
+          const historyId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+          const allServiceResults: SingleServiceResult[] = [];
+
           // 实时处理单个服务完成的函数
           const handleServiceResult = (serviceResult: SingleServiceResult) => {
+            // 记录此结果，确保后续保存时包含它
+            allServiceResults.push(serviceResult);
+
+            // 2. 尝试追加到历史记录
+            // 如果历史记录尚未创建（saveHistoryItem 未执行），此操作会找不到项目而安全忽略
+            // 如果历史记录正在保存（saveHistoryItem 持有锁），此操作会排队等待保存完成后执行
+            // 如果历史记录已保存，此操作会立即执行更新
+            if (serviceResult.status === 'success') {
+              addResultToHistoryItem(historyId, serviceResult);
+            }
+
             const item = queueManager!.getItem(itemId);
             if (!item) return;
 
@@ -418,44 +434,16 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
             );
           }
 
-          // 双重保险：实时回调已处理各服务状态，此处作为最终确认
-          // 确保所有状态在 Promise.all 完成后都是最新的
-          const item = queueManager!.getItem(itemId);
-          if (item) {
-            const updatedServiceProgress = { ...item.serviceProgress };
+          // 双重保险：确保 UI 状态一致
+          // 注意：不需要遍历 result.results，因为 handleServiceResult 已经处理了
+          // 但为了保险起见，如果有遗漏的可以再更新一次 (此处略过，依赖 handleServiceResult)
 
-            result.results.forEach(serviceResult => {
-              if (updatedServiceProgress[serviceResult.serviceId]) {
-                if (serviceResult.status === 'success' && serviceResult.result) {
-                  let link = serviceResult.result.url;
-                  if (serviceResult.serviceId === 'weibo' && activePrefix.value) {
-                    link = activePrefix.value + link;
-                  }
+          // 使用我们累积的结果覆盖，因为 result.results 可能不包含后台完成的 TCL
+          // 并传入 liveResults 引用，确保在 saveHistoryItem 获取锁执行时，能使用最新的数据
+          console.log(`[并发上传] 准备保存历史记录，目前累积结果: ${allServiceResults.length} 个`);
 
-                  updatedServiceProgress[serviceResult.serviceId] = {
-                    ...updatedServiceProgress[serviceResult.serviceId],
-                    status: '✓ 完成',
-                    progress: 100,
-                    link: link
-                  };
-                } else if (serviceResult.status === 'failed') {
-                  updatedServiceProgress[serviceResult.serviceId] = {
-                    ...updatedServiceProgress[serviceResult.serviceId],
-                    status: '✗ 失败',
-                    progress: 0,
-                    error: serviceResult.error || '上传失败'
-                  };
-                }
-              }
-            });
-
-            queueManager!.updateItem(itemId, {
-              serviceProgress: updatedServiceProgress
-            });
-          }
-
-          // 保存历史记录
-          await saveHistoryItem(filePath, result);
+          // 保存历史记录 (传入预生成的 ID 和实时结果引用)
+          await saveHistoryItem(filePath, result, historyId, allServiceResults);
 
           // 通知队列管理器上传成功（谁先上传完用谁的链接）
           let thumbUrl = result.primaryUrl;
@@ -585,8 +573,10 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
    */
   async function saveHistoryItem(
     filePath: string,
-    uploadResult: MultiUploadResult
-  ): Promise<void> {
+    uploadResult: MultiUploadResult,
+    customId?: string,
+    liveResults?: SingleServiceResult[]
+  ): Promise<string | undefined> {
     // 获取本地文件名（在锁外执行，减少锁持有时间）
     let fileName: string;
     try {
@@ -597,6 +587,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     } catch (nameError: any) {
       fileName = filePath.split(/[/\\]/).pop() || '未知文件';
     }
+
+    // 记录创建的ID以便返回
+    let createdId: string | undefined;
 
     // 使用链式 Promise 实现互斥锁，确保保存操作按顺序执行
     const saveOperation = async () => {
@@ -614,9 +607,16 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         }
 
         // 创建历史记录项（只保存成功的图床结果，失败的不污染历史记录）
-        const successfulResults = uploadResult.results.filter(r => r.status === 'success');
+        // 关键逻辑：如果提供了 liveResults，则使用它作为数据源（它是最新的引用）
+        // 否则回退到 snapshot 的 uploadResult.results
+        const resultsSource = liveResults || uploadResult.results;
+        const successfulResults = resultsSource.filter(r => r.status === 'success');
+
+        // 使用传入的 ID 或生成新 ID
+        const newItemId = customId || `${Date.now()}_${Math.random().toString(36).substring(7)}`;
+
         const newItem: HistoryItem = {
-          id: `${Date.now()}_${Math.random().toString(36).substring(7)}`,
+          id: newItemId,
           localFileName: fileName,
           timestamp: Date.now(),
           filePath: filePath,
@@ -624,6 +624,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
           primaryService: uploadResult.primaryService,
           generatedLink: uploadResult.primaryUrl || ''
         };
+        createdId = newItem.id;
 
         // 添加到历史记录（最新的在前面）
         items.unshift(newItem);
@@ -653,6 +654,45 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       console.error('[历史记录] 锁链中的操作失败:', error);
     });
 
+    await historySaveLock;
+
+    // 返回生成的 ID
+    return createdId;
+  }
+
+  /**
+   * 向已有历史记录添加结果（用于后台异步上传完成时更新）
+   */
+  async function addResultToHistoryItem(historyId: string, result: SingleServiceResult): Promise<void> {
+    if (!historyId || result.status !== 'success') return;
+
+    // 同样使用锁
+    const saveOperation = async () => {
+      try {
+        const items = await historyStore.get<HistoryItem[]>('uploads') || [];
+        const itemIndex = items.findIndex(i => i.id === historyId);
+
+        if (itemIndex > -1) {
+          const item = items[itemIndex];
+          // 检查是否已存在该服务的结果
+          const exists = item.results?.some(r => r.serviceId === result.serviceId);
+          if (!exists) {
+            if (!item.results) item.results = [];
+            item.results.push(result);
+
+            // 保存
+            await historyStore.set('uploads', items);
+            await historyStore.save();
+            console.log(`[历史记录] 追加结果到 ${item.localFileName}: ${result.serviceId}`);
+            invalidateCache();
+          }
+        }
+      } catch (error) {
+        console.error('[历史记录] 追加结果失败:', error);
+      }
+    };
+
+    historySaveLock = historySaveLock.then(saveOperation).catch(err => console.error(err));
     await historySaveLock;
   }
 
