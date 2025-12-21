@@ -1035,9 +1035,6 @@ const handleBulkRepair = async () => {
     padding: 0 24px;
     background-color: var(--bg-card);
     border-bottom: 1px solid var(--border-subtle);
-    max-width: 850px;
-    margin: 0 auto;
-    width: 100%;
 }
 
 .controls-area {
@@ -1131,8 +1128,6 @@ const handleBulkRepair = async () => {
     height: 2px;
     background-color: var(--primary);
     transition: width 0.3s ease, opacity 0.3s ease;
-    max-width: 850px;
-    margin: 0 auto;
 }
 
 /* === 批量操作区域 === */
@@ -1143,8 +1138,7 @@ const handleBulkRepair = async () => {
     padding: 8px 12px;
     background: var(--surface-100);
     border-radius: 6px;
-    margin: 12px auto 0;
-    max-width: 810px;
+    margin: 12px 20px 0;
 }
 
 .selected-count {
@@ -1159,9 +1153,6 @@ const handleBulkRepair = async () => {
     overflow-y: auto;
     overflow-x: hidden;
     padding: 20px;
-    max-width: 850px;
-    margin: 0 auto;
-    width: 100%;
 }
 
 .minimal-table {
