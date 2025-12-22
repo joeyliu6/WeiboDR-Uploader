@@ -485,7 +485,7 @@ async function exportSettingsLocal() {
     const jsonContent = JSON.stringify(config, null, 2);
 
     const filePath = await save({
-      defaultPath: 'weibo_dr_settings.json',
+      defaultPath: 'picnexus_settings.json',
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
 
@@ -738,7 +738,7 @@ async function exportHistoryLocal() {
     const jsonContent = JSON.stringify(items, null, 2);
 
     const filePath = await save({
-      defaultPath: 'weibo_dr_history.json',
+      defaultPath: 'picnexus_history.json',
       filters: [{ name: 'JSON', extensions: ['json'] }]
     });
 
