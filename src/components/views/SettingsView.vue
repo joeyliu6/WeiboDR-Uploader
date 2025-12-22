@@ -247,6 +247,14 @@ const historyStore = new Store('.history.dat');
 const settingsSyncStatus = ref('状态: 未同步');
 const historySyncStatus = ref('状态: 未同步');
 
+/**
+ * 获取当前时间的 HH:mm 格式字符串
+ */
+function getCurrentTimeString(): string {
+  const now = new Date();
+  return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+}
+
 // 按钮加载状态
 const exportSettingsLoading = ref(false);
 const importSettingsLoading = ref(false);
@@ -256,6 +264,15 @@ const exportHistoryLoading = ref(false);
 const importHistoryLoading = ref(false);
 const uploadHistoryLoading = ref(false);
 const downloadHistoryLoading = ref(false);
+
+// 历史记录上传菜单状态
+const uploadHistoryMenuVisible = ref(false);
+const uploadHistoryDropdownRef = ref<HTMLElement | null>(null);
+
+// 切换历史记录上传菜单
+const toggleUploadHistoryMenu = () => {
+  uploadHistoryMenuVisible.value = !uploadHistoryMenuVisible.value;
+};
 
 /**
  * 导出配置到本地文件
@@ -364,21 +381,6 @@ async function uploadSettingsCloud() {
       throw new Error('WebDAV 配置不完整，请检查设置');
     }
 
-    const confirmed = confirm(
-      '⚠️ 安全提示\n\n' +
-      '配置文件包含敏感凭证（Cookie、R2 密钥、WebDAV 密码等），将以明文形式上传到您的私有网盘。\n\n' +
-      '请确保：\n' +
-      '1. 您的 WebDAV 服务器是可信的\n' +
-      '2. 您的网盘账户安全可靠\n' +
-      '3. 网络连接是安全的\n\n' +
-      '是否继续上传？'
-    );
-
-    if (!confirmed) {
-      settingsSyncStatus.value = '状态: 已取消';
-      return;
-    }
-
     const client = new WebDAVClient(config.webdav);
 
     let remotePath = config.webdav.remotePath || '/WeiboDR/settings.json';
@@ -393,7 +395,7 @@ async function uploadSettingsCloud() {
     const jsonContent = JSON.stringify(config, null, 2);
     await client.putFile(remotePath, jsonContent);
 
-    settingsSyncStatus.value = '状态: 已同步';
+    settingsSyncStatus.value = `状态: 已同步 ${getCurrentTimeString()}`;
     toast.success('配置已上传到云端');
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
@@ -457,7 +459,7 @@ async function downloadSettingsCloud() {
     await configStore.set('config', importedConfig);
     await configStore.save();
 
-    settingsSyncStatus.value = '状态: 已同步';
+    settingsSyncStatus.value = `状态: 已同步 ${getCurrentTimeString()}`;
     toast.success('配置已从云端恢复');
 
     setTimeout(() => {
@@ -623,11 +625,197 @@ async function uploadHistoryCloud() {
     const jsonContent = JSON.stringify(items, null, 2);
     await client.putFile(remotePath, jsonContent);
 
-    historySyncStatus.value = `状态: 已同步 (${items.length} 条)`;
+    historySyncStatus.value = `状态: 已同步 (${items.length} 条) ${getCurrentTimeString()}`;
     toast.success(`已上传 ${items.length} 条记录到云端`);
   } catch (error) {
     const errorMsg = error instanceof Error ? error.message : String(error);
     console.error('[备份] 上传历史记录失败:', error);
+    historySyncStatus.value = '状态: 同步失败';
+    toast.error('上传失败', errorMsg);
+  } finally {
+    uploadHistoryLoading.value = false;
+  }
+}
+
+/**
+ * 智能合并上传历史记录
+ * 流程：下载云端 -> 与本地合并 -> 上传合并结果
+ */
+async function uploadHistoryMerge() {
+  uploadHistoryMenuVisible.value = false;
+
+  try {
+    uploadHistoryLoading.value = true;
+    historySyncStatus.value = '状态: 合并中...';
+
+    const config = await configStore.get<UserConfig>('config');
+    if (!config || !config.webdav) {
+      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
+    }
+
+    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
+      throw new Error('WebDAV 配置不完整，请检查设置');
+    }
+
+    const localItems = await historyStore.get<HistoryItem[]>('uploads') || [];
+    if (localItems.length === 0) {
+      toast.warn('没有可上传的历史记录');
+      historySyncStatus.value = '状态: 无记录';
+      return;
+    }
+
+    const client = new WebDAVClient(config.webdav);
+
+    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
+    if (remotePath.endsWith('/')) {
+      remotePath += 'history.json';
+    } else if (!remotePath.toLowerCase().endsWith('.json')) {
+      remotePath += '/history.json';
+    }
+
+    // 1. 尝试下载云端数据
+    let cloudItems: HistoryItem[] = [];
+    try {
+      const content = await client.getFile(remotePath);
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          cloudItems = parsed;
+        }
+      }
+    } catch (e) {
+      // 云端文件不存在或解析失败，使用空数组
+      console.log('[备份] 云端文件不存在或无法解析，将进行全量上传');
+    }
+
+    // 2. 合并本地和云端数据
+    const itemMap = new Map<string, HistoryItem>();
+
+    // 先添加云端数据
+    cloudItems.forEach(item => {
+      if (item.id) {
+        itemMap.set(item.id, item);
+      }
+    });
+
+    // 再用本地数据覆盖（本地优先，基于时间戳）
+    localItems.forEach(item => {
+      if (item.id) {
+        const existing = itemMap.get(item.id);
+        // 如果本地记录更新或云端不存在，使用本地记录
+        if (!existing || (item.timestamp && item.timestamp > (existing.timestamp || 0))) {
+          itemMap.set(item.id, item);
+        }
+      } else {
+        // 没有 ID 的记录，生成一个并添加
+        item.id = Date.now().toString() + Math.random().toString(36).substr(2, 9);
+        itemMap.set(item.id, item);
+      }
+    });
+
+    // 3. 排序并上传
+    const mergedItems = Array.from(itemMap.values());
+    mergedItems.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    const jsonContent = JSON.stringify(mergedItems, null, 2);
+    await client.putFile(remotePath, jsonContent);
+
+    const newCount = mergedItems.length - cloudItems.length;
+    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
+    toast.success(
+      `合并上传完成：共 ${mergedItems.length} 条记录`,
+      newCount > 0 ? `新增 ${newCount} 条到云端` : '云端数据已是最新'
+    );
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[备份] 智能合并上传失败:', error);
+    historySyncStatus.value = '状态: 同步失败';
+    toast.error('上传失败', errorMsg);
+  } finally {
+    uploadHistoryLoading.value = false;
+  }
+}
+
+/**
+ * 仅上传本地新增的历史记录
+ * 只上传云端不存在的记录，保留云端原有数据
+ */
+async function uploadHistoryIncremental() {
+  uploadHistoryMenuVisible.value = false;
+
+  try {
+    uploadHistoryLoading.value = true;
+    historySyncStatus.value = '状态: 检查增量...';
+
+    const config = await configStore.get<UserConfig>('config');
+    if (!config || !config.webdav) {
+      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
+    }
+
+    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
+      throw new Error('WebDAV 配置不完整，请检查设置');
+    }
+
+    const localItems = await historyStore.get<HistoryItem[]>('uploads') || [];
+    if (localItems.length === 0) {
+      toast.warn('没有可上传的历史记录');
+      historySyncStatus.value = '状态: 无记录';
+      return;
+    }
+
+    const client = new WebDAVClient(config.webdav);
+
+    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
+    if (remotePath.endsWith('/')) {
+      remotePath += 'history.json';
+    } else if (!remotePath.toLowerCase().endsWith('.json')) {
+      remotePath += '/history.json';
+    }
+
+    // 1. 下载云端数据获取已存在的 ID
+    let cloudItems: HistoryItem[] = [];
+    const cloudIdSet = new Set<string>();
+
+    try {
+      const content = await client.getFile(remotePath);
+      if (content) {
+        const parsed = JSON.parse(content);
+        if (Array.isArray(parsed)) {
+          cloudItems = parsed;
+          cloudItems.forEach(item => {
+            if (item.id) cloudIdSet.add(item.id);
+          });
+        }
+      }
+    } catch (e) {
+      // 云端文件不存在，视为空
+      console.log('[备份] 云端文件不存在，将进行全量上传');
+    }
+
+    // 2. 找出本地有但云端没有的记录
+    const newItems = localItems.filter(item => item.id && !cloudIdSet.has(item.id));
+
+    if (newItems.length === 0) {
+      historySyncStatus.value = `状态: 已同步 (${cloudItems.length} 条) ${getCurrentTimeString()}`;
+      toast.info('无需上传', '本地没有新增的记录');
+      return;
+    }
+
+    // 3. 合并云端数据和新增数据
+    const mergedItems = [...cloudItems, ...newItems];
+    mergedItems.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+    const jsonContent = JSON.stringify(mergedItems, null, 2);
+    await client.putFile(remotePath, jsonContent);
+
+    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
+    toast.success(
+      `增量上传完成`,
+      `新增 ${newItems.length} 条记录到云端，共 ${mergedItems.length} 条`
+    );
+  } catch (error) {
+    const errorMsg = error instanceof Error ? error.message : String(error);
+    console.error('[备份] 增量上传失败:', error);
     historySyncStatus.value = '状态: 同步失败';
     toast.error('上传失败', errorMsg);
   } finally {
@@ -705,7 +893,7 @@ async function downloadHistoryCloud() {
     invalidateCache();
 
     const addedCount = mergedItems.length - currentItems.length;
-    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条)`;
+    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
     toast.success(
       `下载完成：共 ${mergedItems.length} 条记录`,
       `新增 ${addedCount} 条，合并 ${cloudItems.length - addedCount} 条`
@@ -727,6 +915,15 @@ async function downloadHistoryCloud() {
   }
 }
 
+// 点击外部关闭上传菜单
+const handleClickOutside = (event: MouseEvent) => {
+  if (uploadHistoryMenuVisible.value && uploadHistoryDropdownRef.value) {
+    if (!uploadHistoryDropdownRef.value.contains(event.target as Node)) {
+      uploadHistoryMenuVisible.value = false;
+    }
+  }
+};
+
 // 监听 Cookie 更新
 onMounted(async () => {
   await loadSettings();
@@ -737,6 +934,9 @@ onMounted(async () => {
     else if (['nowcoder', 'zhihu', 'nami'].includes(sid)) (formData.value as any)[sid].cookie = cookie;
     await saveSettings(true); // 静默保存，不显示"保存成功"提示
   });
+
+  // 添加点击外部关闭菜单监听
+  document.addEventListener('click', handleClickOutside);
 });
 
 // 组件卸载时清理监听器
@@ -745,6 +945,9 @@ onUnmounted(() => {
     cookieUnlisten.value();
     cookieUnlisten.value = null;
   }
+
+  // 移除点击外部关闭菜单监听
+  document.removeEventListener('click', handleClickOutside);
 });
 </script>
 
@@ -1100,8 +1303,6 @@ onUnmounted(() => {
           </div>
         </div>
 
-        <Divider />
-
         <!-- 历史记录 -->
         <div class="sub-section">
           <h3>历史记录</h3>
@@ -1132,13 +1333,34 @@ onUnmounted(() => {
           <div class="backup-group">
             <span class="backup-group-label">WebDAV 云端</span>
             <div class="backup-actions">
-              <Button
-                @click="uploadHistoryCloud"
-                :loading="uploadHistoryLoading"
-                icon="pi pi-cloud-upload"
-                label="上传"
-                size="small"
-              />
+              <!-- 历史记录上传下拉菜单 -->
+              <div class="upload-dropdown-wrapper" ref="uploadHistoryDropdownRef">
+                <Button
+                  @click.stop="toggleUploadHistoryMenu"
+                  :loading="uploadHistoryLoading"
+                  icon="pi pi-cloud-upload"
+                  label="上传"
+                  size="small"
+                />
+                <Transition name="dropdown">
+                  <div v-if="uploadHistoryMenuVisible" class="upload-menu">
+                    <button class="upload-menu-item" @click="uploadHistoryMerge">
+                      <i class="pi pi-sync"></i>
+                      <div class="menu-item-content">
+                        <span class="menu-item-title">智能合并上传</span>
+                        <span class="menu-item-desc">下载云端数据，与本地合并后上传</span>
+                      </div>
+                    </button>
+                    <button class="upload-menu-item" @click="uploadHistoryIncremental">
+                      <i class="pi pi-plus"></i>
+                      <div class="menu-item-content">
+                        <span class="menu-item-title">仅上传本地新增</span>
+                        <span class="menu-item-desc">只上传云端没有的记录</span>
+                      </div>
+                    </button>
+                  </div>
+                </Transition>
+              </div>
               <Button
                 @click="downloadHistoryCloud"
                 :loading="downloadHistoryLoading"
@@ -1598,6 +1820,82 @@ onUnmounted(() => {
   margin-left: auto;
   font-size: 12px;
   color: var(--text-muted);
+}
+
+/* ========== 历史记录上传下拉菜单 ========== */
+.upload-dropdown-wrapper {
+  position: relative;
+  display: inline-block;
+}
+
+.upload-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 260px;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  overflow: hidden;
+}
+
+.upload-menu-item {
+  width: 100%;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 12px 16px;
+  border: none;
+  background: transparent;
+  color: var(--text-primary);
+  cursor: pointer;
+  text-align: left;
+  transition: background-color 0.15s;
+}
+
+.upload-menu-item:hover {
+  background: var(--hover-overlay-subtle);
+}
+
+.upload-menu-item:first-child {
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.upload-menu-item i {
+  font-size: 16px;
+  color: var(--primary);
+  margin-top: 2px;
+  flex-shrink: 0;
+}
+
+.menu-item-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.menu-item-title {
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.menu-item-desc {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 下拉菜单过渡动画 */
+.dropdown-enter-active,
+.dropdown-leave-active {
+  transition: all 0.2s ease;
+}
+
+.dropdown-enter-from,
+.dropdown-leave-to {
+  opacity: 0;
+  transform: translateY(-8px);
 }
 
 /* Password 组件眼睛图标放入框内 */
