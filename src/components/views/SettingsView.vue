@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/tauri';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { save, open } from '@tauri-apps/api/dialog';
@@ -20,7 +20,7 @@ import { useConfigManager } from '../../composables/useConfig';
 import { useHistoryManager, invalidateCache } from '../../composables/useHistory';
 import { Store } from '../../store';
 import { WebDAVClient } from '../../utils/webdav';
-import type { ThemeMode, UserConfig, ServiceType, HistoryItem } from '../../config/types';
+import type { ThemeMode, UserConfig, ServiceType, HistoryItem, SyncStatus, WebDAVProfile } from '../../config/types';
 import { DEFAULT_CONFIG, DEFAULT_PREFIXES, PRIVATE_SERVICES, PUBLIC_SERVICES, migrateConfig } from '../../config/types';
 
 const toast = useToast();
@@ -37,7 +37,7 @@ const handleClearHistory = async () => {
 const cookieUnlisten = ref<UnlistenFn | null>(null);
 
 // --- 导航状态管理 ---
-type SettingsTab = 'general' | 'r2' | 'builtin' | 'cookie_auth' | 'links' | 'webdav' | 'backup';
+type SettingsTab = 'general' | 'r2' | 'builtin' | 'cookie_auth' | 'links' | 'backup';
 const activeTab = ref<SettingsTab>('general');
 
 const tabs = [
@@ -52,7 +52,6 @@ const tabs = [
   { type: 'separator' },
   { type: 'label', label: '高级' },
   { id: 'links', label: '链接前缀', icon: 'pi pi-link' },
-  { id: 'webdav', label: 'WebDAV 配置', icon: 'pi pi-sync' },
   { id: 'backup', label: '备份与同步', icon: 'pi pi-database' },
 ];
 
@@ -77,7 +76,7 @@ const formData = ref({
   nowcoder: { cookie: '' },
   zhihu: { cookie: '' },
   nami: { cookie: '' },
-  webdav: { url: '', username: '', password: '', remotePath: '/WeiboDR/history.json' },
+  webdav: { profiles: [] as Array<{ id: string; name: string; url: string; username: string; password: string; remotePath: string }>, activeId: null as string | null },
   linkPrefixEnabled: true,
   selectedPrefixIndex: 0,
   linkPrefixList: [...DEFAULT_PREFIXES]
@@ -161,7 +160,11 @@ const loadSettings = async () => {
     formData.value.nowcoder.cookie = cfg.services?.nowcoder?.cookie || '';
     formData.value.zhihu.cookie = cfg.services?.zhihu?.cookie || '';
     formData.value.nami.cookie = cfg.services?.nami?.cookie || '';
-    formData.value.webdav = { ...formData.value.webdav, ...cfg.webdav };
+    // 加载 WebDAV 配置（新结构）
+    if (cfg.webdav) {
+      formData.value.webdav.profiles = cfg.webdav.profiles || [];
+      formData.value.webdav.activeId = cfg.webdav.activeId || null;
+    }
     if (cfg.availableServices) availableServices.value = [...cfg.availableServices];
     if (cfg.linkPrefixConfig) {
       formData.value.linkPrefixEnabled = cfg.linkPrefixConfig.enabled;
@@ -242,17 +245,160 @@ const resetToDefaultPrefixes = () => {
 // 存储实例
 const configStore = new Store('.settings.dat');
 const historyStore = new Store('.history.dat');
+const syncStatusStore = new Store('.sync-status.dat');
 
-// 同步状态
-const settingsSyncStatus = ref('状态: 未同步');
-const historySyncStatus = ref('状态: 未同步');
+// 同步状态（持久化）
+const syncStatus = ref<SyncStatus>({
+  configLastSync: null,
+  configSyncResult: null,
+  configSyncError: undefined,
+  historyLastSync: null,
+  historySyncResult: null,
+  historySyncError: undefined,
+});
 
-/**
- * 获取当前时间的 HH:mm 格式字符串
- */
-function getCurrentTimeString(): string {
+// 加载同步状态
+async function loadSyncStatus() {
+  try {
+    const saved = await syncStatusStore.get<SyncStatus>('status');
+    if (saved) {
+      syncStatus.value = saved;
+    }
+  } catch (e) {
+    console.error('[备份] 加载同步状态失败:', e);
+  }
+}
+
+// 保存同步状态
+async function saveSyncStatus() {
+  try {
+    await syncStatusStore.set('status', syncStatus.value);
+    await syncStatusStore.save();
+  } catch (e) {
+    console.error('[备份] 保存同步状态失败:', e);
+  }
+}
+
+// 获取当前时间的完整格式字符串
+function getFullTimestamp(): string {
   const now = new Date();
-  return `${now.getHours().toString().padStart(2, '0')}:${now.getMinutes().toString().padStart(2, '0')}`;
+  return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')} ${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')}`;
+}
+
+// 更新配置同步状态
+function updateConfigSyncStatus(result: 'success' | 'failed', error?: string) {
+  syncStatus.value.configLastSync = getFullTimestamp();
+  syncStatus.value.configSyncResult = result;
+  syncStatus.value.configSyncError = error;
+  saveSyncStatus();
+}
+
+// 更新历史记录同步状态
+function updateHistorySyncStatus(result: 'success' | 'failed', error?: string) {
+  syncStatus.value.historyLastSync = getFullTimestamp();
+  syncStatus.value.historySyncResult = result;
+  syncStatus.value.historySyncError = error;
+  saveSyncStatus();
+}
+
+// 提取错误码（用于显示具体错误信息）
+function extractErrorCode(error: unknown): string {
+  const msg = error instanceof Error ? error.message : String(error);
+
+  // 尝试提取 HTTP 状态码
+  const httpMatch = msg.match(/(\d{3})/);
+  if (httpMatch) {
+    const code = httpMatch[1];
+    const statusTexts: Record<string, string> = {
+      '401': 'HTTP 401: 认证失败',
+      '403': 'HTTP 403: 访问被拒绝',
+      '404': 'HTTP 404: 文件不存在',
+      '500': 'HTTP 500: 服务器错误',
+      '507': 'HTTP 507: 存储空间不足',
+    };
+    return statusTexts[code] || `HTTP ${code}`;
+  }
+
+  // 网络错误
+  if (msg.includes('ECONNREFUSED')) return 'ECONNREFUSED: 连接被拒绝';
+  if (msg.includes('ETIMEDOUT')) return 'ETIMEDOUT: 连接超时';
+  if (msg.includes('ENOTFOUND')) return 'ENOTFOUND: 域名解析失败';
+  if (msg.includes('fetch')) return '网络错误: 无法连接服务器';
+
+  // 返回原始消息（截断）
+  return msg.length > 50 ? msg.substring(0, 50) + '...' : msg;
+}
+
+// ========== 多 WebDAV 配置管理 ==========
+// 当前选中的 WebDAV 配置
+const activeWebDAVProfile = computed(() => {
+  const config = formData.value.webdav;
+  if (!config.profiles.length || !config.activeId) return null;
+  return config.profiles.find(p => p.id === config.activeId) || null;
+});
+
+// 生成唯一 ID
+function generateId(): string {
+  return Date.now().toString(36) + Math.random().toString(36).substr(2, 9);
+}
+
+// 添加新 WebDAV 配置
+function addWebDAVProfile() {
+  const newProfile: WebDAVProfile = {
+    id: generateId(),
+    name: `配置 ${formData.value.webdav.profiles.length + 1}`,
+    url: '',
+    username: '',
+    password: '',
+    remotePath: '/WeiboDR/',
+  };
+  formData.value.webdav.profiles.push(newProfile);
+  formData.value.webdav.activeId = newProfile.id;
+  saveSettings();
+}
+
+// 删除 WebDAV 配置
+function deleteWebDAVProfile(id: string) {
+  const index = formData.value.webdav.profiles.findIndex(p => p.id === id);
+  if (index > -1) {
+    formData.value.webdav.profiles.splice(index, 1);
+    // 如果删除的是当前选中的，切换到第一个或置空
+    if (formData.value.webdav.activeId === id) {
+      formData.value.webdav.activeId = formData.value.webdav.profiles[0]?.id || null;
+    }
+    saveSettings();
+    toast.success('已删除 WebDAV 配置');
+  }
+}
+
+// 切换 WebDAV 配置
+function switchWebDAVProfile(id: string) {
+  formData.value.webdav.activeId = id;
+  saveSettings();
+}
+
+// 测试当前选中的 WebDAV 连接
+async function testActiveWebDAV() {
+  const profile = activeWebDAVProfile.value;
+  if (!profile) {
+    toast.warn('请先选择一个 WebDAV 配置');
+    return;
+  }
+
+  testingConnections.value.webdav = true;
+  try {
+    const res = await configManager.testWebDAVConnection({
+      url: profile.url,
+      username: profile.username,
+      password: profile.password,
+      remotePath: profile.remotePath,
+    } as any);
+    res.success ? toast.success('连接成功', res.message) : toast.error('连接失败', res.message);
+  } catch (e) {
+    toast.error('测试失败', String(e));
+  } finally {
+    testingConnections.value.webdav = false;
+  }
 }
 
 // 按钮加载状态
@@ -276,6 +422,10 @@ const downloadSettingsDropdownRef = ref<HTMLElement | null>(null);
 // 历史记录下载菜单状态
 const downloadHistoryMenuVisible = ref(false);
 const downloadHistoryDropdownRef = ref<HTMLElement | null>(null);
+
+// 区域展开状态（默认关闭）
+const configSectionExpanded = ref(false);
+const historySectionExpanded = ref(false);
 
 // 切换历史记录上传菜单
 const toggleUploadHistoryMenu = () => {
@@ -395,43 +545,61 @@ async function importSettingsLocal() {
 }
 
 /**
+ * 获取当前 WebDAV 客户端和远程路径
+ * @param fileType 文件类型：'settings' 或 'history'
+ */
+function getWebDAVClientAndPath(fileType: 'settings' | 'history'): { client: WebDAVClient; remotePath: string } | null {
+  const profile = activeWebDAVProfile.value;
+  if (!profile || !profile.url || !profile.username || !profile.password) {
+    toast.warn('请先配置 WebDAV 连接');
+    return null;
+  }
+
+  const client = new WebDAVClient({
+    url: profile.url,
+    username: profile.username,
+    password: profile.password,
+    remotePath: profile.remotePath,
+  } as any);
+
+  let remotePath = profile.remotePath || '/WeiboDR/';
+  if (remotePath.endsWith('/')) {
+    remotePath += `${fileType}.json`;
+  } else if (!remotePath.toLowerCase().endsWith('.json')) {
+    remotePath += `/${fileType}.json`;
+  } else {
+    // 如果路径以 .json 结尾，替换文件名
+    remotePath = remotePath.replace(/[^/]+\.json$/i, `${fileType}.json`);
+  }
+
+  return { client, remotePath };
+}
+
+/**
  * 上传配置到云端 (WebDAV)
  */
 async function uploadSettingsCloud() {
+  const webdav = getWebDAVClientAndPath('settings');
+  if (!webdav) return;
+
   try {
     uploadSettingsLoading.value = true;
-    settingsSyncStatus.value = '状态: 上传中...';
 
     const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/settings.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'settings.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/settings.json';
-    } else if (remotePath.toLowerCase().endsWith('history.json')) {
-      remotePath = remotePath.replace(/history\.json$/i, 'settings.json');
+    if (!config) {
+      throw new Error('无法读取本地配置');
     }
 
     const jsonContent = JSON.stringify(config, null, 2);
-    await client.putFile(remotePath, jsonContent);
+    await webdav.client.putFile(webdav.remotePath, jsonContent);
 
-    settingsSyncStatus.value = `状态: 已同步 ${getCurrentTimeString()}`;
+    updateConfigSyncStatus('success');
     toast.success('配置已上传到云端');
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 上传配置失败:', error);
-    settingsSyncStatus.value = '状态: 同步失败';
-    toast.error('上传失败', errorMsg);
+    updateConfigSyncStatus('failed', errorCode);
+    toast.error('上传失败', errorCode);
   } finally {
     uploadSettingsLoading.value = false;
   }
@@ -444,31 +612,21 @@ async function uploadSettingsCloud() {
 async function downloadSettingsOverwrite() {
   downloadSettingsMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('settings');
+  if (!webdav) return;
+
+  // 二次确认
+  const confirmed = confirm(
+    '⚠️ 警告：此操作将完全覆盖本地配置！\n\n' +
+    '本地的所有配置（包括 WebDAV 连接信息）将被云端数据替换。\n' +
+    '是否继续？'
+  );
+  if (!confirmed) return;
+
   try {
     downloadSettingsLoading.value = true;
-    settingsSyncStatus.value = '状态: 下载中...';
 
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/settings.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'settings.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/settings.json';
-    } else if (remotePath.toLowerCase().endsWith('history.json')) {
-      remotePath = remotePath.replace(/history\.json$/i, 'settings.json');
-    }
-
-    const content = await client.getFile(remotePath);
+    const content = await webdav.client.getFile(webdav.remotePath);
 
     if (!content) {
       throw new Error('云端配置文件不存在');
@@ -480,24 +638,17 @@ async function downloadSettingsOverwrite() {
     await configStore.set('config', importedConfig);
     await configStore.save();
 
-    settingsSyncStatus.value = `状态: 已同步 ${getCurrentTimeString()}`;
+    updateConfigSyncStatus('success');
     toast.success('配置已从云端恢复（覆盖本地）');
 
     setTimeout(() => {
       toast.info('请刷新页面以使配置生效');
     }, 1000);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 下载配置失败:', error);
-    settingsSyncStatus.value = '状态: 同步失败';
-
-    if (errorMsg.includes('不存在')) {
-      toast.error('云端配置文件不存在');
-    } else if (errorMsg.includes('JSON')) {
-      toast.error('下载失败', 'JSON 格式错误');
-    } else {
-      toast.error('下载失败', errorMsg);
-    }
+    updateConfigSyncStatus('failed', errorCode);
+    toast.error('下载失败', errorCode);
   } finally {
     downloadSettingsLoading.value = false;
   }
@@ -510,31 +661,14 @@ async function downloadSettingsOverwrite() {
 async function downloadSettingsMerge() {
   downloadSettingsMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('settings');
+  if (!webdav) return;
+
   try {
     downloadSettingsLoading.value = true;
-    settingsSyncStatus.value = '状态: 合并中...';
 
     const currentConfig = await configStore.get<UserConfig>('config');
-    if (!currentConfig || !currentConfig.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!currentConfig.webdav.url || !currentConfig.webdav.username || !currentConfig.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
-
-    const client = new WebDAVClient(currentConfig.webdav);
-
-    let remotePath = currentConfig.webdav.remotePath || '/WeiboDR/settings.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'settings.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/settings.json';
-    } else if (remotePath.toLowerCase().endsWith('history.json')) {
-      remotePath = remotePath.replace(/history\.json$/i, 'settings.json');
-    }
-
-    const content = await client.getFile(remotePath);
+    const content = await webdav.client.getFile(webdav.remotePath);
 
     if (!content) {
       throw new Error('云端配置文件不存在');
@@ -546,30 +680,23 @@ async function downloadSettingsMerge() {
     // 合并配置：保留本地 WebDAV 配置，其他用云端的
     const mergedConfig: UserConfig = {
       ...importedConfig,
-      webdav: currentConfig.webdav  // 保留本地 WebDAV 配置
+      webdav: currentConfig?.webdav || importedConfig.webdav  // 保留本地 WebDAV 配置
     };
 
     await configStore.set('config', mergedConfig);
     await configStore.save();
 
-    settingsSyncStatus.value = `状态: 已同步 ${getCurrentTimeString()}`;
+    updateConfigSyncStatus('success');
     toast.success('配置已从云端恢复（保留本地 WebDAV）');
 
     setTimeout(() => {
       toast.info('请刷新页面以使配置生效');
     }, 1000);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 合并下载配置失败:', error);
-    settingsSyncStatus.value = '状态: 同步失败';
-
-    if (errorMsg.includes('不存在')) {
-      toast.error('云端配置文件不存在');
-    } else if (errorMsg.includes('JSON')) {
-      toast.error('下载失败', 'JSON 格式错误');
-    } else {
-      toast.error('下载失败', errorMsg);
-    }
+    updateConfigSyncStatus('failed', errorCode);
+    toast.error('下载失败', errorCode);
   } finally {
     downloadSettingsLoading.value = false;
   }
@@ -683,48 +810,42 @@ async function importHistoryLocal() {
 }
 
 /**
- * 上传历史记录到云端 (WebDAV)
+ * 上传历史记录到云端 - 强制覆盖（Force Push）
+ * 完全使用本地数据替换云端数据
  */
-async function uploadHistoryCloud() {
+async function uploadHistoryForce() {
+  uploadHistoryMenuVisible.value = false;
+
+  const webdav = getWebDAVClientAndPath('history');
+  if (!webdav) return;
+
+  // 二次确认
+  const confirmed = confirm(
+    '⚠️ 警告：此操作将完全覆盖云端数据！\n\n' +
+    '云端现有的所有记录将被删除，替换为本地数据。\n' +
+    '此操作不可撤销，是否继续？'
+  );
+  if (!confirmed) return;
+
   try {
     uploadHistoryLoading.value = true;
-    historySyncStatus.value = '状态: 上传中...';
-
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
 
     const items = await historyStore.get<HistoryItem[]>('uploads') || [];
     if (items.length === 0) {
       toast.warn('没有可上传的历史记录');
-      historySyncStatus.value = '状态: 无记录';
       return;
     }
 
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'history.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/history.json';
-    }
-
     const jsonContent = JSON.stringify(items, null, 2);
-    await client.putFile(remotePath, jsonContent);
+    await webdav.client.putFile(webdav.remotePath, jsonContent);
 
-    historySyncStatus.value = `状态: 已同步 (${items.length} 条) ${getCurrentTimeString()}`;
-    toast.success(`已上传 ${items.length} 条记录到云端`);
+    updateHistorySyncStatus('success');
+    toast.success(`已强制覆盖云端记录（${items.length} 条）`);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
-    console.error('[备份] 上传历史记录失败:', error);
-    historySyncStatus.value = '状态: 同步失败';
-    toast.error('上传失败', errorMsg);
+    const errorCode = extractErrorCode(error);
+    console.error('[备份] 强制上传历史记录失败:', error);
+    updateHistorySyncStatus('failed', errorCode);
+    toast.error('上传失败', errorCode);
   } finally {
     uploadHistoryLoading.value = false;
   }
@@ -737,39 +858,22 @@ async function uploadHistoryCloud() {
 async function uploadHistoryMerge() {
   uploadHistoryMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('history');
+  if (!webdav) return;
+
   try {
     uploadHistoryLoading.value = true;
-    historySyncStatus.value = '状态: 合并中...';
-
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
 
     const localItems = await historyStore.get<HistoryItem[]>('uploads') || [];
     if (localItems.length === 0) {
       toast.warn('没有可上传的历史记录');
-      historySyncStatus.value = '状态: 无记录';
       return;
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'history.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/history.json';
     }
 
     // 1. 尝试下载云端数据
     let cloudItems: HistoryItem[] = [];
     try {
-      const content = await client.getFile(remotePath);
+      const content = await webdav.client.getFile(webdav.remotePath);
       if (content) {
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed)) {
@@ -811,19 +915,19 @@ async function uploadHistoryMerge() {
     mergedItems.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     const jsonContent = JSON.stringify(mergedItems, null, 2);
-    await client.putFile(remotePath, jsonContent);
+    await webdav.client.putFile(webdav.remotePath, jsonContent);
 
     const newCount = mergedItems.length - cloudItems.length;
-    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
+    updateHistorySyncStatus('success');
     toast.success(
       `合并上传完成：共 ${mergedItems.length} 条记录`,
       newCount > 0 ? `新增 ${newCount} 条到云端` : '云端数据已是最新'
     );
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 智能合并上传失败:', error);
-    historySyncStatus.value = '状态: 同步失败';
-    toast.error('上传失败', errorMsg);
+    updateHistorySyncStatus('failed', errorCode);
+    toast.error('上传失败', errorCode);
   } finally {
     uploadHistoryLoading.value = false;
   }
@@ -836,33 +940,16 @@ async function uploadHistoryMerge() {
 async function uploadHistoryIncremental() {
   uploadHistoryMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('history');
+  if (!webdav) return;
+
   try {
     uploadHistoryLoading.value = true;
-    historySyncStatus.value = '状态: 检查增量...';
-
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
 
     const localItems = await historyStore.get<HistoryItem[]>('uploads') || [];
     if (localItems.length === 0) {
       toast.warn('没有可上传的历史记录');
-      historySyncStatus.value = '状态: 无记录';
       return;
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'history.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/history.json';
     }
 
     // 1. 下载云端数据获取已存在的 ID
@@ -870,7 +957,7 @@ async function uploadHistoryIncremental() {
     const cloudIdSet = new Set<string>();
 
     try {
-      const content = await client.getFile(remotePath);
+      const content = await webdav.client.getFile(webdav.remotePath);
       if (content) {
         const parsed = JSON.parse(content);
         if (Array.isArray(parsed)) {
@@ -889,7 +976,7 @@ async function uploadHistoryIncremental() {
     const newItems = localItems.filter(item => item.id && !cloudIdSet.has(item.id));
 
     if (newItems.length === 0) {
-      historySyncStatus.value = `状态: 已同步 (${cloudItems.length} 条) ${getCurrentTimeString()}`;
+      updateHistorySyncStatus('success');
       toast.info('无需上传', '本地没有新增的记录');
       return;
     }
@@ -899,18 +986,18 @@ async function uploadHistoryIncremental() {
     mergedItems.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
 
     const jsonContent = JSON.stringify(mergedItems, null, 2);
-    await client.putFile(remotePath, jsonContent);
+    await webdav.client.putFile(webdav.remotePath, jsonContent);
 
-    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
+    updateHistorySyncStatus('success');
     toast.success(
       `增量上传完成`,
       `新增 ${newItems.length} 条记录到云端，共 ${mergedItems.length} 条`
     );
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 增量上传失败:', error);
-    historySyncStatus.value = '状态: 同步失败';
-    toast.error('上传失败', errorMsg);
+    updateHistorySyncStatus('failed', errorCode);
+    toast.error('上传失败', errorCode);
   } finally {
     uploadHistoryLoading.value = false;
   }
@@ -923,29 +1010,21 @@ async function uploadHistoryIncremental() {
 async function downloadHistoryOverwrite() {
   downloadHistoryMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('history');
+  if (!webdav) return;
+
+  // 二次确认
+  const confirmed = confirm(
+    '⚠️ 警告：此操作将完全覆盖本地数据！\n\n' +
+    '本地现有的所有记录将被删除，替换为云端数据。\n' +
+    '是否继续？'
+  );
+  if (!confirmed) return;
+
   try {
     downloadHistoryLoading.value = true;
-    historySyncStatus.value = '状态: 下载中...';
 
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'history.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/history.json';
-    }
-
-    const content = await client.getFile(remotePath);
+    const content = await webdav.client.getFile(webdav.remotePath);
 
     if (!content) {
       throw new Error('云端历史记录文件不存在');
@@ -964,20 +1043,13 @@ async function downloadHistoryOverwrite() {
     // 使缓存失效，让其他视图在下次激活时重新加载
     invalidateCache();
 
-    historySyncStatus.value = `状态: 已同步 (${cloudItems.length} 条) ${getCurrentTimeString()}`;
+    updateHistorySyncStatus('success');
     toast.success(`下载完成：共 ${cloudItems.length} 条记录（覆盖本地）`);
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 下载历史记录失败:', error);
-    historySyncStatus.value = '状态: 同步失败';
-
-    if (errorMsg.includes('不存在')) {
-      toast.error('云端历史记录文件不存在');
-    } else if (errorMsg.includes('JSON')) {
-      toast.error('下载失败', 'JSON 格式错误');
-    } else {
-      toast.error('下载失败', errorMsg);
-    }
+    updateHistorySyncStatus('failed', errorCode);
+    toast.error('下载失败', errorCode);
   } finally {
     downloadHistoryLoading.value = false;
   }
@@ -990,29 +1062,13 @@ async function downloadHistoryOverwrite() {
 async function downloadHistoryMerge() {
   downloadHistoryMenuVisible.value = false;
 
+  const webdav = getWebDAVClientAndPath('history');
+  if (!webdav) return;
+
   try {
     downloadHistoryLoading.value = true;
-    historySyncStatus.value = '状态: 合并中...';
 
-    const config = await configStore.get<UserConfig>('config');
-    if (!config || !config.webdav) {
-      throw new Error('WebDAV 配置不完整，请先在设置中配置 WebDAV');
-    }
-
-    if (!config.webdav.url || !config.webdav.username || !config.webdav.password) {
-      throw new Error('WebDAV 配置不完整，请检查设置');
-    }
-
-    const client = new WebDAVClient(config.webdav);
-
-    let remotePath = config.webdav.remotePath || '/WeiboDR/history.json';
-    if (remotePath.endsWith('/')) {
-      remotePath += 'history.json';
-    } else if (!remotePath.toLowerCase().endsWith('.json')) {
-      remotePath += '/history.json';
-    }
-
-    const content = await client.getFile(remotePath);
+    const content = await webdav.client.getFile(webdav.remotePath);
 
     if (!content) {
       throw new Error('云端历史记录文件不存在');
@@ -1056,23 +1112,16 @@ async function downloadHistoryMerge() {
     invalidateCache();
 
     const addedCount = mergedItems.length - currentItems.length;
-    historySyncStatus.value = `状态: 已同步 (${mergedItems.length} 条) ${getCurrentTimeString()}`;
+    updateHistorySyncStatus('success');
     toast.success(
       `下载完成：共 ${mergedItems.length} 条记录`,
       `新增 ${addedCount} 条，合并 ${cloudItems.length - addedCount} 条`
     );
   } catch (error) {
-    const errorMsg = error instanceof Error ? error.message : String(error);
+    const errorCode = extractErrorCode(error);
     console.error('[备份] 下载历史记录失败:', error);
-    historySyncStatus.value = '状态: 同步失败';
-
-    if (errorMsg.includes('不存在')) {
-      toast.error('云端历史记录文件不存在');
-    } else if (errorMsg.includes('JSON')) {
-      toast.error('下载失败', 'JSON 格式错误');
-    } else {
-      toast.error('下载失败', errorMsg);
-    }
+    updateHistorySyncStatus('failed', errorCode);
+    toast.error('下载失败', errorCode);
   } finally {
     downloadHistoryLoading.value = false;
   }
@@ -1107,6 +1156,7 @@ const handleClickOutside = (event: MouseEvent) => {
 // 监听 Cookie 更新
 onMounted(async () => {
   await loadSettings();
+  await loadSyncStatus();  // 加载同步状态
   // 带冷却的可用性检测（5分钟内不重复检测）
   await checkAllAvailabilityWithCooldown();
   cookieUnlisten.value = await configManager.setupCookieListener(async (sid, cookie) => {
@@ -1412,201 +1462,283 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeTab === 'webdav'" class="settings-section">
-        <div class="section-header">
-          <h2>WebDAV 配置</h2>
-          <p class="section-desc">配置 WebDAV 服务器连接，用于云端备份与同步。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item span-full">
-                <label>服务器 URL</label>
-                <InputText v-model="formData.webdav.url" @blur="saveSettings" placeholder="https://dav.example.com/" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>用户名</label>
-                <InputText v-model="formData.webdav.username" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>密码 / 应用授权码</label>
-                <Password v-model="formData.webdav.password" @blur="saveSettings" :feedback="false" toggleMask class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>远程路径</label>
-                <InputText v-model="formData.webdav.remotePath" @blur="saveSettings" class="w-full" />
-                <small class="helper-text">例如: /WeiboDR/history.json</small>
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试 WebDAV 连接" icon="pi pi-check" @click="actions.webdav" :loading="testingConnections.webdav" severity="secondary" outlined size="small" />
-        </div>
-      </div>
-
       <div v-if="activeTab === 'backup'" class="settings-section">
         <div class="section-header">
           <h2>备份与同步</h2>
-          <p class="section-desc">导出/导入配置和历史记录，支持本地文件和 WebDAV 云端同步。</p>
+          <p class="section-desc">基于 WebDAV 的配置管理与数据流转服务，支持多端环境同步。</p>
         </div>
 
-        <!-- 配置文件 -->
-        <div class="sub-section">
-          <h3>配置文件</h3>
-          <p class="helper-text">包含 Cookie、存储桶密钥、WebDAV 凭证等敏感信息。</p>
-
-          <div class="backup-group">
-            <span class="backup-group-label">本地备份</span>
-            <div class="backup-actions">
-              <Button
-                @click="exportSettingsLocal"
-                :loading="exportSettingsLoading"
-                icon="pi pi-upload"
-                label="导出"
-                outlined
-                size="small"
-              />
-              <Button
-                @click="importSettingsLocal"
-                :loading="importSettingsLoading"
-                icon="pi pi-download"
-                label="导入"
-                outlined
-                size="small"
-              />
+        <!-- 配置文件区域（可折叠） -->
+        <div class="sub-section collapsible">
+          <div class="section-header-collapsible" @click="configSectionExpanded = !configSectionExpanded">
+            <div class="section-title-row">
+              <h3>配置文件</h3>
+              <i :class="configSectionExpanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
             </div>
+            <p class="helper-text">包含图床密钥、cookie 及偏好设置，用于迁移配置。</p>
           </div>
 
-          <div class="backup-group">
-            <span class="backup-group-label">WebDAV 云端</span>
-            <div class="backup-actions">
-              <Button
-                @click="uploadSettingsCloud"
-                :loading="uploadSettingsLoading"
-                icon="pi pi-cloud-upload"
-                label="上传"
-                size="small"
-              />
-              <!-- 配置文件下载下拉菜单 -->
-              <div class="upload-dropdown-wrapper" ref="downloadSettingsDropdownRef">
-                <Button
-                  @click.stop="toggleDownloadSettingsMenu"
-                  :loading="downloadSettingsLoading"
-                  icon="pi pi-cloud-download"
-                  label="下载"
-                  size="small"
-                />
-                <Transition name="dropdown">
-                  <div v-if="downloadSettingsMenuVisible" class="upload-menu">
-                    <button class="upload-menu-item" @click="downloadSettingsMerge">
-                      <i class="pi pi-sync"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">合并下载</span>
-                        <span class="menu-item-desc">保留本地 WebDAV 配置，其他用云端</span>
+          <Transition name="collapse">
+            <div v-if="configSectionExpanded" class="section-content">
+              <div class="backup-group">
+                <span class="backup-group-label">本地</span>
+                <div class="backup-actions">
+                  <Button
+                    @click="exportSettingsLocal"
+                    :loading="exportSettingsLoading"
+                    icon="pi pi-upload"
+                    label="导出"
+                    outlined
+                    size="small"
+                  />
+                  <Button
+                    @click="importSettingsLocal"
+                    :loading="importSettingsLoading"
+                    icon="pi pi-download"
+                    label="导入"
+                    outlined
+                    size="small"
+                  />
+                </div>
+              </div>
+
+              <div class="backup-group">
+                <span class="backup-group-label">云端</span>
+                <div class="backup-actions">
+                  <Button
+                    @click="uploadSettingsCloud"
+                    :loading="uploadSettingsLoading"
+                    :disabled="!activeWebDAVProfile"
+                    icon="pi pi-cloud-upload"
+                    label="上传"
+                    size="small"
+                  />
+                  <!-- 配置文件下载下拉菜单 -->
+                  <div class="upload-dropdown-wrapper" ref="downloadSettingsDropdownRef">
+                    <Button
+                      @click.stop="toggleDownloadSettingsMenu"
+                      :loading="downloadSettingsLoading"
+                      :disabled="!activeWebDAVProfile"
+                      icon="pi pi-cloud-download"
+                      label="下载"
+                      size="small"
+                    />
+                    <Transition name="dropdown">
+                      <div v-if="downloadSettingsMenuVisible" class="upload-menu">
+                        <button class="upload-menu-item" @click="downloadSettingsMerge">
+                          <i class="pi pi-sync"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">保留当前 WebDAV 配置</span>
+                            <span class="menu-item-desc">其他配置采用云端 (推荐)</span>
+                          </div>
+                        </button>
+                        <button class="upload-menu-item danger" @click="downloadSettingsOverwrite">
+                          <i class="pi pi-exclamation-triangle"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">完全覆盖本地</span>
+                            <span class="menu-item-desc">丢弃所有本地配置</span>
+                          </div>
+                        </button>
                       </div>
-                    </button>
-                    <button class="upload-menu-item" @click="downloadSettingsOverwrite">
-                      <i class="pi pi-download"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">覆盖本地</span>
-                        <span class="menu-item-desc">完全使用云端配置替换本地</span>
-                      </div>
-                    </button>
+                    </Transition>
                   </div>
-                </Transition>
+                </div>
+              </div>
+              <!-- 同步状态 -->
+              <div class="sync-status-line">
+                <template v-if="syncStatus.configLastSync">
+                  <span v-if="syncStatus.configSyncResult === 'success'" class="status-success">
+                    ✓ 上次同步: {{ syncStatus.configLastSync }}
+                  </span>
+                  <span v-else class="status-error">
+                    ✗ 同步失败: {{ syncStatus.configLastSync }} ({{ syncStatus.configSyncError }})
+                  </span>
+                </template>
+                <span v-else class="status-pending">尚未同步</span>
               </div>
             </div>
-            <span class="backup-status">{{ settingsSyncStatus }}</span>
-          </div>
+          </Transition>
         </div>
 
-        <!-- 历史记录 -->
-        <div class="sub-section">
-          <h3>历史记录</h3>
-          <p class="helper-text">包含所有已上传图片的链接和元数据。</p>
+        <Divider />
 
-          <div class="backup-group">
-            <span class="backup-group-label">本地备份</span>
-            <div class="backup-actions">
-              <Button
-                @click="exportHistoryLocal"
-                :loading="exportHistoryLoading"
-                icon="pi pi-upload"
-                label="导出"
-                outlined
-                size="small"
-              />
-              <Button
-                @click="importHistoryLocal"
-                :loading="importHistoryLoading"
-                icon="pi pi-download"
-                label="导入"
-                outlined
-                size="small"
-              />
+        <!-- 上传记录区域（可折叠） -->
+        <div class="sub-section collapsible">
+          <div class="section-header-collapsible" @click="historySectionExpanded = !historySectionExpanded">
+            <div class="section-title-row">
+              <h3>上传记录</h3>
+              <i :class="historySectionExpanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
+            </div>
+            <p class="helper-text">图片外链与上传记录，建议定期同步确保多端一致。</p>
+          </div>
+
+          <Transition name="collapse">
+            <div v-if="historySectionExpanded" class="section-content">
+              <div class="backup-group">
+                <span class="backup-group-label">本地</span>
+                <div class="backup-actions">
+                  <Button
+                    @click="exportHistoryLocal"
+                    :loading="exportHistoryLoading"
+                    icon="pi pi-upload"
+                    label="导出"
+                    outlined
+                    size="small"
+                  />
+                  <Button
+                    @click="importHistoryLocal"
+                    :loading="importHistoryLoading"
+                    icon="pi pi-download"
+                    label="导入"
+                    outlined
+                    size="small"
+                  />
+                </div>
+              </div>
+
+              <div class="backup-group">
+                <span class="backup-group-label">云端</span>
+                <div class="backup-actions">
+                  <!-- 上传记录上传下拉菜单 -->
+                  <div class="upload-dropdown-wrapper" ref="uploadHistoryDropdownRef">
+                    <Button
+                      @click.stop="toggleUploadHistoryMenu"
+                      :loading="uploadHistoryLoading"
+                      :disabled="!activeWebDAVProfile"
+                      icon="pi pi-cloud-upload"
+                      label="上传"
+                      size="small"
+                    />
+                    <Transition name="dropdown">
+                      <div v-if="uploadHistoryMenuVisible" class="upload-menu">
+                        <button class="upload-menu-item" @click="uploadHistoryMerge">
+                          <i class="pi pi-sync"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">智能合并</span>
+                            <span class="menu-item-desc">对比并合并双端差异 (推荐)</span>
+                          </div>
+                        </button>
+                        <button class="upload-menu-item" @click="uploadHistoryIncremental">
+                          <i class="pi pi-plus"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">仅上传新增</span>
+                            <span class="menu-item-desc">只上传云端没有的记录</span>
+                          </div>
+                        </button>
+                        <button class="upload-menu-item danger" @click="uploadHistoryForce">
+                          <i class="pi pi-exclamation-triangle"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">强制覆盖云端</span>
+                            <span class="menu-item-desc">丢弃云端数据，以本地为准</span>
+                          </div>
+                        </button>
+                      </div>
+                    </Transition>
+                  </div>
+                  <!-- 上传记录下载下拉菜单 -->
+                  <div class="upload-dropdown-wrapper" ref="downloadHistoryDropdownRef">
+                    <Button
+                      @click.stop="toggleDownloadHistoryMenu"
+                      :loading="downloadHistoryLoading"
+                      :disabled="!activeWebDAVProfile"
+                      icon="pi pi-cloud-download"
+                      label="下载"
+                      size="small"
+                    />
+                    <Transition name="dropdown">
+                      <div v-if="downloadHistoryMenuVisible" class="upload-menu">
+                        <button class="upload-menu-item" @click="downloadHistoryMerge">
+                          <i class="pi pi-sync"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">智能合并</span>
+                            <span class="menu-item-desc">与本地记录合并 (推荐)</span>
+                          </div>
+                        </button>
+                        <button class="upload-menu-item danger" @click="downloadHistoryOverwrite">
+                          <i class="pi pi-exclamation-triangle"></i>
+                          <div class="menu-item-content">
+                            <span class="menu-item-title">覆盖本地</span>
+                            <span class="menu-item-desc">丢弃本地数据，以云端为准</span>
+                          </div>
+                        </button>
+                      </div>
+                    </Transition>
+                  </div>
+                </div>
+              </div>
+              <!-- 同步状态 -->
+              <div class="sync-status-line">
+                <template v-if="syncStatus.historyLastSync">
+                  <span v-if="syncStatus.historySyncResult === 'success'" class="status-success">
+                    ✓ 上次同步: {{ syncStatus.historyLastSync }}
+                  </span>
+                  <span v-else class="status-error">
+                    ✗ 同步失败: {{ syncStatus.historyLastSync }} ({{ syncStatus.historySyncError }})
+                  </span>
+                </template>
+                <span v-else class="status-pending">尚未同步</span>
+              </div>
+            </div>
+          </Transition>
+        </div>
+
+        <Divider />
+
+        <!-- WebDAV 配置区域（放在最底下） -->
+        <div class="sub-section">
+          <h3>WebDAV 配置</h3>
+
+          <!-- 配置切换卡片 -->
+          <div class="webdav-profile-tabs">
+            <button
+              v-for="profile in formData.webdav.profiles"
+              :key="profile.id"
+              class="profile-tab"
+              :class="{ active: formData.webdav.activeId === profile.id }"
+              @click="switchWebDAVProfile(profile.id)"
+            >
+              <span class="profile-indicator"></span>
+              <span>{{ profile.name }}</span>
+            </button>
+            <button class="profile-tab add-btn" @click="addWebDAVProfile">
+              <i class="pi pi-plus"></i>
+            </button>
+          </div>
+
+          <!-- 当前配置表单 -->
+          <div v-if="activeWebDAVProfile" class="webdav-form">
+            <div class="form-grid">
+              <div class="form-item">
+                <label>配置名称</label>
+                <InputText v-model="activeWebDAVProfile.name" @blur="saveSettings" placeholder="如：坚果云、群晖 NAS" />
+              </div>
+              <div class="form-item">
+                <label>服务器 URL</label>
+                <InputText v-model="activeWebDAVProfile.url" @blur="saveSettings" placeholder="https://dav.example.com" />
+              </div>
+              <div class="form-item">
+                <label>用户名</label>
+                <InputText v-model="activeWebDAVProfile.username" @blur="saveSettings" />
+              </div>
+              <div class="form-item">
+                <label>密码</label>
+                <Password v-model="activeWebDAVProfile.password" @blur="saveSettings" :feedback="false" toggleMask />
+              </div>
+              <div class="form-item span-full">
+                <label>远程路径</label>
+                <InputText v-model="activeWebDAVProfile.remotePath" @blur="saveSettings" placeholder="/WeiboDR/" />
+              </div>
+            </div>
+            <div class="webdav-actions-row">
+              <Button label="测试连接" icon="pi pi-check" @click="testActiveWebDAV" :loading="testingConnections.webdav" outlined size="small" />
+              <Button label="删除此配置" icon="pi pi-trash" @click="deleteWebDAVProfile(activeWebDAVProfile.id)" severity="danger" text size="small" />
             </div>
           </div>
 
-          <div class="backup-group">
-            <span class="backup-group-label">WebDAV 云端</span>
-            <div class="backup-actions">
-              <!-- 历史记录上传下拉菜单 -->
-              <div class="upload-dropdown-wrapper" ref="uploadHistoryDropdownRef">
-                <Button
-                  @click.stop="toggleUploadHistoryMenu"
-                  :loading="uploadHistoryLoading"
-                  icon="pi pi-cloud-upload"
-                  label="上传"
-                  size="small"
-                />
-                <Transition name="dropdown">
-                  <div v-if="uploadHistoryMenuVisible" class="upload-menu">
-                    <button class="upload-menu-item" @click="uploadHistoryMerge">
-                      <i class="pi pi-sync"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">合并上传</span>
-                        <span class="menu-item-desc">下载云端数据，与本地合并后上传</span>
-                      </div>
-                    </button>
-                    <button class="upload-menu-item" @click="uploadHistoryIncremental">
-                      <i class="pi pi-plus"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">仅上传本地新增</span>
-                        <span class="menu-item-desc">只上传云端没有的记录</span>
-                      </div>
-                    </button>
-                  </div>
-                </Transition>
-              </div>
-              <!-- 历史记录下载下拉菜单 -->
-              <div class="upload-dropdown-wrapper" ref="downloadHistoryDropdownRef">
-                <Button
-                  @click.stop="toggleDownloadHistoryMenu"
-                  :loading="downloadHistoryLoading"
-                  icon="pi pi-cloud-download"
-                  label="下载"
-                  size="small"
-                />
-                <Transition name="dropdown">
-                  <div v-if="downloadHistoryMenuVisible" class="upload-menu">
-                    <button class="upload-menu-item" @click="downloadHistoryMerge">
-                      <i class="pi pi-sync"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">合并下载</span>
-                        <span class="menu-item-desc">与本地记录合并，保留更新的版本</span>
-                      </div>
-                    </button>
-                    <button class="upload-menu-item" @click="downloadHistoryOverwrite">
-                      <i class="pi pi-download"></i>
-                      <div class="menu-item-content">
-                        <span class="menu-item-title">覆盖本地</span>
-                        <span class="menu-item-desc">完全使用云端记录替换本地</span>
-                      </div>
-                    </button>
-                  </div>
-                </Transition>
-              </div>
-            </div>
-            <span class="backup-status">{{ historySyncStatus }}</span>
+          <!-- 无配置提示 -->
+          <div v-else class="empty-webdav">
+            <p>尚未配置 WebDAV 连接</p>
+            <Button label="添加配置" icon="pi pi-plus" @click="addWebDAVProfile" outlined />
           </div>
         </div>
       </div>
@@ -2096,7 +2228,7 @@ onUnmounted(() => {
   background: var(--hover-overlay-subtle);
 }
 
-.upload-menu-item:first-child {
+.upload-menu-item:not(:last-child) {
   border-bottom: 1px solid var(--border-subtle);
 }
 
@@ -2120,6 +2252,180 @@ onUnmounted(() => {
 
 .menu-item-desc {
   font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* 危险操作菜单项 */
+.upload-menu-item.danger {
+  color: var(--error);
+}
+
+.upload-menu-item.danger i {
+  color: var(--error);
+}
+
+.upload-menu-item.danger:hover {
+  background: rgba(239, 68, 68, 0.1);
+}
+
+/* ========== WebDAV 配置区域 ========== */
+.webdav-profile-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.profile-tab {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 6px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  font-size: 13px;
+}
+
+.profile-tab:hover {
+  border-color: var(--primary);
+  color: var(--text-primary);
+}
+
+.profile-tab.active {
+  border-color: var(--primary);
+  background: rgba(59, 130, 246, 0.1);
+  color: var(--primary);
+}
+
+.profile-tab .profile-indicator {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.profile-tab.active .profile-indicator {
+  background: var(--primary);
+}
+
+.profile-tab.add-btn {
+  border-style: dashed;
+  padding: 8px 12px;
+}
+
+.profile-tab.add-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.webdav-form {
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  padding: 20px;
+}
+
+.webdav-actions-row {
+  display: flex;
+  gap: 12px;
+  margin-top: 16px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.empty-webdav {
+  text-align: center;
+  padding: 32px;
+  color: var(--text-muted);
+  background: var(--bg-secondary);
+  border-radius: 8px;
+}
+
+.empty-webdav p {
+  margin-bottom: 16px;
+}
+
+/* ========== 同步状态样式 ========== */
+.sync-status-line {
+  margin-top: 12px;
+  font-size: 12px;
+  font-family: var(--font-mono);
+}
+
+/* ========== 可折叠区域样式 ========== */
+.sub-section.collapsible {
+  border: 1px solid var(--border-subtle);
+  border-radius: 8px;
+  padding: 0 16px;
+  margin-bottom: 0;
+}
+
+.section-header-collapsible {
+  cursor: pointer;
+  padding: 16px 0;
+  user-select: none;
+}
+
+.section-header-collapsible:hover {
+  opacity: 0.8;
+}
+
+.section-title-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+}
+
+.section-title-row h3 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.section-title-row i {
+  color: var(--text-muted);
+  font-size: 14px;
+  transition: transform 0.2s;
+}
+
+.section-content {
+  padding-bottom: 16px;
+}
+
+/* 折叠过渡动画 */
+.collapse-enter-active,
+.collapse-leave-active {
+  transition: all 0.25s ease;
+  overflow: hidden;
+}
+
+.collapse-enter-from,
+.collapse-leave-to {
+  opacity: 0;
+  max-height: 0;
+  padding-bottom: 0;
+}
+
+.collapse-enter-to,
+.collapse-leave-from {
+  opacity: 1;
+  max-height: 500px;
+}
+
+.status-success {
+  color: var(--success);
+}
+
+.status-error {
+  color: var(--error);
+}
+
+.status-pending {
   color: var(--text-muted);
 }
 

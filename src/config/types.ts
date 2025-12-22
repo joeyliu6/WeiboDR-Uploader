@@ -133,10 +133,15 @@ export interface NamiServiceConfig extends BaseServiceConfig {
 }
 
 /**
- * WebDAV 配置
- * 保持与原有结构一致
+ * WebDAV 配置项（单个配置）
  */
-export interface WebDAVConfig {
+export interface WebDAVProfile {
+  /** 唯一标识符 */
+  id: string;
+
+  /** 显示名称，如"坚果云"、"群晖 NAS" */
+  name: string;
+
   /** WebDAV 服务器 URL */
   url: string;
 
@@ -148,6 +153,42 @@ export interface WebDAVConfig {
 
   /** 远程路径 */
   remotePath: string;
+}
+
+/**
+ * WebDAV 配置
+ * 支持多个配置切换
+ */
+export interface WebDAVConfig {
+  /** WebDAV 配置列表 */
+  profiles: WebDAVProfile[];
+
+  /** 当前选中的配置 ID，null 表示未选中 */
+  activeId: string | null;
+}
+
+/**
+ * 同步状态
+ * 用于持久化保存同步结果
+ */
+export interface SyncStatus {
+  /** 配置上次同步时间 (YYYY-MM-DD HH:mm:ss) */
+  configLastSync: string | null;
+
+  /** 配置同步结果 */
+  configSyncResult: 'success' | 'failed' | null;
+
+  /** 配置同步错误信息 */
+  configSyncError?: string;
+
+  /** 上传记录上次同步时间 */
+  historyLastSync: string | null;
+
+  /** 上传记录同步结果 */
+  historySyncResult: 'success' | 'failed' | null;
+
+  /** 上传记录同步错误信息 */
+  historySyncError?: string;
 }
 
 /**
@@ -335,10 +376,8 @@ export const DEFAULT_CONFIG: UserConfig = {
     prefixList: [...DEFAULT_PREFIXES]
   },
   webdav: {
-    url: '',
-    username: '',
-    password: '',
-    remotePath: '/WeiboDR/history.json'
+    profiles: [],
+    activeId: null
   },
   theme: {
     mode: 'dark',
@@ -386,8 +425,11 @@ export function sanitizeConfig(config: UserConfig): UserConfig {
       } : undefined
     },
     webdav: config.webdav ? {
-      ...config.webdav,
-      password: sanitizeString(config.webdav.password, 0, 0)
+      profiles: config.webdav.profiles.map(profile => ({
+        ...profile,
+        password: sanitizeString(profile.password, 0, 0)
+      })),
+      activeId: config.webdav.activeId
     } : undefined
   };
 
