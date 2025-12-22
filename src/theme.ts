@@ -26,8 +26,3 @@ export const PicNexusPreset = definePreset(Aura, {
   }
 });
 
-/**
- * WeiboDR 主题预设（用于登录窗口）
- * 与主应用使用相同的预设
- */
-export const WeiboDRPreset = PicNexusPreset;

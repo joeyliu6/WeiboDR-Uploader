@@ -34,7 +34,7 @@ use rand::Rng;
 use base64::{Engine as _, engine::general_purpose};
 
 // 定义服务名，防止与其他应用冲突
-const SERVICE_NAME: &str = "com.weibodr.uploader.secure";
+const SERVICE_NAME: &str = "us.picnex.app.secure";
 const KEY_NAME: &str = "config_encryption_key";
 
 /// 全局 HTTP 客户端状态
@@ -62,7 +62,7 @@ fn main() {
     let file_menu = if cfg!(target_os = "macos") {
         // macOS 使用 "应用" 菜单
         Submenu::new(
-            "WeiboDR-Uploader",
+            "PicNexus",
             Menu::new()
                 .add_item(preferences)
                 .add_native_item(MenuItem::Quit)

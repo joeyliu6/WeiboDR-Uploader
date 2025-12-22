@@ -526,7 +526,7 @@ export function useHistoryManager() {
 
       const jsonContent = JSON.stringify(items, null, 2);
       const filePath = await saveDialog({
-        defaultPath: 'weibo_dr_export.json',
+        defaultPath: 'picnexus_export.json',
         filters: [{ name: 'JSON', extensions: ['json'] }]
       });
 
@@ -609,7 +609,7 @@ export function useHistoryManager() {
 
       // 保存文件
       const filePath = await saveDialog({
-        defaultPath: `weibo-history-${Date.now()}.json`,
+        defaultPath: `picnexus-history-${Date.now()}.json`,
         filters: [{ name: 'JSON', extensions: ['json'] }]
       });
 

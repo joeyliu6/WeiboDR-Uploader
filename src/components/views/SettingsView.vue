@@ -10,7 +10,7 @@ import Textarea from 'primevue/textarea';
 import Password from 'primevue/password';
 import Checkbox from 'primevue/checkbox';
 import RadioButton from 'primevue/radiobutton';
-import InputSwitch from 'primevue/inputswitch';
+import ToggleSwitch from 'primevue/toggleswitch';
 import Divider from 'primevue/divider';
 import Tag from 'primevue/tag';
 import Card from 'primevue/card';
@@ -370,7 +370,7 @@ function addWebDAVProfile() {
     url: '',
     username: '',
     password: '',
-    remotePath: '/WeiboDR/',
+    remotePath: '/PicNexus/',
   };
   formData.value.webdav.profiles.push(newProfile);
   formData.value.webdav.activeId = newProfile.id;
@@ -582,7 +582,7 @@ function getWebDAVClientAndPath(fileType: 'settings' | 'history'): { client: Web
     remotePath: profile.remotePath,
   } as any);
 
-  let remotePath = profile.remotePath || '/WeiboDR/';
+  let remotePath = profile.remotePath || '/PicNexus/';
   if (remotePath.endsWith('/')) {
     remotePath += `${fileType}.json`;
   } else if (!remotePath.toLowerCase().endsWith('.json')) {
@@ -1222,7 +1222,7 @@ onUnmounted(() => {
       </div>
 
       <div class="sidebar-footer">
-        <span class="version-text">WeiboDR v3.0.0</span>
+        <span class="version-text">PicNexus v3.0.0</span>
       </div>
     </div>
 
@@ -1312,7 +1312,7 @@ onUnmounted(() => {
                   允许发送匿名使用统计，帮助改进应用。不收集任何个人信息或上传内容。
                 </span>
               </div>
-              <InputSwitch
+              <ToggleSwitch
                 v-model="formData.analyticsEnabled"
                 @change="handleAnalyticsToggle"
               />
@@ -1768,7 +1768,7 @@ onUnmounted(() => {
               </div>
               <div class="form-item span-full">
                 <label>远程路径</label>
-                <InputText v-model="activeWebDAVProfile.remotePath" @blur="saveSettings" placeholder="/WeiboDR/" />
+                <InputText v-model="activeWebDAVProfile.remotePath" @blur="saveSettings" placeholder="/PicNexus/" />
               </div>
             </div>
             <div class="webdav-actions-row">

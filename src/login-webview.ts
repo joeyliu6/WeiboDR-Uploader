@@ -2,7 +2,7 @@
 // 登录窗口 Vue 应用入口
 import { createApp } from 'vue';
 import PrimeVue from 'primevue/config';
-import { WeiboDRPreset } from './theme';
+import { PicNexusPreset } from './theme';
 import LoginPanel from './components/login/LoginPanel.vue';
 import { COOKIE_PROVIDERS, type CookieProvider } from './config/cookieProviders';
 import { invoke } from '@tauri-apps/api/tauri';
@@ -129,7 +129,7 @@ async function bootstrap() {
   // 配置 PrimeVue
   app.use(PrimeVue, {
     theme: {
-      preset: WeiboDRPreset,
+      preset: PicNexusPreset,
       options: {
         darkModeSelector: '.dark-theme',
         cssLayer: {

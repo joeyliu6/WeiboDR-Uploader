@@ -4,7 +4,7 @@
 import { ref, readonly } from 'vue';
 import { ThemeManager } from '../theme/ThemeManager';
 import { Store } from '../store';
-import type { UserConfig, ThemeMode } from '../config/types';
+import { DEFAULT_CONFIG, type UserConfig, type ThemeMode } from '../config/types';
 
 // 全局状态
 const configStore = new Store('.settings.dat');
@@ -38,8 +38,14 @@ export function useThemeManager() {
 
         console.log('[ThemeManager] Initialized with theme:', currentTheme.value);
       } else {
-        console.warn('[ThemeManager] No config found, using default dark theme');
-        currentTheme.value = 'dark';
+        console.warn('[ThemeManager] No config found, using default config');
+
+        // 使用默认配置创建主题管理器
+        themeManager = new ThemeManager(DEFAULT_CONFIG, configStore);
+        await themeManager.initialize(playTransition);
+
+        currentTheme.value = themeManager.getCurrentTheme();
+        isInitialized.value = true;
       }
     } catch (error) {
       console.error('[ThemeManager] Initialization failed:', error);
