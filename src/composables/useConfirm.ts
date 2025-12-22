@@ -26,6 +26,23 @@ export interface ConfirmOptions {
   icon?: string;
 }
 
+/** 三态确认结果 */
+export type ConfirmThreeWayResult = 'accept' | 'reject' | 'dismiss';
+
+/** 三态确认选项 */
+export interface ConfirmThreeWayOptions {
+  /** 对话框标题 */
+  header?: string;
+  /** 消息内容 */
+  message: string;
+  /** 确认按钮文本 */
+  acceptLabel?: string;
+  /** 取消按钮文本 */
+  rejectLabel?: string;
+  /** 图标 */
+  icon?: string;
+}
+
 /**
  * 确认对话框 Composable
  * 封装 PrimeVue ConfirmDialog，提供简化的 API
@@ -110,11 +127,46 @@ export function useConfirm() {
     });
   };
 
+  /**
+   * 三态确认对话框
+   * 区分三种关闭方式：accept（确认按钮）、reject（取消按钮）、dismiss（叉叉/ESC）
+   * @param options 对话框选项
+   * @returns Promise<ConfirmThreeWayResult>
+   */
+  const confirmThreeWay = (options: ConfirmThreeWayOptions): Promise<ConfirmThreeWayResult> => {
+    return new Promise((resolve) => {
+      let resolved = false;
+
+      confirm.require({
+        header: options.header || '确认',
+        message: options.message,
+        icon: options.icon || 'pi pi-exclamation-triangle',
+        acceptLabel: options.acceptLabel || '确认',
+        rejectLabel: options.rejectLabel || '取消',
+        accept: () => {
+          resolved = true;
+          resolve('accept');
+        },
+        reject: () => {
+          resolved = true;
+          resolve('reject');
+        },
+        onHide: () => {
+          // 如果 accept/reject 都没被调用，说明是叉叉/ESC 关闭
+          if (!resolved) {
+            resolve('dismiss');
+          }
+        }
+      });
+    });
+  };
+
   return {
     showConfirm,
     confirmDelete,
     confirmWarn,
     close,
-    confirm: confirmAsync  // 别名，用于 async/await
+    confirm: confirmAsync,  // 别名，用于 async/await
+    confirmThreeWay
   };
 }

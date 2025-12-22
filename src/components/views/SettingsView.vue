@@ -27,7 +27,7 @@ import type { ThemeMode, UserConfig, ServiceType, HistoryItem, SyncStatus, WebDA
 import { DEFAULT_CONFIG, DEFAULT_PREFIXES, PRIVATE_SERVICES, PUBLIC_SERVICES, migrateConfig } from '../../config/types';
 
 const toast = useToast();
-const { confirm: confirmDialog } = useConfirm();
+const { confirm: confirmDialog, confirmThreeWay } = useConfirm();
 const { currentTheme, setTheme } = useThemeManager();
 const configManager = useConfigManager();
 const historyManager = useHistoryManager();
@@ -531,10 +531,22 @@ async function importSettingsLocal() {
 
     const currentConfig = await configStore.get<UserConfig>('config') || DEFAULT_CONFIG;
 
-    const shouldOverwriteWebDAV = await confirmDialog(
-      '是否同时覆盖 WebDAV 连接信息？\n\n如果选择"取消"，将保留当前的 WebDAV 配置，只导入其他配置项（R2、Cookie 等）。',
-      '导入配置'
-    );
+    // 询问用户导入方式
+    const result = await confirmThreeWay({
+      header: '导入配置',
+      message: '检测到配置文件包含 WebDAV 连接信息，请选择导入方式：',
+      acceptLabel: '覆盖',
+      rejectLabel: '仅保留 WebDAV 配置',
+      icon: 'pi pi-exclamation-triangle'
+    });
+
+    // 点击叉叉/ESC 时取消整个操作
+    if (result === 'dismiss') {
+      toast.warn('已取消导入');
+      return;
+    }
+
+    const shouldOverwriteWebDAV = result === 'accept';
 
     const mergedConfig: UserConfig = {
       ...importedConfig,
