@@ -16,6 +16,7 @@ import Tag from 'primevue/tag';
 import Card from 'primevue/card';
 import Message from 'primevue/message';
 import { useToast } from '../../composables/useToast';
+import { useConfirm } from '../../composables/useConfirm';
 import { useThemeManager } from '../../composables/useTheme';
 import { useConfigManager } from '../../composables/useConfig';
 import { useHistoryManager, invalidateCache } from '../../composables/useHistory';
@@ -26,6 +27,7 @@ import type { ThemeMode, UserConfig, ServiceType, HistoryItem, SyncStatus, WebDA
 import { DEFAULT_CONFIG, DEFAULT_PREFIXES, PRIVATE_SERVICES, PUBLIC_SERVICES, migrateConfig } from '../../config/types';
 
 const toast = useToast();
+const { confirm: confirmDialog } = useConfirm();
 const { currentTheme, setTheme } = useThemeManager();
 const configManager = useConfigManager();
 const historyManager = useHistoryManager();
@@ -529,13 +531,10 @@ async function importSettingsLocal() {
 
     const currentConfig = await configStore.get<UserConfig>('config') || DEFAULT_CONFIG;
 
-    const shouldOverwriteWebDAV = await new Promise<boolean>((resolve) => {
-      const confirmed = confirm(
-        '是否同时覆盖 WebDAV 连接信息？\n\n' +
-        '如果选择"取消"，将保留当前的 WebDAV 配置，只导入其他配置项（R2、Cookie 等）。'
-      );
-      resolve(confirmed);
-    });
+    const shouldOverwriteWebDAV = await confirmDialog(
+      '是否同时覆盖 WebDAV 连接信息？\n\n如果选择"取消"，将保留当前的 WebDAV 配置，只导入其他配置项（R2、Cookie 等）。',
+      '导入配置'
+    );
 
     const mergedConfig: UserConfig = {
       ...importedConfig,
@@ -636,10 +635,9 @@ async function downloadSettingsOverwrite() {
   if (!webdav) return;
 
   // 二次确认
-  const confirmed = confirm(
-    '⚠️ 警告：此操作将完全覆盖本地配置！\n\n' +
-    '本地的所有配置（包括 WebDAV 连接信息）将被云端数据替换。\n' +
-    '是否继续？'
+  const confirmed = await confirmDialog(
+    '⚠️ 警告：此操作将完全覆盖本地配置！\n\n本地的所有配置（包括 WebDAV 连接信息）将被云端数据替换。\n是否继续？',
+    '覆盖本地配置'
   );
   if (!confirmed) return;
 
@@ -840,10 +838,9 @@ async function uploadHistoryForce() {
   if (!webdav) return;
 
   // 二次确认
-  const confirmed = confirm(
-    '⚠️ 警告：此操作将完全覆盖云端数据！\n\n' +
-    '云端现有的所有记录将被删除，替换为本地数据。\n' +
-    '此操作不可撤销，是否继续？'
+  const confirmed = await confirmDialog(
+    '⚠️ 警告：此操作将完全覆盖云端数据！\n\n云端现有的所有记录将被删除，替换为本地数据。\n此操作不可撤销，是否继续？',
+    '强制覆盖云端'
   );
   if (!confirmed) return;
 
@@ -1034,10 +1031,9 @@ async function downloadHistoryOverwrite() {
   if (!webdav) return;
 
   // 二次确认
-  const confirmed = confirm(
-    '⚠️ 警告：此操作将完全覆盖本地数据！\n\n' +
-    '本地现有的所有记录将被删除，替换为云端数据。\n' +
-    '是否继续？'
+  const confirmed = await confirmDialog(
+    '⚠️ 警告：此操作将完全覆盖本地数据！\n\n本地现有的所有记录将被删除，替换为云端数据。\n是否继续？',
+    '覆盖本地数据'
   );
   if (!confirmed) return;
 
