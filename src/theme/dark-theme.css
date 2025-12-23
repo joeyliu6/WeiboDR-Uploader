@@ -50,7 +50,6 @@
   /* ===== 特殊文本色 ===== */
   --text-on-primary: #ffffff;    /* 主色背景上的文本 */
   --text-on-error: #ffffff;      /* 错误色背景上的文本 */
-  --text-on-muted: #ffffff;      /* 次要色背景上的文本 */
   --text-disabled: rgba(248, 250, 252, 0.4); /* 禁用文本 */
 
   /* ===== 阴影系统 - Dark Mode 更柔和 ===== */

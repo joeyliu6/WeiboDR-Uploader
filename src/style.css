@@ -194,93 +194,6 @@ button:focus-visible {
   transition: background-color 0.3s ease;
 }
 
-/* 2.2 侧边栏 (#sidebar) */
-.sidebar {
-  width: 200px; /* Fixed width */
-  background-color: var(--bg-sidebar); /* 第二深的颜色，介于顶栏和主内容区之间 */
-  display: flex;
-  flex-direction: column;
-  padding-top: 20px;
-  flex-shrink: 0; /* Prevent compression */
-  border-right: 1px solid rgba(51, 65, 85, 0.4); /* 右侧边框，与主内容区分离 */
-  
-  /* Typography */
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  
-  overflow-y: auto;
-  overflow-x: hidden;
-  
-  /* [丝滑关键] 宽度变化过渡 */
-  transition: width 0.3s cubic-bezier(0.25, 0.8, 0.25, 1);
-}
-
-.nav-btn {
-  background: none;
-  border: none;
-  color: var(--text-secondary);
-  /* Full width style for 200px sidebar */
-  width: calc(100% - 20px);
-  margin: 0 10px 5px 10px;
-  height: 42px;
-  
-  display: flex;
-  align-items: center;
-  justify-content: flex-start; /* Left align content */
-  padding: 0 12px;
-  gap: 12px;
-  
-  cursor: pointer;
-  transition: all 0.2s;
-  position: relative;
-  border-radius: 8px;
-}
-
-.nav-btn svg {
-  width: 20px;
-  height: 20px;
-  stroke-width: 2;
-  flex-shrink: 0;
-}
-
-.nav-text {
-  white-space: nowrap;
-  opacity: 1;
-  transition: opacity 0.2s;
-}
-
-.nav-btn:hover {
-  color: var(--text-primary);
-  background-color: var(--hover-overlay-subtle);
-}
-
-.nav-btn.active {
-  color: var(--primary);
-  background-color: rgba(59, 130, 246, 0.1);
-  font-weight: var(--weight-bold);
-}
-
-.badge {
-  position: absolute;
-  top: 50%;
-  right: 10px;
-  transform: translateY(-50%);
-  background-color: var(--error);
-  color: var(--text-on-error);
-  border-radius: 10px;
-  padding: 2px 6px;
-  font-size: 10px;
-  font-weight: bold;
-  min-width: 18px;
-  text-align: center;
-  line-height: 1.2;
-}
-
-#nav-settings {
-  margin-top: auto;
-  margin-bottom: 20px;
-}
-
 /* 2.3 Content View Area */
 .content-area {
   flex: 1;          /* Occupy remaining space */
@@ -303,44 +216,6 @@ button:focus-visible {
 
 .view.active {
   display: block; /* Shown when active */
-}
-
-/* Upload View - 队列管理器样式 */
-#upload-view .upload-container {
-  max-width: 1200px;
-  margin: 0 auto;
-  padding: 0; /* Padding handled by .view */
-  box-sizing: border-box;
-  height: 100%;
-}
-
-#drop-zone-header {
-  border: 2px dashed var(--border-subtle);
-  border-radius: 12px;
-  padding: 30px;
-  text-align: center;
-  transition: all 0.2s ease;
-  cursor: pointer;
-  background-color: var(--bg-card);
-  margin-bottom: 20px;
-}
-
-#drop-zone-header:hover,
-#drop-zone-header.drag-over {
-  background-color: rgba(59, 130, 246, 0.05);
-  border-color: var(--primary);
-}
-
-#drop-message p {
-  font-size: 1.3em;
-  font-weight: var(--weight-medium);
-  margin: 0 0 8px 0;
-  color: var(--text-primary);
-}
-
-#drop-message span {
-  font-size: 0.9em;
-  color: var(--text-secondary);
 }
 
 /* 图床按钮容器 - Flex wrap 横向排列 */
@@ -446,43 +321,6 @@ button:focus-visible {
 .service-btn.disabled[data-tooltip]:hover::before {
   opacity: 1;
   visibility: visible;
-}
-
-/* 上传队列容器 */
-#upload-queue-container {
-  background-color: var(--bg-card);
-  border-radius: 8px;
-  padding: 20px;
-  min-height: 300px;
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-card);
-}
-
-#upload-queue-container h3 {
-  margin: 0 0 15px 0;
-  color: var(--text-primary);
-  font-size: var(--text-lg);
-  font-weight: var(--weight-bold);
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 10px;
-}
-
-#upload-queue-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
-
-/* 空状态提示已移至 Vue 组件中，此规则保留作为后备 */
-#upload-queue-list:empty::after {
-  content: "暂无上传队列";
-  display: block;
-  text-align: center;
-  color: var(--text-secondary);
-  padding: 40px 0;
-  font-style: italic;
-  font-family: var(--font-sans);
-  opacity: 0.7;
 }
 
 /* 3.1 队列项目样式 (Flex + Ellipsis) */
@@ -728,21 +566,6 @@ button:focus-visible {
   100% { transform: rotate(360deg); }
 }
 
-/* Settings View Styles */
-#settings-view .container, #history-view .container {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0; /* Padding handled by .view */
-}
-
-#settings-view h1, #history-view h1 {
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 10px;
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-}
-
 /* 3.3 Settings Form Max Width */
 .form-section {
   max-width: 600px; /* Reading comfort width */
@@ -751,112 +574,20 @@ button:focus-visible {
   margin-bottom: 30px;
 }
 
-#settings-view h2 {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-bold);
-  color: var(--text-secondary);
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  margin-bottom: 12px;
-  margin-top: 25px;
-}
-
-#settings-view p {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-#settings-view label {
-  font-size: var(--text-sm);
-  font-weight: var(--weight-medium);
-  color: var(--text-primary);
-  display: block;
-  margin-top: 10px;
-}
-
-#settings-view input[type="text"],
-#settings-view input[type="password"],
-#settings-view textarea {
-  width: 100%;
-  padding: 8px;
-  box-sizing: border-box;
-  background-color: var(--bg-input);
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  
-  font-family: var(--font-mono);
-  font-size: var(--text-sm);
-  color: var(--color-primary);
-  
-  margin-top: 5px;
-  margin-bottom: 10px;
-  
-  /* Transitions */
-  transition: border-color 0.2s, box-shadow 0.2s;
-}
-
 ::placeholder {
   font-family: var(--font-sans);
   font-style: italic;
   opacity: 0.5;
 }
 
-#settings-view button:not(.view-mode-btn):not(.prefix-action-btn), #history-view button:not(.view-mode-btn):not(.prefix-action-btn) {
-  background: rgba(59, 130, 246, 0.15);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  color: var(--text-primary);
-  padding: 10px 18px;
-  border-radius: 8px;
-  font-size: var(--text-base);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-weight: var(--weight-medium);
-  position: relative;
-  overflow: hidden;
-}
-
-#settings-view button:not(.view-mode-btn):not(.prefix-action-btn)::before, #history-view button:not(.view-mode-btn):not(.prefix-action-btn)::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  transition: left 0.5s;
-}
-
-#settings-view button:hover::before, #history-view button:hover::before {
-  left: 100%;
-}
-
-#settings-view button:hover, #history-view button:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-}
-
-#settings-view button:active, #history-view button:active {
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
-}
-
-#settings-view .footer, #history-view .footer {
-  margin-top: 30px;
-  border-top: 1px solid var(--border-subtle);
-  padding-top: 20px;
-}
-
 /* =========================================
    通用状态消息样式（内联状态消息）
    ========================================= */
 
-#save-status, 
+#save-status,
 #cookie-status,
 #r2-status-message,
-#webdav-status-message,
-#history-view #status-message {
+#webdav-status-message {
   display: inline-flex;
   align-items: center;
   gap: 6px;
@@ -884,11 +615,10 @@ button:focus-visible {
 }
 
 /* 当状态消息为空时隐藏（避免显示空框） */
-#save-status:empty, 
+#save-status:empty,
 #cookie-status:empty,
 #r2-status-message:empty,
-#webdav-status-message:empty,
-#history-view #status-message:empty {
+#webdav-status-message:empty {
   display: none;
   padding: 0;
   margin: 0;
@@ -953,103 +683,6 @@ button:focus-visible {
   border-color: rgba(234, 179, 8, 0.3) !important;
   color: var(--warning) !important;
   border-left: 2px solid var(--warning);
-}
-
-#settings-view .radio-group {
-  margin: 5px 0;
-}
-
-#settings-view .radio-group label {
-  margin-left: 5px;
-  color: var(--text-secondary);
-  display: inline;
-}
-
-/* History View Styles */
-#history-view table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-
-#history-view th, #history-view td {
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 12px 8px;
-  text-align: left;
-  vertical-align: middle;
-}
-
-#history-view tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
-}
-
-#history-view th {
-  color: var(--text-secondary);
-  font-weight: var(--weight-bold);
-  font-size: var(--text-sm);
-}
-
-#history-view td {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-#history-view td:nth-child(2), #history-view td:nth-child(3) {
-  max-width: 250px;
-  white-space: normal;
-  word-break: break-all;
-  overflow: visible;
-  text-overflow: clip;
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-  font-size: 0.85em;
-  line-height: 1.4;
-}
-
-#history-view td a {
-  color: var(--primary);
-  text-decoration: none;
-}
-
-#history-view td a:hover {
-  text-decoration: underline;
-}
-
-#history-view #clear-history-btn {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: var(--error);
-}
-
-#history-view #clear-history-btn:hover {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: rgba(239, 68, 68, 0.5);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
-}
-
-#history-view .footer {
-  text-align: right;
-}
-
-#history-view #status-message {
-  margin-left: 10px;
-  font-size: 0.9em;
-  color: var(--text-secondary);
-}
-
-#history-view .search-section {
-    margin-bottom: 15px;
-}
-
-#history-view #search-input {
-    width: 100%;
-    padding: 8px;
-    box-sizing: border-box;
-    background-color: var(--bg-input);
-    border: 1px solid var(--border-subtle);
-    border-radius: 4px;
-    color: var(--text-primary);
-    font-size: 1em;
 }
 
 /* 历史记录 - 批量操作工具栏 */
@@ -1262,107 +895,6 @@ button:focus-visible {
 
 .icon-btn:active {
   transform: scale(0.95);
-}
-
-/* Failed View Styles */
-#failed-view .container {
-  max-width: 720px;
-  margin: 0 auto;
-  padding: 0;
-}
-
-#failed-view h1 {
-  color: var(--text-primary);
-  border-bottom: 1px solid var(--border-subtle);
-  padding-bottom: 10px;
-  font-size: var(--text-xl);
-  font-weight: var(--weight-bold);
-}
-
-#failed-view table {
-  width: 100%;
-  border-collapse: collapse;
-  margin-top: 20px;
-}
-
-#failed-view tr:nth-child(even) {
-  background-color: rgba(255, 255, 255, 0.02);
-}
-
-#failed-view th, #failed-view td {
-  border-bottom: 1px solid var(--border-subtle);
-  padding: 12px 8px;
-  text-align: left;
-  vertical-align: middle;
-}
-
-#failed-view th {
-  color: var(--text-secondary);
-  font-weight: var(--weight-bold);
-  font-size: var(--text-sm);
-}
-
-#failed-view td {
-  color: var(--text-secondary);
-  font-size: var(--text-sm);
-}
-
-#failed-view td:first-child {
-  font-family: var(--font-mono);
-  color: var(--text-primary);
-}
-
-#failed-view button {
-  background: rgba(59, 130, 246, 0.15);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
-  border: 1px solid rgba(59, 130, 246, 0.3);
-  color: var(--text-primary);
-  padding: 8px 16px;
-  border-radius: 8px;
-  font-size: var(--text-sm);
-  cursor: pointer;
-  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-  font-weight: var(--weight-medium);
-  position: relative;
-  overflow: hidden;
-}
-
-#failed-view button::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: -100%;
-  width: 100%;
-  height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
-  transition: left 0.5s;
-}
-
-#failed-view button:hover::before {
-  left: 100%;
-}
-
-#failed-view button:hover {
-  background: rgba(59, 130, 246, 0.25);
-  border-color: rgba(59, 130, 246, 0.5);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.2);
-}
-
-#failed-view button:active {
-  box-shadow: 0 2px 6px rgba(59, 130, 246, 0.15);
-}
-
-#failed-view #clear-all-failed-btn {
-  background: rgba(239, 68, 68, 0.15);
-  border-color: rgba(239, 68, 68, 0.3);
-  color: var(--error);
-}
-
-#failed-view #clear-all-failed-btn:hover {
-  background: rgba(239, 68, 68, 0.25);
-  border-color: rgba(239, 68, 68, 0.5);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
 }
 
 /* === R2 管理视图样式 === */
@@ -2415,8 +1947,7 @@ button:focus-visible {
 }
 
 /* 卡片主体：使用 Flex 布局解决重叠问题 */
-/* 使用 #settings-view 提高优先级，覆盖 #settings-view label 的 display: block */
-#settings-view .service-toggle {
+.service-toggle {
   display: flex;
   align-items: center;
   gap: 10px; /* 圆圈与文字间距 */
@@ -2699,10 +2230,6 @@ button:focus-visible {
 .search-section {
   flex: 1;
   min-width: 200px;
-}
-
-#history-view .filter-search-section .search-section {
-  margin-bottom: 0;
 }
 
 .search-section input {
