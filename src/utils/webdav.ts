@@ -89,6 +89,13 @@ export class WebDAVClient {
    */
   async putFile(remotePath: string, content: string): Promise<void> {
     try {
+      // 提取父目录路径并确保其存在
+      const lastSlashIndex = remotePath.lastIndexOf('/');
+      if (lastSlashIndex > 0) {
+        const parentDir = remotePath.substring(0, lastSlashIndex + 1);
+        await this.ensureDir(parentDir);
+      }
+
       const client = await getClient();
       const url = this.buildUrl(remotePath);
 
@@ -187,6 +194,82 @@ export class WebDAVClient {
     } catch (error) {
       console.error('[WebDAV] 检查文件存在性失败:', error);
       return false;
+    }
+  }
+
+  /**
+   * 创建目录
+   * @param remotePath 远程目录路径（需以 / 结尾）
+   * @returns 是否成功（如果目录已存在也返回 true）
+   */
+  async mkDir(remotePath: string): Promise<boolean> {
+    try {
+      const client = await getClient();
+      // 确保路径以 / 结尾
+      const dirPath = remotePath.endsWith('/') ? remotePath : remotePath + '/';
+      const url = this.buildUrl(dirPath);
+
+      // 使用 MKCOL 方法创建目录
+      const response = await client.request({
+        method: 'MKCOL' as 'GET', // 类型断言绕过 TypeScript 检查
+        url: url,
+        headers: {
+          'Authorization': this.getAuthHeader(),
+        },
+        timeout: 10000,
+      });
+
+      const status = response.status;
+
+      // 201: 创建成功
+      // 405: 目录已存在（Method Not Allowed）
+      // 301/302: 目录已存在（某些服务器返回重定向）
+      if (status === 201 || status === 405 || status === 301 || status === 302) {
+        return true;
+      }
+
+      // 409: 父目录不存在，需要先创建父目录
+      if (status === 409) {
+        console.warn('[WebDAV] 创建目录失败: 父目录不存在', dirPath);
+        return false;
+      }
+
+      // 其他错误
+      console.error('[WebDAV] 创建目录失败:', status, dirPath);
+      return false;
+    } catch (error) {
+      console.error('[WebDAV] 创建目录异常:', error);
+      return false;
+    }
+  }
+
+  /**
+   * 确保目录路径存在（递归创建）
+   * @param remotePath 远程目录路径
+   */
+  async ensureDir(remotePath: string): Promise<void> {
+    // 规范化路径
+    let path = remotePath.trim();
+    if (!path.startsWith('/')) {
+      path = '/' + path;
+    }
+    if (!path.endsWith('/')) {
+      path = path + '/';
+    }
+
+    // 拆分路径为各级目录
+    const parts = path.split('/').filter(p => p.length > 0);
+
+    // 逐级创建目录
+    let currentPath = '/';
+    for (const part of parts) {
+      currentPath += part + '/';
+      const success = await this.mkDir(currentPath);
+      if (!success) {
+        // 如果创建失败（可能是 409），继续尝试创建
+        // 因为我们是从根目录开始创建，所以父目录应该已经存在
+        console.warn('[WebDAV] 创建目录可能失败，继续尝试:', currentPath);
+      }
     }
   }
 }
