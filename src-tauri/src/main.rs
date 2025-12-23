@@ -386,7 +386,8 @@ fn validate_cookie_fields(cookie: &str, required_fields: &[String], any_of_field
 async fn start_cookie_monitoring(
     app: tauri::AppHandle,
     service_id: Option<String>,           // 服务标识（可选，默认 weibo）
-    target_domain: Option<String>,        // 目标域名（可选）
+    target_domain: Option<String>,        // 目标域名（可选，向后兼容，已废弃）
+    target_domains: Option<Vec<String>>,  // 目标域名列表（新增，优先使用）
     required_fields: Option<Vec<String>>, // 必须的 Cookie 字段（可选，AND 逻辑）
     any_of_fields: Option<Vec<String>>,   // 任意字段（可选，OR 逻辑）
     initial_delay_ms: Option<u64>,        // 新增：初始延迟（毫秒，可选）
@@ -401,7 +402,14 @@ async fn start_cookie_monitoring(
     const MAX_POLLING_INTERVAL_MS: u64 = 5000;      // 最大轮询间隔 5 秒（避免检测过慢）
 
     let service = service_id.unwrap_or_else(|| "weibo".to_string());
-    let domain = target_domain.unwrap_or_else(|| "weibo.com".to_string());
+    // 优先使用 target_domains 数组，向后兼容 target_domain 单个值
+    let domains: Vec<String> = target_domains
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            target_domain
+                .map(|d| vec![d])
+                .unwrap_or_else(|| vec!["weibo.com".to_string()])
+        });
     let fields = required_fields.unwrap_or_else(|| vec!["SUB".to_string(), "SUBP".to_string()]);
     let any_fields = any_of_fields.unwrap_or_default();
 
@@ -415,8 +423,8 @@ async fn start_cookie_monitoring(
         .clamp(MIN_POLLING_INTERVAL_MS, MAX_POLLING_INTERVAL_MS);
 
     eprintln!(
-        "[Cookie监控] 开始监控 {} 的Cookie (域名: {}, 必要字段: {:?}, 任意字段: {:?}, 初始延迟: {}ms, 轮询间隔: {}ms)",
-        service, domain, fields, any_fields, initial_delay, polling_interval
+        "[Cookie监控] 开始监控 {} 的Cookie (域名列表: {:?}, 必要字段: {:?}, 任意字段: {:?}, 初始延迟: {}ms, 轮询间隔: {}ms)",
+        service, domains, fields, any_fields, initial_delay, polling_interval
     );
 
     let app_handle = app.clone();
@@ -453,7 +461,7 @@ async fn start_cookie_monitoring(
                         &login_window,
                         &app_handle,
                         &service,
-                        &domain,
+                        &domains,
                         &fields,
                         &any_fields
                     ) {
@@ -534,12 +542,20 @@ async fn start_cookie_monitoring(
 async fn get_request_header_cookie(
     app: tauri::AppHandle,
     service_id: Option<String>,           // 服务标识（可选）
-    target_domain: Option<String>,        // 目标域名（可选）
+    target_domain: Option<String>,        // 目标域名（可选，向后兼容，已废弃）
+    target_domains: Option<Vec<String>>,  // 目标域名列表（新增，优先使用）
     required_fields: Option<Vec<String>>, // 必须的 Cookie 字段（可选，AND 逻辑）
     any_of_fields: Option<Vec<String>>,   // 任意字段（可选，OR 逻辑）
 ) -> Result<String, String> {
     let service = service_id.unwrap_or_else(|| "weibo".to_string());
-    let domain = target_domain.unwrap_or_else(|| "weibo.com".to_string());
+    // 优先使用 target_domains 数组，向后兼容 target_domain 单个值
+    let domains: Vec<String> = target_domains
+        .filter(|v| !v.is_empty())
+        .unwrap_or_else(|| {
+            target_domain
+                .map(|d| vec![d])
+                .unwrap_or_else(|| vec!["weibo.com".to_string()])
+        });
     let fields = required_fields.unwrap_or_else(|| vec!["SUB".to_string(), "SUBP".to_string()]);
     let any_fields = any_of_fields.unwrap_or_default();
 
@@ -549,28 +565,57 @@ async fn get_request_header_cookie(
             return Err("登录窗口未打开，请先点击「开始登录」".to_string());
         };
 
-        match try_extract_cookie_header_generic(&login_window, &domain) {
-            Ok(Some(cookie)) => {
-                if validate_cookie_fields(&cookie, &fields, &any_fields) {
-                    eprintln!("[Cookie获取] {} 请求头Cookie长度: {}", service, cookie.len());
-                    Ok(cookie)
-                } else {
-                    Err(format!(
-                        "提取到的 Cookie 缺少关键字段（{:?}{}），请确认已成功登录{}",
-                        fields,
-                        if any_fields.is_empty() { String::new() } else { format!(" 或 {:?} 之一", any_fields) },
-                        service
-                    ))
+        // 从所有域名中尝试提取并合并 Cookie
+        let mut all_cookies: std::collections::BTreeMap<String, String> = std::collections::BTreeMap::new();
+
+        for domain in &domains {
+            match try_extract_cookie_header_generic(&login_window, domain) {
+                Ok(Some(cookie)) => {
+                    eprintln!("[Cookie获取] 从 {} 提取到 Cookie (长度: {})", domain, cookie.len());
+                    for part in cookie.split("; ") {
+                        if let Some(eq_pos) = part.find('=') {
+                            let key = part[..eq_pos].to_string();
+                            let value = part[eq_pos + 1..].to_string();
+                            all_cookies.insert(key, value);
+                        }
+                    }
+                }
+                Ok(None) => {
+                    eprintln!("[Cookie获取] 从 {} 未提取到 Cookie", domain);
+                }
+                Err(err) => {
+                    eprintln!("[Cookie获取] 从 {} 读取Cookie失败: {}", domain, err);
                 }
             }
-            Ok(None) => Err("未检测到 Cookie，请确认已完成登录后再试".to_string()),
-            Err(err) => Err(format!("提取请求头 Cookie 失败: {}", err)),
+        }
+
+        if all_cookies.is_empty() {
+            return Err("未检测到 Cookie，请确认已完成登录后再试".to_string());
+        }
+
+        // 重新组装 cookie 字符串
+        let merged_cookie: String = all_cookies
+            .into_iter()
+            .map(|(k, v)| format!("{}={}", k, v))
+            .collect::<Vec<_>>()
+            .join("; ");
+
+        if validate_cookie_fields(&merged_cookie, &fields, &any_fields) {
+            eprintln!("[Cookie获取] {} 请求头Cookie长度: {}", service, merged_cookie.len());
+            Ok(merged_cookie)
+        } else {
+            Err(format!(
+                "提取到的 Cookie 缺少关键字段（{:?}{}），请确认已成功登录{}",
+                fields,
+                if any_fields.is_empty() { String::new() } else { format!(" 或 {:?} 之一", any_fields) },
+                service
+            ))
         }
     }
 
     #[cfg(not(target_os = "windows"))]
     {
-        let _ = (app, service, domain, fields, any_fields);
+        let _ = (app, service, domains, fields, any_fields);
         Err("当前操作系统暂不支持请求头 Cookie 提取，请使用页面内的手动复制方式".to_string())
     }
 }
@@ -581,18 +626,28 @@ fn attempt_cookie_capture_and_save_generic(
     login_window: &tauri::Window,
     app_handle: &tauri::AppHandle,
     service_id: &str,
-    target_domain: &str,
+    target_domains: &[String],
     required_fields: &[String],
     any_of_fields: &[String],
 ) -> bool {
     // 构建要尝试的域名列表（包括 www 变体）
-    let mut domains_to_try = vec![target_domain.to_string()];
-    if target_domain.starts_with("www.") {
-        // 如果是 www 开头，也尝试无 www 版本
-        domains_to_try.push(target_domain[4..].to_string());
-    } else {
-        // 如果不是 www 开头，也尝试 www 版本
-        domains_to_try.push(format!("www.{}", target_domain));
+    let mut domains_to_try: Vec<String> = Vec::new();
+    for domain in target_domains {
+        if !domains_to_try.contains(domain) {
+            domains_to_try.push(domain.clone());
+        }
+        // 添加 www 变体
+        if domain.starts_with("www.") {
+            let without_www = domain[4..].to_string();
+            if !domains_to_try.contains(&without_www) {
+                domains_to_try.push(without_www);
+            }
+        } else {
+            let with_www = format!("www.{}", domain);
+            if !domains_to_try.contains(&with_www) {
+                domains_to_try.push(with_www);
+            }
+        }
     }
 
     // 依次尝试每个域名，合并所有 Cookie

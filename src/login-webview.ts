@@ -33,7 +33,7 @@ async function handleStartLogin() {
     // 启动后端 Cookie 监控
     await invoke('start_cookie_monitoring', {
       serviceId: serviceId,
-      targetDomain: provider.domains[0],
+      targetDomains: provider.domains,  // 传入完整的域名数组
       requiredFields: provider.cookieValidation?.requiredFields || [],
       anyOfFields: provider.cookieValidation?.anyOfFields || [],
       initialDelayMs: provider.cookieValidation?.monitoringDelay?.initialDelayMs,
@@ -63,7 +63,7 @@ async function handleGetCookie() {
     try {
       cookie = await invoke<string>('get_request_header_cookie', {
         serviceId: serviceId,
-        targetDomain: provider.domains[0],
+        targetDomains: provider.domains,  // 传入完整的域名数组
         requiredFields: provider.cookieValidation?.requiredFields || [],
         anyOfFields: provider.cookieValidation?.anyOfFields || []
       });
