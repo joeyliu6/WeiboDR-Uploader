@@ -330,16 +330,14 @@ onUnmounted(() => {
         <div class="drop-message">
           <i class="pi pi-cloud-upload drop-icon"></i>
           <p class="drop-text">拖拽图片到此处上传</p>
-          <span class="drop-hint">或点击选择文件</span>
-          <button
-            class="paste-btn"
-            :disabled="isPasting"
-            @click.stop="handlePasteFromClipboard"
-            v-tooltip.top="'快捷键: Ctrl+V'"
-          >
-            <i class="pi" :class="isPasting ? 'pi-spin pi-spinner' : 'pi-clipboard'"></i>
-            <span>{{ isPasting ? '正在粘贴...' : '从剪贴板粘贴' }}</span>
-          </button>
+          <span class="drop-hint">
+            或点击选择文件，或<button
+              class="paste-link"
+              :disabled="isPasting"
+              @click.stop="handlePasteFromClipboard"
+              v-tooltip.top="'快捷键: Ctrl+V'"
+            >{{ isPasting ? '正在粘贴...' : '从剪贴板粘贴' }}</button>
+          </span>
         </div>
       </div>
 
@@ -516,40 +514,29 @@ onUnmounted(() => {
   color: var(--text-secondary);
 }
 
-/* 剪贴板粘贴按钮 */
-.paste-btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 16px;
-  padding: 10px 20px;
-  background: var(--primary);
+/* 剪贴板粘贴链接 */
+.paste-link {
+  /* 重置按钮默认样式 */
+  background: none;
   border: none;
-  border-radius: 8px;
-  color: #fff;
-  font-size: 14px;
-  font-weight: 500;
+  padding: 0;
+  font: inherit;
+  font-size: inherit;
+  /* 链接样式 */
+  color: var(--primary);
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: color 0.2s ease;
   pointer-events: auto;
 }
 
-.paste-btn:hover:not(:disabled) {
-  background: var(--primary-hover, #2563eb);
-  transform: translateY(-1px);
+.paste-link:hover:not(:disabled) {
+  color: var(--primary-hover, #2563eb);
+  text-decoration: underline;
 }
 
-.paste-btn:active:not(:disabled) {
-  transform: translateY(0);
-}
-
-.paste-btn:disabled {
+.paste-link:disabled {
   opacity: 0.7;
   cursor: not-allowed;
-}
-
-.paste-btn i {
-  font-size: 16px;
 }
 
 /* 图床选择区域 */
