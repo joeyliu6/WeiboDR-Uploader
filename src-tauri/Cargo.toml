@@ -32,7 +32,7 @@ tokio-util = { version = "0.7.17", features = ["codec"] }
 futures = "0.3"
 keyring = "2"
 rand = "0.8"
-aws-sdk-s3 = "1.0"
+aws-sdk-s3 = { version = "1.0", features = ["behavior-version-latest"] }
 mime_guess = "2.0"
 arboard = "3"
 image = { version = "0.24", default-features = false, features = ["png"] }
