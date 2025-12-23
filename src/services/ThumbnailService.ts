@@ -38,7 +38,7 @@ function openDB(): Promise<IDBDatabase> {
 
 /**
  * 获取缩略图 URL
- * 
+ *
  * @param originalUrl 原图 URL
  * @returns 原图 URL (不再进行压缩)
  */
@@ -83,10 +83,3 @@ export async function clearAllCache(): Promise<void> {
   }
 }
 
-/**
- * 预热缩略图缓存
- * (不再执行任何操作)
- */
-export async function preloadThumbnails(_urls: string[]): Promise<void> {
-  return Promise.resolve();
-}

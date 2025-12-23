@@ -2,7 +2,7 @@
 // 链接生成逻辑
 
 import { UploadResult } from '../uploaders/base/types';
-import { UserConfig, getActivePrefix, DEFAULT_PREFIXES } from '../config/types';
+import { UserConfig, getActivePrefix } from '../config/types';
 
 /**
  * 链接生成器
@@ -41,44 +41,4 @@ export class LinkGenerator {
     return result.url;
   }
 
-  /**
-   * 验证链接格式
-   *
-   * @param link 链接
-   * @returns 是否为有效链接
-   */
-  static isValidLink(link: string): boolean {
-    try {
-      const url = new URL(link);
-      return url.protocol === 'http:' || url.protocol === 'https:';
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * 获取原始链接（去除代理前缀）
-   *
-   * @param generatedLink 生成的链接
-   * @param config 用户配置（可选，用于获取自定义前缀列表）
-   * @returns 原始链接
-   */
-  static getOriginalLink(generatedLink: string, config?: UserConfig): string {
-    // 获取所有可能的前缀
-    const allPrefixes = config?.linkPrefixConfig?.prefixList || DEFAULT_PREFIXES;
-
-    // 也检查旧的 baiduPrefix
-    if (config?.baiduPrefix && !allPrefixes.includes(config.baiduPrefix)) {
-      allPrefixes.push(config.baiduPrefix);
-    }
-
-    // 检查链接是否以任何已知前缀开头
-    for (const prefix of allPrefixes) {
-      if (generatedLink.startsWith(prefix)) {
-        return generatedLink.substring(prefix.length);
-      }
-    }
-
-    return generatedLink;
-  }
 }

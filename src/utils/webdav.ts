@@ -104,7 +104,7 @@ export class WebDAVClient {
       if (!response.ok) {
         const status = response.status;
         let errorMsg = `上传失败: HTTP ${status}`;
-        
+
         if (status === 401 || status === 403) {
           errorMsg = '认证失败，请检查用户名和密码';
         } else if (status === 404) {
@@ -114,7 +114,7 @@ export class WebDAVClient {
         } else if (status >= 500) {
           errorMsg = `服务器错误 (HTTP ${status})，WebDAV 服务器可能暂时不可用`;
         }
-        
+
         throw new Error(errorMsg);
       }
     } catch (error) {
@@ -151,25 +151,25 @@ export class WebDAVClient {
       if (!response.ok) {
         const status = response.status;
         let errorMsg = `下载失败: HTTP ${status}`;
-        
+
         if (status === 401 || status === 403) {
           errorMsg = '认证失败，请检查用户名和密码';
         } else if (status >= 500) {
           errorMsg = `服务器错误 (HTTP ${status})，WebDAV 服务器可能暂时不可用`;
         }
-        
+
         throw new Error(errorMsg);
       }
 
       return response.data || null;
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      
+
       // 如果是 404 错误，返回 null 而不是抛出异常
       if (errorMsg.includes('404') || errorMsg.includes('not found')) {
         return null;
       }
-      
+
       console.error('[WebDAV] 下载文件失败:', errorMsg);
       throw new Error(`WebDAV 下载失败: ${errorMsg}`);
     }
@@ -190,4 +190,3 @@ export class WebDAVClient {
     }
   }
 }
-

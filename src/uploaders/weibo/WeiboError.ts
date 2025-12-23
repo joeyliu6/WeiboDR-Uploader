@@ -19,18 +19,6 @@ export class WeiboUploadError extends Error {
 }
 
 /**
- * 判断是否为 Cookie 相关错误
- */
-export function isCookieError(error: any): boolean {
-  if (error instanceof WeiboUploadError) {
-    return error.code === 'COOKIE_EXPIRED' || error.code === 'INVALID_COOKIE' || error.code === 'EMPTY_COOKIE';
-  }
-
-  const msg = error?.message || String(error);
-  return msg.includes('Cookie') || msg.includes('cookie') || msg.includes('100006');
-}
-
-/**
  * 转换通用错误为微博错误
  */
 export function convertToWeiboError(error: any): WeiboUploadError {

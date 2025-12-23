@@ -127,8 +127,6 @@ fn main() {
             commands::nami::upload_to_nami,
             commands::nami::test_nami_connection,
             commands::nami_token::fetch_nami_token,
-            commands::nami_token::check_nami_chrome_installed,
-            commands::utils::file_exists,
             commands::link_checker::check_image_link,
             commands::link_checker::download_image_from_url,
             commands::clipboard::clipboard_has_image,

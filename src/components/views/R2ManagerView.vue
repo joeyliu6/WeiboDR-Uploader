@@ -124,15 +124,39 @@ const handleBatchDelete = () => {
   confirmDelete(
     `确定要删除选中的 ${selectedFiles.value.length} 个文件吗？此操作不可撤销。`,
     async () => {
-      try {
-        // TODO: 调用 Rust 后端删除文件
-        toast.success('删除成功', `已删除 ${selectedFiles.value.length} 个文件`);
-        selectedFiles.value = [];
-        selectAll.value = false;
-        await refreshFiles();
-      } catch (error) {
-        toast.error('删除失败', String(error));
+      const r2Config = configManager.config.value.services?.r2;
+      if (!r2Config) {
+        toast.error('配置错误', 'R2 配置未找到');
+        return;
       }
+
+      let successCount = 0;
+      let failCount = 0;
+
+      for (const file of selectedFiles.value) {
+        try {
+          await invoke<string>('delete_r2_object', {
+            config: r2Config,
+            key: file.key
+          });
+          successCount++;
+        } catch (error) {
+          console.error(`[R2ManagerView] 删除 ${file.key} 失败:`, error);
+          failCount++;
+        }
+      }
+
+      if (failCount === 0) {
+        toast.success('删除成功', `已删除 ${successCount} 个文件`);
+      } else if (successCount > 0) {
+        toast.warn('部分删除成功', `成功 ${successCount} 个，失败 ${failCount} 个`);
+      } else {
+        toast.error('删除失败', `${failCount} 个文件删除失败`);
+      }
+
+      selectedFiles.value = [];
+      selectAll.value = false;
+      await refreshFiles();
     }
   );
 };
@@ -146,7 +170,7 @@ const handlePreview = (file: R2File) => {
 // 复制链接
 const handleCopyLink = async (file: R2File) => {
   try {
-    // TODO: 复制到剪贴板
+    await navigator.clipboard.writeText(file.url);
     toast.success('已复制', `${file.name} 的链接已复制到剪贴板`);
   } catch (error) {
     toast.error('复制失败', String(error));
@@ -158,8 +182,17 @@ const handleDeleteFile = (file: R2File) => {
   confirmDelete(
     `确定要删除 "${file.name}" 吗？此操作不可撤销。`,
     async () => {
+      const r2Config = configManager.config.value.services?.r2;
+      if (!r2Config) {
+        toast.error('配置错误', 'R2 配置未找到');
+        return;
+      }
+
       try {
-        // TODO: 调用 Rust 后端删除文件
+        await invoke<string>('delete_r2_object', {
+          config: r2Config,
+          key: file.key
+        });
         toast.success('删除成功', `已删除 "${file.name}"`);
         await refreshFiles();
       } catch (error) {
