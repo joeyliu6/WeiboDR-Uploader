@@ -23,6 +23,9 @@ use regex::Regex;
 
 type HmacSha1 = Hmac<Sha1>;
 
+/// 最大重试次数
+const MAX_UPLOAD_RETRIES: u32 = 3;
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct ZhihuUploadResult {
     pub url: String,
@@ -130,6 +133,37 @@ pub async fn upload_to_zhihu(
     file_path: String,
     zhihu_cookie: String,
 ) -> Result<ZhihuUploadResult, String> {
+    let mut last_error = String::new();
+
+    for attempt in 0..=MAX_UPLOAD_RETRIES {
+        if attempt > 0 {
+            let delay = attempt * 2;  // 2, 4, 6 秒
+            println!("[Zhihu] 第 {} 次重试，等待 {} 秒...", attempt, delay);
+            tokio::time::sleep(Duration::from_secs(delay as u64)).await;
+        }
+
+        match upload_to_zhihu_inner(&file_path, &zhihu_cookie).await {
+            Ok(result) => return Ok(result),
+            Err(e) => {
+                // 只对"图片处理超时"错误进行重试
+                if e.contains("图片处理超时") && attempt < MAX_UPLOAD_RETRIES {
+                    println!("[Zhihu] 上传超时，准备重试...");
+                    last_error = e;
+                    continue;
+                }
+                return Err(e);
+            }
+        }
+    }
+
+    Err(format!("上传失败，已重试 {} 次，请稍后手动重试: {}", MAX_UPLOAD_RETRIES, last_error))
+}
+
+/// 内部上传函数
+async fn upload_to_zhihu_inner(
+    file_path: &str,
+    zhihu_cookie: &str,
+) -> Result<ZhihuUploadResult, String> {
     println!("[Zhihu] 开始上传文件: {}", file_path);
 
     // 1. 读取文件
@@ -172,7 +206,7 @@ pub async fn upload_to_zhihu(
 
     let credentials_response = client
         .post("https://api.zhihu.com/images")
-        .header("Cookie", &zhihu_cookie)
+        .header("Cookie", zhihu_cookie)
         .header("Content-Type", "application/json")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
         .header("Referer", "https://www.zhihu.com/")
@@ -246,7 +280,7 @@ pub async fn upload_to_zhihu(
         // 5.2 通知知乎上传完成
         let notify_response = client
             .put(&format!("https://api.zhihu.com/images/{}/uploading_status", image_id))
-            .header("Cookie", &zhihu_cookie)
+            .header("Cookie", zhihu_cookie)
             .header("Content-Type", "application/json")
             .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36")
             .header("Referer", "https://www.zhihu.com/")
@@ -345,7 +379,7 @@ pub async fn test_zhihu_connection(zhihu_cookie: String) -> Result<String, Strin
     // 尝试获取上传凭证来验证 Cookie
     let response = client
         .post("https://api.zhihu.com/images")
-        .header("Cookie", &zhihu_cookie)
+        .header("Cookie", zhihu_cookie)
         .header("Content-Type", "application/json")
         .header("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36")
         .header("Referer", "https://www.zhihu.com/")
