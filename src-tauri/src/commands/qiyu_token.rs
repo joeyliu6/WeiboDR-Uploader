@@ -100,10 +100,19 @@ pub async fn check_chrome_installed(app: tauri::AppHandle) -> Result<bool, Strin
 /// 通过实际获取 Token 来验证上传能力
 #[tauri::command]
 pub async fn check_qiyu_available(app: tauri::AppHandle) -> bool {
+    println!("[Qiyu] 开始可用性检测（获取 Token）...");
+    let start_time = std::time::Instant::now();
+
     match fetch_qiyu_token_internal(&app).await {
-        Ok(_) => true,
+        Ok(token) => {
+            let elapsed = start_time.elapsed();
+            println!("[Qiyu] 检测完成 - Object: {}, 耗时: {:?}, 结果: 可用",
+                token.object_path, elapsed);
+            true
+        }
         Err(e) => {
-            println!("[Qiyu] 可用性检测失败: {}", e);
+            let elapsed = start_time.elapsed();
+            println!("[Qiyu] 可用性检测失败 - 错误: {}, 耗时: {:?}", e, elapsed);
             false
         }
     }

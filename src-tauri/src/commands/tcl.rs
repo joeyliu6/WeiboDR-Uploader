@@ -24,16 +24,28 @@ struct TCLApiResponse {
 /// 通过发送 GET 请求到 TCL 服务检测可达性
 #[tauri::command]
 pub async fn check_tcl_available() -> bool {
+    println!("[TCL] 开始可用性检测...");
+    let start_time = std::time::Instant::now();
+
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(5))
         .build();
 
     match client {
         Ok(c) => {
+            println!("[TCL] 发送请求到 https://service2.tcl.com/");
             match c.get("https://service2.tcl.com/").send().await {
-                Ok(response) => response.status().is_success() || response.status().as_u16() == 404,
+                Ok(response) => {
+                    let status = response.status();
+                    let elapsed = start_time.elapsed();
+                    let is_available = status.is_success() || status.as_u16() == 404;
+                    println!("[TCL] 检测完成 - 状态码: {}, 耗时: {:?}, 结果: {}",
+                        status.as_u16(), elapsed, if is_available { "可用" } else { "不可用" });
+                    is_available
+                }
                 Err(e) => {
-                    println!("[TCL] 可用性检测失败: {}", e);
+                    let elapsed = start_time.elapsed();
+                    println!("[TCL] 可用性检测失败 - 错误: {}, 耗时: {:?}", e, elapsed);
                     false
                 }
             }

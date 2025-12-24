@@ -78,10 +78,19 @@ async fn get_aid_info() -> Result<AidInfo, String> {
 /// 通过调用 get_aid_info() 检测 API 是否可达
 #[tauri::command]
 pub async fn check_jd_available() -> bool {
+    println!("[JD] 开始可用性检测...");
+    let start_time = std::time::Instant::now();
+
     match get_aid_info().await {
-        Ok(_) => true,
+        Ok(aid_info) => {
+            let elapsed = start_time.elapsed();
+            println!("[JD] 检测完成 - aid: {}, 耗时: {:?}, 结果: 可用",
+                aid_info.aid, elapsed);
+            true
+        }
         Err(e) => {
-            println!("[JD] 可用性检测失败: {}", e);
+            let elapsed = start_time.elapsed();
+            println!("[JD] 可用性检测失败 - 错误: {}, 耗时: {:?}", e, elapsed);
             false
         }
     }
