@@ -23,17 +23,20 @@ import type { ServiceType, HistoryItem } from '../../config/types';
 
 const toast = useToast();
 const { confirmDelete } = useConfirm();
-const { allHistoryItems, loadHistory } = useHistoryManager();
+const { allHistoryItems, loadAllHistory } = useHistoryManager();
 const { config } = useConfigManager();
 
+// 本地数据状态（独立于 HistoryView 的筛选条件）
+const localHistoryItems = ref<HistoryItem[]>([]);
+
 onMounted(async () => {
-  await loadHistory();
+  localHistoryItems.value = await loadAllHistory();
   await preloadImageInfo();
 });
 
 onActivated(async () => {
-  // 组件重新激活时，重新加载数据
-  await loadHistory();
+  // 组件重新激活时，重新加载全量数据
+  localHistoryItems.value = await loadAllHistory();
   await preloadImageInfo();
   // 清除快照，确保使用最新数据
   snapshotIds.value = null;
@@ -144,7 +147,7 @@ const formatCheckTime = (timestamp: number): string => {
 };
 
 const extractLinksFromHistory = (): CheckResult[] => {
-  return allHistoryItems.value
+  return localHistoryItems.value
     .filter(item => {
       if (serviceFilter.value !== 'all') {
         return item.results?.some(r => r.status === 'success' && r.result?.url && r.serviceId === serviceFilter.value);
@@ -280,11 +283,18 @@ const saveCheckResultToHistory = async (checkResult: CheckResult): Promise<void>
       linkCheckSummary: historyItem.linkCheckSummary
     });
 
-    // 同步更新内存缓存，避免切换筛选条件时丢失检测状态
-    const cachedItem = allHistoryItems.value.find(h => h.id === checkResult.historyItemId);
-    if (cachedItem) {
-      cachedItem.linkCheckStatus = historyItem.linkCheckStatus;
-      cachedItem.linkCheckSummary = historyItem.linkCheckSummary;
+    // 同步更新本地数据缓存
+    const localItem = localHistoryItems.value.find(h => h.id === checkResult.historyItemId);
+    if (localItem) {
+      localItem.linkCheckStatus = historyItem.linkCheckStatus;
+      localItem.linkCheckSummary = historyItem.linkCheckSummary;
+    }
+
+    // 同步更新共享缓存（确保返回 HistoryView 时状态正确）
+    const sharedItem = allHistoryItems.value.find(h => h.id === checkResult.historyItemId);
+    if (sharedItem) {
+      sharedItem.linkCheckStatus = historyItem.linkCheckStatus;
+      sharedItem.linkCheckSummary = historyItem.linkCheckSummary;
     }
 
   } catch (error) {
@@ -303,7 +313,9 @@ const startCheck = async () => {
   if (results.value.length === 0) {
     progress.value = 0;
     try {
-      await loadHistory();
+      if (localHistoryItems.value.length === 0) {
+        localHistoryItems.value = await loadAllHistory();
+      }
       const checkResults = extractLinksFromHistory();
       if (checkResults.length === 0) {
         toast.warn('无链接', '历史记录中没有可检测的图片链接');
@@ -412,7 +424,9 @@ const startCheck = async () => {
 
 const preloadImageInfo = async () => {
   try {
-    if (allHistoryItems.value.length === 0) await loadHistory();
+    if (localHistoryItems.value.length === 0) {
+      localHistoryItems.value = await loadAllHistory();
+    }
     const checkResults = extractLinksFromHistory();
     if (checkResults.length === 0) {
       results.value = [];
@@ -426,7 +440,7 @@ const preloadImageInfo = async () => {
     let pendingCount = 0;
 
     checkResults.forEach(cr => {
-      const historyItem = allHistoryItems.value.find(h => h.id === cr.historyItemId);
+      const historyItem = localHistoryItems.value.find(h => h.id === cr.historyItemId);
       if (historyItem?.linkCheckStatus) {
         // 恢复检测状态
         cr.serviceResults.forEach(sr => {

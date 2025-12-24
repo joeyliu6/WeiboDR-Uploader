@@ -574,6 +574,23 @@ export function useHistoryManager() {
   }
 
   /**
+   * 加载全量历史记录（独立于共享筛选状态）
+   * 用于 LinkCheckerView 等需要独立数据源的场景
+   *
+   * @returns 全部历史记录数组
+   */
+  async function loadAllHistory(): Promise<HistoryItem[]> {
+    await initDatabase();
+
+    const allItems: HistoryItem[] = [];
+    for await (const batch of historyDB.getAllStream(1000)) {
+      allItems.push(...batch);
+    }
+
+    return allItems;
+  }
+
+  /**
    * 获取选中的项目 ID 列表
    */
   const selectedIds = computed(() => {
@@ -606,6 +623,7 @@ export function useHistoryManager() {
 
     // 方法
     loadHistory,
+    loadAllHistory,  // 加载全量数据（独立于筛选条件）
     loadMore,  // 加载更多（无限滚动）
     searchHistory,  // 搜索（SQLite LIKE）
     invalidateCache,  // 导出缓存失效方法
