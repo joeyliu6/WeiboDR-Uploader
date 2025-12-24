@@ -423,27 +423,93 @@ fn check_cookie_field(cookie: &str, field: &str, _service_id: &str) -> bool {
     false
 }
 
+/// 获取服务的默认验证规则（当前端未提供时使用）
+fn get_default_validation_rules(service_id: &str) -> (Vec<&'static str>, Vec<&'static str>) {
+    match service_id {
+        // 微博：SUB 和 SUBP 是登录凭证，还需要额外检查 MLOGIN=1
+        "weibo" => (vec!["SUB", "SUBP"], vec![]),
+        "zhihu" => (vec!["z_c0"], vec![]),
+        "nowcoder" => (vec!["t", "csrfToken"], vec!["acw_tc", "SERVERID", "__snaker__id", "gdxidpyhxdE"]),
+        "nami" => (vec!["Auth-Token"], vec!["Q", "T"]),
+        _ => (vec![], vec![]),
+    }
+}
+
+/// 检查特定服务的登录状态（某些服务需要检查字段值而不仅仅是存在性）
+fn check_login_status(service_id: &str, cookie: &str) -> bool {
+    match service_id {
+        "weibo" => {
+            // 微博需要检查 MLOGIN=1 表示已登录
+            // MLOGIN=0 表示未登录（即使有 SUB/SUBP 也是临时会话）
+            if let Some(mlogin_pos) = cookie.find("MLOGIN=") {
+                let value_start = mlogin_pos + 7;
+                let remaining = &cookie[value_start..];
+                let value_end = remaining.find(';').unwrap_or(remaining.len());
+                let value = remaining[..value_end].trim();
+                if value == "1" {
+                    eprintln!("[登录状态检查] ✓ 微博 MLOGIN=1，已登录");
+                    return true;
+                } else {
+                    eprintln!("[登录状态检查] ✗ 微博 MLOGIN={}，未登录", value);
+                    return false;
+                }
+            }
+            eprintln!("[登录状态检查] ✗ 微博缺少 MLOGIN 字段");
+            false
+        }
+        // 其他服务只检查必要字段存在即可
+        _ => true,
+    }
+}
+
 fn validate_cookie_fields(service_id: &str, cookie: &str, required_fields: &[String], any_of_fields: &[String]) -> bool {
-    if required_fields.is_empty() && any_of_fields.is_empty() {
+    // 如果前端未提供验证规则，使用默认规则
+    let (default_required, default_any) = get_default_validation_rules(service_id);
+
+    let actual_required: Vec<String> = if required_fields.is_empty() {
+        default_required.iter().map(|s| s.to_string()).collect()
+    } else {
+        required_fields.to_vec()
+    };
+
+    let actual_any: Vec<String> = if any_of_fields.is_empty() {
+        default_any.iter().map(|s| s.to_string()).collect()
+    } else {
+        any_of_fields.to_vec()
+    };
+
+    eprintln!("[Cookie验证] 服务: {}, 必要字段: {:?}, 任意字段: {:?}", service_id, actual_required, actual_any);
+
+    if actual_required.is_empty() && actual_any.is_empty() {
         return !cookie.trim().is_empty();
     }
 
-    for field in required_fields {
+    // 检查必要字段
+    for field in &actual_required {
         if !check_cookie_field(cookie, field, service_id) {
-            eprintln!("[Cookie验证] 缺少必要字段或验证失败: {}", field);
+            eprintln!("[Cookie验证] ✗ 缺少必要字段: {}", field);
             return false;
         }
     }
+    eprintln!("[Cookie验证] ✓ 通过 requiredFields 检查");
 
-    if !any_of_fields.is_empty() {
-        let has_any = any_of_fields.iter().any(|f| check_cookie_field(cookie, f, service_id));
+    // 检查任意字段
+    if !actual_any.is_empty() {
+        let has_any = actual_any.iter().any(|f| check_cookie_field(cookie, f, service_id));
         if !has_any {
-            eprintln!("[Cookie验证] 缺少任意安全字段，需要至少包含: {:?}", any_of_fields);
+            eprintln!("[Cookie验证] ✗ 缺少任意安全字段，需要至少包含: {:?}", actual_any);
             return false;
         }
         eprintln!("[Cookie验证] ✓ 通过 anyOfFields 检查");
     }
 
+    // 检查特定服务的登录状态（如微博需要 MLOGIN=1）
+    if !check_login_status(service_id, cookie) {
+        eprintln!("[Cookie验证] ✗ {} 登录状态检查失败", service_id);
+        return false;
+    }
+
+    eprintln!("[Cookie验证] ✓ {} Cookie 验证通过！", service_id);
     true
 }
 
@@ -471,14 +537,15 @@ async fn start_cookie_monitoring(
         return Err(format!("无效的服务 ID: {}，只允许字母、数字、下划线和连字符", service));
     }
 
+    // 不再默认回退到微博域名，使用前端传入的配置
     let domains: Vec<String> = target_domains
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| {
             target_domain
                 .map(|d| vec![d])
-                .unwrap_or_else(|| vec!["weibo.com".to_string()])
+                .unwrap_or_default()
         });
-    let fields = required_fields.unwrap_or_else(|| vec!["SUB".to_string(), "SUBP".to_string()]);
+    let fields = required_fields.unwrap_or_default();
     let any_fields = any_of_fields.unwrap_or_default();
 
     for field in fields.iter().chain(any_fields.iter()) {
@@ -614,14 +681,15 @@ async fn get_request_header_cookie(
         return Err(format!("无效的服务 ID: {}，只允许字母、数字、下划线和连字符", service));
     }
 
+    // 不再默认回退到微博域名，使用前端传入的配置
     let domains: Vec<String> = target_domains
         .filter(|v| !v.is_empty())
         .unwrap_or_else(|| {
             target_domain
                 .map(|d| vec![d])
-                .unwrap_or_else(|| vec!["weibo.com".to_string()])
+                .unwrap_or_default()
         });
-    let fields = required_fields.unwrap_or_else(|| vec!["SUB".to_string(), "SUBP".to_string()]);
+    let fields = required_fields.unwrap_or_default();
     let any_fields = any_of_fields.unwrap_or_default();
 
     for field in fields.iter().chain(any_fields.iter()) {
@@ -782,14 +850,139 @@ fn attempt_cookie_capture_and_save_generic(
 }
 
 // WebView2 Cookie 自动提取功能 (Windows)
-// 注意：由于 webview2-com API 复杂性和版本兼容性问题，
-// 当前使用简化实现，返回 None 引导用户使用手动获取功能。
-// Cookie 自动提取功能后续版本将完善。
+// 使用 WebView2 CookieManager API 从指定域名提取 Cookie
 #[cfg(target_os = "windows")]
-fn try_extract_cookie_header_generic(_window: &tauri::WebviewWindow, domain: &str) -> Result<Option<String>, String> {
-    eprintln!("[Cookie监控] 域名: {}，请使用手动获取 Cookie 功能", domain);
-    // 返回 None 表示无法自动提取，前端会引导用户手动复制
-    Ok(None)
+fn try_extract_cookie_header_generic(window: &tauri::WebviewWindow, domain: &str) -> Result<Option<String>, String> {
+    use std::sync::mpsc;
+    use std::time::Duration;
+
+    // 创建 channel 用于等待异步结果
+    let (tx, rx) = mpsc::channel::<Option<String>>();
+    let domain_owned = domain.to_string();
+
+    // 使用 with_webview 访问底层 WebView2 API
+    let result = window.with_webview(move |webview| {
+        #[cfg(windows)]
+        unsafe {
+            use webview2_com::Microsoft::Web::WebView2::Win32::*;
+            use windows_core::{Interface, HSTRING, PCWSTR, PWSTR};
+
+            let controller = webview.controller();
+
+            // 获取 ICoreWebView2
+            let core = match controller.CoreWebView2() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[Cookie提取] 获取 CoreWebView2 失败: {:?}", e);
+                    let _ = tx.send(None);
+                    return;
+                }
+            };
+
+            // Cast 到 ICoreWebView2_2 获取 CookieManager
+            let core2 = match core.cast::<ICoreWebView2_2>() {
+                Ok(c) => c,
+                Err(e) => {
+                    eprintln!("[Cookie提取] Cast 到 ICoreWebView2_2 失败: {:?}", e);
+                    let _ = tx.send(None);
+                    return;
+                }
+            };
+
+            // 获取 CookieManager
+            let cookie_manager = match core2.CookieManager() {
+                Ok(cm) => cm,
+                Err(e) => {
+                    eprintln!("[Cookie提取] 获取 CookieManager 失败: {:?}", e);
+                    let _ = tx.send(None);
+                    return;
+                }
+            };
+
+            // 构建 URI（GetCookies 需要完整的 URL）
+            let uri = format!("https://{}/", domain_owned);
+            let uri_hstring = HSTRING::from(&uri);
+
+            // 使用 implement 宏创建 GetCookies 回调 handler
+            let tx_clone = tx.clone();
+
+            #[windows_core::implement(ICoreWebView2GetCookiesCompletedHandler)]
+            struct GetCookiesHandler {
+                tx: std::sync::mpsc::Sender<Option<String>>,
+            }
+
+            impl ICoreWebView2GetCookiesCompletedHandler_Impl for GetCookiesHandler_Impl {
+                fn Invoke(
+                    &self,
+                    _result: windows_core::HRESULT,
+                    cookie_list: windows_core::Ref<'_, ICoreWebView2CookieList>,
+                ) -> windows_core::Result<()> {
+                    let mut cookies = Vec::new();
+
+                    unsafe {
+                        if let Ok(list) = cookie_list.ok() {
+                            // 获取 cookie 数量
+                            let mut count: u32 = 0;
+                            if list.Count(&mut count).is_ok() {
+                                for i in 0..count {
+                                    if let Ok(cookie) = list.GetValueAtIndex(i) {
+                                        // 获取 cookie 的 Name 和 Value
+                                        let mut name = PWSTR::null();
+                                        let mut value = PWSTR::null();
+
+                                        if cookie.Name(&mut name).is_ok() && cookie.Value(&mut value).is_ok() {
+                                            let name_str = name.to_string().unwrap_or_default();
+                                            let value_str = value.to_string().unwrap_or_default();
+
+                                            if !name_str.is_empty() {
+                                                cookies.push(format!("{}={}", name_str, value_str));
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+
+                    let result = if cookies.is_empty() {
+                        None
+                    } else {
+                        Some(cookies.join("; "))
+                    };
+
+                    let _ = self.tx.send(result);
+                    Ok(())
+                }
+            }
+
+            let handler: ICoreWebView2GetCookiesCompletedHandler = GetCookiesHandler { tx: tx_clone }.into();
+
+            // 调用 GetCookies
+            if let Err(e) = cookie_manager.GetCookies(PCWSTR(uri_hstring.as_ptr()), &handler) {
+                eprintln!("[Cookie提取] GetCookies 调用失败: {:?}", e);
+                let _ = tx.send(None);
+            }
+        }
+    });
+
+    if result.is_err() {
+        eprintln!("[Cookie提取] with_webview 调用失败");
+        return Ok(None);
+    }
+
+    // 等待异步结果（最多 5 秒）
+    match rx.recv_timeout(Duration::from_secs(5)) {
+        Ok(cookie_opt) => {
+            if let Some(ref cookies) = cookie_opt {
+                eprintln!("[Cookie提取] ✓ 从 {} 提取到 {} 个 Cookie", domain, cookies.matches('=').count());
+            }
+            Ok(cookie_opt)
+        }
+        Err(_) => {
+            eprintln!("[Cookie提取] 等待结果超时");
+            Ok(None)
+        }
+    }
 }
 
 // === R2 和 WebDAV 测试命令 ===
