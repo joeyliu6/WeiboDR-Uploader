@@ -28,8 +28,7 @@ export default defineConfig({
             rollupOptions: {
                 input: {
                     main: resolve(fileURLToPath(new URL(".", import.meta.url)), "index.html"),
-                    'login-webview': resolve(fileURLToPath(new URL(".", import.meta.url)), "login-webview.html"),
-                    'tray-menu': resolve(fileURLToPath(new URL(".", import.meta.url)), "tray-menu.html")
+                    'login-webview': resolve(fileURLToPath(new URL(".", import.meta.url)), "login-webview.html")
                 },
             },  },
 });

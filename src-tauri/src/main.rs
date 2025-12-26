@@ -11,9 +11,9 @@ use tauri::{Manager, Emitter};
 use error::AppError;
 #[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
+#[cfg(not(target_os = "macos"))]
+use tauri::menu::{MenuBuilder, MenuItemBuilder};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
-use tauri::{WebviewUrl, WebviewWindowBuilder};
-// positioner 插件仍用于获取托盘事件，但不再用于定位窗口
 use std::time::Duration;
 
 // 用于 R2 和 WebDAV 测试
@@ -100,8 +100,7 @@ fn main() {
             commands::link_checker::download_image_from_url,
             commands::clipboard::clipboard_has_image,
             commands::clipboard::read_clipboard_image,
-            get_or_create_secure_key,
-            handle_tray_menu_action
+            get_or_create_secure_key
         ])
         .setup(|app| {
             // 1. 创建原生菜单栏 (仅 macOS)
@@ -162,50 +161,68 @@ fn main() {
                 });
             }
 
-            // 3. 预创建托盘菜单窗口（隐藏状态，提升响应速度）
-            let tray_menu_window = create_tray_menu_window(app.handle())?;
+            // 3. 创建原生托盘菜单（PicGo 方案：0 内存占用）
+            let menu_settings = MenuItemBuilder::new("打开设置")
+                .id("open_settings")
+                .build(app)?;
+            let menu_history = MenuItemBuilder::new("上传历史")
+                .id("open_history")
+                .build(app)?;
+            let menu_quit = MenuItemBuilder::new("退出")
+                .id("quit")
+                .build(app)?;
 
-            // 设置失焦时隐藏窗口
-            let tray_menu_clone = tray_menu_window.clone();
-            tray_menu_window.on_window_event(move |event| {
-                if let tauri::WindowEvent::Focused(false) = event {
-                    let _ = tray_menu_clone.hide();
-                }
-            });
+            let tray_menu = MenuBuilder::new(app)
+                .items(&[&menu_settings, &menu_history, &menu_quit])
+                .build()?;
 
-            // 4. 创建系统托盘
+            // 4. 创建系统托盘（原生菜单，右键显示）
             let _tray = TrayIconBuilder::new()
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
-                .on_tray_icon_event(|tray, event| {
-                    // 将事件传递给 positioner 插件（用于定位）
-                    tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
-
-                    match event {
-                        // 左键点击：显示/隐藏主窗口
-                        TrayIconEvent::Click {
-                            button: MouseButton::Left,
-                            button_state: MouseButtonState::Up,
-                            ..
-                        } => {
-                            let app = tray.app_handle();
+                .menu(&tray_menu)
+                .show_menu_on_left_click(false)  // 左键不显示菜单
+                .on_menu_event(|app, event| {
+                    // 处理原生菜单点击事件
+                    match event.id().as_ref() {
+                        "open_settings" => {
                             if let Some(window) = app.get_webview_window("main") {
                                 let _ = window.unminimize();
                                 let _ = window.show();
                                 let _ = window.set_focus();
+                                let _ = window.emit("navigate-to", "settings");
                             }
                         }
-                        // 右键点击：显示自定义托盘菜单
-                        TrayIconEvent::Click {
-                            button: MouseButton::Right,
-                            button_state: MouseButtonState::Up,
-                            position,
-                            ..
-                        } => {
-                            let app = tray.app_handle();
-                            show_tray_menu(app, position.x as i32, position.y as i32);
+                        "open_history" => {
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
+                                let _ = window.emit("navigate-to", "history");
+                            }
+                        }
+                        "quit" => {
+                            std::process::exit(0);
                         }
                         _ => {}
+                    }
+                })
+                .on_tray_icon_event(|tray, event| {
+                    // 将事件传递给 positioner 插件
+                    tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
+
+                    // 左键点击：显示主窗口
+                    if let TrayIconEvent::Click {
+                        button: MouseButton::Left,
+                        button_state: MouseButtonState::Up,
+                        ..
+                    } = event {
+                        let app = tray.app_handle();
+                        if let Some(window) = app.get_webview_window("main") {
+                            let _ = window.unminimize();
+                            let _ = window.show();
+                            let _ = window.set_focus();
+                        }
                     }
                 })
                 .build(app)?;
@@ -1517,101 +1534,3 @@ fn get_or_create_secure_key() -> Result<String, AppError> {
     }
 }
 
-/// 预创建托盘菜单窗口（隐藏状态）
-fn create_tray_menu_window(app: &tauri::AppHandle) -> Result<tauri::WebviewWindow, Box<dyn std::error::Error>> {
-    let window_width = 140.0;
-    let window_height = 95.0;
-
-    let window = WebviewWindowBuilder::new(
-        app,
-        "tray-menu",
-        WebviewUrl::App("tray-menu.html".into())
-    )
-    .title("托盘菜单")
-    .inner_size(window_width, window_height)
-    .position(-1000.0, -1000.0)  // 初始位置在屏幕外
-    .decorations(false)
-    .always_on_top(true)
-    .visible(false)  // 初始隐藏
-    .resizable(false)
-    .skip_taskbar(true)
-    .build()?;
-
-    eprintln!("[托盘菜单] 预创建成功");
-    Ok(window)
-}
-
-/// 显示托盘菜单（定位并显示预创建的窗口）
-/// click_x, click_y: 鼠标点击位置（物理像素）
-fn show_tray_menu(app: &tauri::AppHandle, click_x: i32, click_y: i32) {
-    let Some(window) = app.get_webview_window("tray-menu") else {
-        eprintln!("[托盘菜单] 窗口不存在");
-        return;
-    };
-
-    // 如果窗口已可见，隐藏它（切换行为）
-    if window.is_visible().unwrap_or(false) {
-        let _ = window.hide();
-        return;
-    }
-
-    // 获取缩放因子（用于物理像素转逻辑像素）
-    let scale_factor = app.get_webview_window("main")
-        .map(|w| w.scale_factor().unwrap_or(1.0))
-        .unwrap_or(1.0);
-
-    // 将物理像素转换为逻辑像素
-    let logical_x = (click_x as f64 / scale_factor) as i32;
-    let logical_y = (click_y as f64 / scale_factor) as i32;
-
-    // 窗口尺寸（逻辑像素）
-    let window_height = 95;
-
-    // 计算窗口位置：鼠标点击点作为弹窗的左下角
-    let pos_x = logical_x;
-    let pos_y = logical_y - window_height;
-
-    // 定位并显示窗口
-    let _ = window.set_position(tauri::Position::Logical(tauri::LogicalPosition {
-        x: pos_x.max(0) as f64,
-        y: pos_y.max(0) as f64,
-    }));
-    let _ = window.show();
-    let _ = window.set_focus();
-}
-
-/// 处理托盘菜单操作
-#[tauri::command]
-fn handle_tray_menu_action(action: String, app: tauri::AppHandle) {
-    eprintln!("[托盘菜单] 收到操作: {}", action);
-
-    // 隐藏托盘菜单（不关闭，保持预创建状态）
-    if let Some(menu_window) = app.get_webview_window("tray-menu") {
-        let _ = menu_window.hide();
-    }
-
-    match action.as_str() {
-        "open_settings" => {
-            if let Some(main_window) = app.get_webview_window("main") {
-                let _ = main_window.unminimize();
-                let _ = main_window.show();
-                let _ = main_window.set_focus();
-                let _ = main_window.emit("navigate-to", "settings");
-            }
-        }
-        "open_history" => {
-            if let Some(main_window) = app.get_webview_window("main") {
-                let _ = main_window.unminimize();
-                let _ = main_window.show();
-                let _ = main_window.set_focus();
-                let _ = main_window.emit("navigate-to", "history");
-            }
-        }
-        "quit" => {
-            std::process::exit(0);
-        }
-        _ => {
-            eprintln!("[托盘菜单] 未知操作: {}", action);
-        }
-    }
-}
