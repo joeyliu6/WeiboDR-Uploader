@@ -103,6 +103,9 @@ export class ThemeManager {
         root.classList.remove('dark-theme');
       }
 
+      // 同步到 localStorage（过渡动画分支）
+      localStorage.setItem('picnexus-theme', mode === 'dark' ? 'dark-theme' : 'light-theme');
+
       // 延迟后移除过渡类并清理 GPU 资源
       setTimeout(() => {
         root.classList.remove('theme-transitioning');
@@ -119,6 +122,9 @@ export class ThemeManager {
         root.classList.remove('dark-theme');
       }
     }
+
+    // 同步到 localStorage，供托盘菜单等独立窗口读取
+    localStorage.setItem('picnexus-theme', mode === 'dark' ? 'dark-theme' : 'light-theme');
   }
 
   /**

@@ -9,10 +9,11 @@ mod commands;
 
 use tauri::{Manager, Emitter};
 use error::AppError;
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 #[cfg(target_os = "macos")]
-use tauri::menu::Submenu;
+use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 use tauri::tray::{TrayIconBuilder, MouseButton, MouseButtonState, TrayIconEvent};
+use tauri::{WebviewUrl, WebviewWindowBuilder};
+// positioner 插件仍用于获取托盘事件，但不再用于定位窗口
 use std::time::Duration;
 
 // 用于 R2 和 WebDAV 测试
@@ -60,6 +61,7 @@ fn main() {
 
     tauri::Builder::default()
         // 注册 Tauri 2.0 插件
+        .plugin(tauri_plugin_positioner::init())
         .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
@@ -98,7 +100,8 @@ fn main() {
             commands::link_checker::download_image_from_url,
             commands::clipboard::clipboard_has_image,
             commands::clipboard::read_clipboard_image,
-            get_or_create_secure_key
+            get_or_create_secure_key,
+            handle_tray_menu_action
         ])
         .setup(|app| {
             // 1. 创建原生菜单栏 (仅 macOS)
@@ -159,59 +162,39 @@ fn main() {
                 });
             }
 
-            // 3. 创建系统托盘 (Tauri 2.0)
-            let tray_open_settings = MenuItem::with_id(app, "open_settings", "打开设置", true, None::<&str>)?;
-            let tray_open_history = MenuItem::with_id(app, "open_history", "上传历史", true, None::<&str>)?;
-            let tray_quit = MenuItem::with_id(app, "tray_quit", "退出", true, None::<&str>)?;
-            let tray_menu = Menu::with_items(
-                app,
-                &[
-                    &tray_open_settings,
-                    &tray_open_history,
-                    &PredefinedMenuItem::separator(app)?,
-                    &tray_quit,
-                ],
-            )?;
-
+            // 3. 创建系统托盘 (自定义菜单窗口)
             let _tray = TrayIconBuilder::new()
-                .menu(&tray_menu)
                 .icon(app.default_window_icon().unwrap().clone())
                 .icon_as_template(true)
-                .on_menu_event(|app_handle, event| {
-                    let menu_id = event.id().as_ref();
-                    match menu_id {
-                        "tray_quit" => {
-                            std::process::exit(0);
-                        }
-                        "open_settings" => {
-                            eprintln!("托盘事件触发: 打开设置");
-                            if let Some(main_window) = app_handle.get_webview_window("main") {
-                                let _ = main_window.unminimize();
-                                let _ = main_window.show();
-                                let _ = main_window.set_focus();
-                                let _ = main_window.emit("navigate-to", "settings");
+                .on_tray_icon_event(|tray, event| {
+                    // 将事件传递给 positioner 插件（用于定位）
+                    tauri_plugin_positioner::on_tray_event(tray.app_handle(), &event);
+
+                    match event {
+                        // 左键点击：显示/隐藏主窗口
+                        TrayIconEvent::Click {
+                            button: MouseButton::Left,
+                            button_state: MouseButtonState::Up,
+                            ..
+                        } => {
+                            let app = tray.app_handle();
+                            if let Some(window) = app.get_webview_window("main") {
+                                let _ = window.unminimize();
+                                let _ = window.show();
+                                let _ = window.set_focus();
                             }
                         }
-                        "open_history" => {
-                            eprintln!("托盘事件触发: 上传历史记录");
-                            if let Some(main_window) = app_handle.get_webview_window("main") {
-                                let _ = main_window.unminimize();
-                                let _ = main_window.show();
-                                let _ = main_window.set_focus();
-                                let _ = main_window.emit("navigate-to", "history");
-                            }
+                        // 右键点击：显示自定义托盘菜单
+                        TrayIconEvent::Click {
+                            button: MouseButton::Right,
+                            button_state: MouseButtonState::Up,
+                            position,
+                            ..
+                        } => {
+                            let app = tray.app_handle();
+                            show_tray_menu(app, position.x as i32, position.y as i32);
                         }
                         _ => {}
-                    }
-                })
-                .on_tray_icon_event(|tray, event| {
-                    if let TrayIconEvent::Click { button: MouseButton::Left, button_state: MouseButtonState::Up, .. } = event {
-                        let app = tray.app_handle();
-                        if let Some(window) = app.get_webview_window("main") {
-                            let _ = window.unminimize();
-                            let _ = window.show();
-                            let _ = window.set_focus();
-                        }
                     }
                 })
                 .build(app)?;
@@ -1519,6 +1502,119 @@ fn get_or_create_secure_key() -> Result<String, AppError> {
 
             eprintln!("[密钥管理] ✓ 新密钥已保存到系统钥匙串");
             Ok(new_key)
+        }
+    }
+}
+
+/// 显示自定义托盘菜单窗口
+/// click_x, click_y: 鼠标点击位置（物理像素）
+fn show_tray_menu(app: &tauri::AppHandle, click_x: i32, click_y: i32) {
+    // 如果菜单窗口已存在，关闭它（切换行为）
+    if let Some(existing) = app.get_webview_window("tray-menu") {
+        let _ = existing.close();
+        return;
+    }
+
+    // 获取缩放因子（用于物理像素转逻辑像素）
+    let scale_factor = app.get_webview_window("main")
+        .map(|w| w.scale_factor().unwrap_or(1.0))
+        .unwrap_or(1.0);
+
+    // 将物理像素转换为逻辑像素
+    let logical_x = (click_x as f64 / scale_factor) as i32;
+    let logical_y = (click_y as f64 / scale_factor) as i32;
+
+    // 窗口尺寸（逻辑像素）
+    let window_width = 160;
+    let window_height = 120;
+
+    // 计算窗口位置：鼠标点击点作为弹窗的左下角
+    let pos_x = logical_x;                      // 弹窗左边缘与鼠标X对齐
+    let pos_y = logical_y - window_height;      // 弹窗底边缘与鼠标Y对齐
+
+    // 创建新的托盘菜单窗口
+    let builder = WebviewWindowBuilder::new(
+        app,
+        "tray-menu",
+        WebviewUrl::App("tray-menu.html".into())
+    )
+    .title("托盘菜单")
+    .inner_size(window_width as f64, window_height as f64)
+    .position(pos_x.max(0) as f64, pos_y.max(0) as f64)
+    .decorations(false)
+    .always_on_top(true)
+    .visible(true)
+    .resizable(false)
+    .skip_taskbar(true)
+    .focused(true);
+
+    match builder.build() {
+        Ok(window) => {
+            // 确保窗口获得焦点
+            let _ = window.set_focus();
+
+            // 使用 AtomicBool 控制是否响应失焦事件
+            // Windows 上新窗口创建时会触发假的失焦事件，需要延迟后才开始监听
+            let can_close = std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let can_close_clone = can_close.clone();
+
+            // 延迟 300ms 后才允许响应失焦事件
+            std::thread::spawn(move || {
+                std::thread::sleep(Duration::from_millis(300));
+                can_close_clone.store(true, std::sync::atomic::Ordering::SeqCst);
+            });
+
+            // 监听失焦事件，自动关闭菜单
+            let window_clone = window.clone();
+            window.on_window_event(move |event| {
+                if let tauri::WindowEvent::Focused(false) = event {
+                    // 只有在延迟后才响应失焦事件
+                    if can_close.load(std::sync::atomic::Ordering::SeqCst) {
+                        let _ = window_clone.close();
+                    }
+                }
+            });
+
+            eprintln!("[托盘菜单] 创建成功");
+        }
+        Err(e) => {
+            eprintln!("[托盘菜单] 创建失败: {:?}", e);
+        }
+    }
+}
+
+/// 处理托盘菜单操作
+#[tauri::command]
+fn handle_tray_menu_action(action: String, app: tauri::AppHandle) {
+    eprintln!("[托盘菜单] 收到操作: {}", action);
+
+    // 关闭托盘菜单
+    if let Some(menu_window) = app.get_webview_window("tray-menu") {
+        let _ = menu_window.close();
+    }
+
+    match action.as_str() {
+        "open_settings" => {
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.unminimize();
+                let _ = main_window.show();
+                let _ = main_window.set_focus();
+                let _ = main_window.emit("navigate-to", "settings");
+            }
+        }
+        "open_history" => {
+            if let Some(main_window) = app.get_webview_window("main") {
+                let _ = main_window.unminimize();
+                let _ = main_window.show();
+                let _ = main_window.set_focus();
+                let _ = main_window.emit("navigate-to", "history");
+            }
+        }
+        "quit" => {
+            std::process::exit(0);
+        }
+        _ => {
+            eprintln!("[托盘菜单] 未知操作: {}", action);
         }
     }
 }
