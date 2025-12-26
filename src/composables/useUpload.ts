@@ -341,17 +341,45 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
           const historyId = `${Date.now()}_${Math.random().toString(36).substring(7)}`;
           const allServiceResults: SingleServiceResult[] = [];
 
+          // 方案 B：标志位跟踪历史记录是否已创建
+          let historyCreated = false;
+          let historyCreating = false; // 防止并发创建
+          // 等待队列：在 historyCreating 期间到达的成功结果，待 historyCreated 后追加
+          const pendingResults: SingleServiceResult[] = [];
+
           // 实时处理单个服务完成的函数
-          const handleServiceResult = (serviceResult: SingleServiceResult) => {
+          const handleServiceResult = async (serviceResult: SingleServiceResult) => {
             // 记录此结果，确保后续保存时包含它
             allServiceResults.push(serviceResult);
 
-            // 2. 尝试追加到历史记录
-            // 如果历史记录尚未创建（saveHistoryItem 未执行），此操作会找不到项目而安全忽略
-            // 如果历史记录正在保存（saveHistoryItem 持有锁），此操作会排队等待保存完成后执行
-            // 如果历史记录已保存，此操作会立即执行更新
-            if (serviceResult.status === 'success') {
+            // 方案 B：第一个成功结果到达时立即创建历史记录
+            if (serviceResult.status === 'success' && !historyCreated && !historyCreating) {
+              historyCreating = true;
+              try {
+                // 立即创建历史记录（只包含当前这个成功结果）
+                await saveHistoryItemImmediate(filePath, serviceResult, historyId);
+                historyCreated = true;
+                console.log(`[历史记录] 首个成功结果 ${serviceResult.serviceId} 已触发历史记录创建`);
+
+                // 处理等待队列中的结果（在创建期间到达的其他成功结果）
+                if (pendingResults.length > 0) {
+                  console.log(`[历史记录] 处理等待队列: ${pendingResults.length} 个结果`);
+                  for (const pending of pendingResults) {
+                    addResultToHistoryItem(historyId, pending);
+                  }
+                  pendingResults.length = 0; // 清空队列
+                }
+              } catch (err) {
+                console.error('[历史记录] 立即保存失败:', err);
+                historyCreating = false; // 重置，允许后续成功结果重试
+              }
+            } else if (serviceResult.status === 'success' && historyCreated) {
+              // 后续成功结果追加到已有记录
               addResultToHistoryItem(historyId, serviceResult);
+            } else if (serviceResult.status === 'success' && historyCreating && !historyCreated) {
+              // 正在创建历史记录期间到达的结果，加入等待队列
+              pendingResults.push(serviceResult);
+              console.log(`[历史记录] ${serviceResult.serviceId} 加入等待队列`);
             }
 
             const item = queueManager!.getItem(itemId);
@@ -436,12 +464,15 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
           // 注意：不需要遍历 result.results，因为 handleServiceResult 已经处理了
           // 但为了保险起见，如果有遗漏的可以再更新一次 (此处略过，依赖 handleServiceResult)
 
-          // 使用我们累积的结果覆盖，因为 result.results 可能不包含后台完成的 TCL
-          // 并传入 liveResults 引用，确保在 saveHistoryItem 获取锁执行时，能使用最新的数据
-          console.log(`[并发上传] 准备保存历史记录，目前累积结果: ${allServiceResults.length} 个`);
+          // 方案 B：历史记录已在 handleServiceResult 中创建
+          // 如果还没创建（所有图床都失败的情况），这里兜底创建
+          console.log(`[并发上传] 上传完成，历史记录已创建: ${historyCreated}，累积结果: ${allServiceResults.length} 个`);
 
-          // 保存历史记录 (传入预生成的 ID 和实时结果引用)
-          await saveHistoryItem(filePath, result, historyId, allServiceResults);
+          if (!historyCreated && allServiceResults.some(r => r.status === 'success')) {
+            // 兜底：如果由于某种原因历史记录未创建，在此补救
+            console.log('[历史记录] 兜底创建历史记录...');
+            await saveHistoryItem(filePath, result, historyId, allServiceResults);
+          }
 
           // 通知队列管理器上传成功（谁先上传完用谁的链接）
           let thumbUrl = result.primaryUrl;
@@ -624,38 +655,97 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
   }
 
   /**
+   * 立即保存历史记录（方案 B：第一个成功结果到达时调用）
+   * 创建只包含单个结果的历史记录，后续结果通过 addResultToHistoryItem 追加
+   * @param filePath 文件路径
+   * @param firstResult 第一个成功的上传结果
+   * @param historyId 预生成的历史记录 ID
+   */
+  async function saveHistoryItemImmediate(
+    filePath: string,
+    firstResult: SingleServiceResult,
+    historyId: string
+  ): Promise<void> {
+    // 获取本地文件名
+    let fileName: string;
+    try {
+      fileName = await basename(filePath);
+      if (!fileName || fileName.trim().length === 0) {
+        fileName = filePath.split(/[/\\]/).pop() || '未知文件';
+      }
+    } catch {
+      fileName = filePath.split(/[/\\]/).pop() || '未知文件';
+    }
+
+    // 构建初始历史记录（只包含第一个成功结果）
+    const newItem: HistoryItem = {
+      id: historyId,
+      localFileName: fileName,
+      timestamp: Date.now(),
+      filePath: filePath,
+      results: [firstResult], // 只包含第一个成功结果
+      primaryService: firstResult.serviceId,
+      generatedLink: firstResult.result?.url || ''
+    };
+
+    // 直接插入 SQLite
+    await historyDB.insert(newItem);
+    console.log('[历史记录] 立即保存历史记录:', newItem.localFileName, '(主力图床:', firstResult.serviceId, ')');
+
+    // 使缓存失效
+    invalidateCache();
+  }
+
+  /**
    * 向已有历史记录添加结果（用于后台异步上传完成时更新）
    * 使用 SQLite 更新操作，无需读取全部数据
+   *
+   * 方案 B 优化：历史记录已在首个成功结果时创建
+   * 保留简单的重试机制以应对极端情况（如 saveHistoryItemImmediate 仍在执行）
    */
   async function addResultToHistoryItem(historyId: string, result: SingleServiceResult): Promise<void> {
     if (!historyId || result.status !== 'success') return;
 
-    try {
-      // 获取现有记录
-      const item = await historyDB.getById(historyId);
-      if (!item) {
-        // 记录尚未创建，安全忽略（saveHistoryItem 可能尚未执行）
-        console.log(`[历史记录] 记录 ${historyId} 尚不存在，跳过追加`);
+    // 简化的重试：最多 2 次，间隔 50ms（因为 saveHistoryItemImmediate 通常很快完成）
+    const MAX_ATTEMPTS = 2;
+
+    for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
+      try {
+        // 获取现有记录
+        const item = await historyDB.getById(historyId);
+        if (!item) {
+          if (attempt < MAX_ATTEMPTS - 1) {
+            // 短暂等待后重试
+            await new Promise(resolve => setTimeout(resolve, 50));
+            continue;
+          }
+          // 记录不存在，可能是首次保存失败，跳过
+          console.warn(`[历史记录] 记录 ${historyId} 不存在，无法追加 ${result.serviceId} 结果`);
+          return;
+        }
+
+        // 检查是否已存在该服务的结果（防止重复）
+        const exists = item.results?.some((r: HistoryItem['results'][number]) => r.serviceId === result.serviceId);
+        if (exists) {
+          return; // 静默跳过，无需日志
+        }
+
+        // 追加新结果
+        const updatedResults = [...(item.results || []), result];
+
+        // 更新记录
+        await historyDB.update(historyId, { results: updatedResults });
+        console.log(`[历史记录] 追加结果: ${result.serviceId}`);
+
+        invalidateCache();
         return;
+      } catch (error) {
+        if (attempt < MAX_ATTEMPTS - 1) {
+          await new Promise(resolve => setTimeout(resolve, 50));
+        } else {
+          console.error('[历史记录] 追加结果失败:', error);
+        }
       }
-
-      // 检查是否已存在该服务的结果
-      const exists = item.results?.some((r: HistoryItem['results'][number]) => r.serviceId === result.serviceId);
-      if (exists) {
-        console.log(`[历史记录] ${item.localFileName} 已有 ${result.serviceId} 结果，跳过`);
-        return;
-      }
-
-      // 追加新结果
-      const updatedResults = [...(item.results || []), result];
-
-      // 更新记录
-      await historyDB.update(historyId, { results: updatedResults });
-      console.log(`[历史记录] 追加结果到 ${item.localFileName}: ${result.serviceId}`);
-
-      invalidateCache();
-    } catch (error) {
-      console.error('[历史记录] 追加结果失败:', error);
     }
   }
 

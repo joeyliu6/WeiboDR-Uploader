@@ -250,7 +250,20 @@ export const DEFAULT_PREFIXES: string[] = [
  * 用户配置（新架构）
  * 支持多图床并行上传
  */
+/**
+ * 当前配置版本号
+ * 每次配置格式变更时递增此版本号
+ * 迁移函数将根据此版本号决定是否需要执行迁移
+ */
+export const CONFIG_VERSION = 1;
+
 export interface UserConfig {
+  /**
+   * 配置版本号
+   * 用于追踪配置格式变化，支持增量迁移
+   */
+  configVersion?: number;
+
   /** 用户启用的图床服务列表（上传窗口勾选的图床） */
   enabledServices: ServiceType[];
 
@@ -537,37 +550,63 @@ export function getActivePrefix(config: UserConfig): string | null {
  * @param config 用户配置（可能是旧格式）
  * @returns 迁移后的配置
  */
+/**
+ * 配置迁移函数
+ *
+ * 根据配置版本号执行增量迁移，确保旧版本配置能正确升级到新版本。
+ * 每次配置格式变更时：
+ * 1. 递增 CONFIG_VERSION
+ * 2. 在此函数中添加对应版本的迁移逻辑
+ *
+ * @param config 可能来自旧版本的用户配置
+ * @returns 迁移后的配置（版本号为最新）
+ */
 export function migrateConfig(config: UserConfig): UserConfig {
-  // 如果已经有 linkPrefixConfig，无需迁移
-  if (config.linkPrefixConfig) {
-    return config;
+  let migratedConfig = { ...config };
+  const currentVersion = config.configVersion || 0;
+
+  // 版本 0 -> 1：将 baiduPrefix 迁移为 linkPrefixConfig
+  if (currentVersion < 1) {
+    if (!migratedConfig.linkPrefixConfig) {
+      // 创建前缀列表，以默认前缀开始
+      const prefixList = [...DEFAULT_PREFIXES];
+      let selectedIndex = 0;
+
+      // 如果有旧的 baiduPrefix
+      if (migratedConfig.baiduPrefix) {
+        const existingIndex = prefixList.indexOf(migratedConfig.baiduPrefix);
+        if (existingIndex >= 0) {
+          // 旧前缀在默认列表中，选中它
+          selectedIndex = existingIndex;
+        } else {
+          // 旧前缀不在默认列表中，添加进去
+          prefixList.push(migratedConfig.baiduPrefix);
+          selectedIndex = prefixList.length - 1;
+        }
+      }
+
+      migratedConfig = {
+        ...migratedConfig,
+        linkPrefixConfig: {
+          enabled: true,
+          selectedIndex,
+          prefixList
+        }
+      };
+    }
+    console.log('[配置迁移] 从版本 0 迁移到版本 1：linkPrefixConfig');
   }
 
-  // 创建前缀列表，以默认前缀开始
-  const prefixList = [...DEFAULT_PREFIXES];
-  let selectedIndex = 0;
+  // 未来版本迁移示例：
+  // if (currentVersion < 2) {
+  //   // 版本 1 -> 2 的迁移逻辑
+  //   console.log('[配置迁移] 从版本 1 迁移到版本 2：xxx');
+  // }
 
-  // 如果有旧的 baiduPrefix
-  if (config.baiduPrefix) {
-    const existingIndex = prefixList.indexOf(config.baiduPrefix);
-    if (existingIndex >= 0) {
-      // 旧前缀在默认列表中，选中它
-      selectedIndex = existingIndex;
-    } else {
-      // 旧前缀不在默认列表中，添加进去
-      prefixList.push(config.baiduPrefix);
-      selectedIndex = prefixList.length - 1;
-    }
-  }
+  // 更新版本号到最新
+  migratedConfig.configVersion = CONFIG_VERSION;
 
-  return {
-    ...config,
-    linkPrefixConfig: {
-      enabled: true,
-      selectedIndex,
-      prefixList
-    }
-  };
+  return migratedConfig;
 }
 
 // ========== Markdown 修复相关类型 ==========

@@ -72,15 +72,30 @@ async function ensureConfigSync() {
   }
 }
 
-// 初始化上传器和配置同步
-initializeUploaders();
-ensureConfigSync().then(() => {
-  // 配置同步完成后初始化 Analytics
+/**
+ * 应用启动入口
+ * 确保配置加载完成后再挂载应用，避免竞态条件
+ */
+async function startApp() {
+  // 1. 初始化上传器（同步操作）
+  initializeUploaders();
+
+  // 2. 确保配置同步完成（等待异步操作）
+  await ensureConfigSync();
+
+  // 3. 初始化 Analytics（非阻塞，失败不影响应用）
   const { initialize } = useAnalytics();
   initialize().catch(err => console.warn('[Analytics] 初始化失败（非致命错误）:', err));
+
+  // 4. 挂载应用（确保配置已加载）
+  app.mount('#app');
+
+  console.log('[App] PicNexus 已启动');
+}
+
+// 启动应用
+startApp().catch(err => {
+  console.error('[App] 启动失败:', err);
+  // 即使初始化失败，也尝试挂载应用，让用户看到错误界面
+  app.mount('#app');
 });
-
-// 挂载应用
-app.mount('#app');
-
-console.log('[App] PicNexus 已启动');

@@ -228,12 +228,30 @@ export class MultiServiceUploader {
       console.log('[MultiUploader] 其他图床上传成功，TCL 转入后台运行');
       uploadResults = otherResults;
 
-      // 为了记录日志，我们可以在后台等待 TCL 完成（但不阻塞主线程返回）
+      // 后台等待 TCL 完成，并通过回调通知结果
       Promise.all(tclPromises).then(tclResults => {
         const tclSuccess = tclResults.filter(r => r.status === 'success').length;
-        console.log(`[MultiUploader] 后台 TCL 上传完成: ${tclSuccess} 成功 / ${tclResults.length} 总数`);
+        const tclFailed = tclResults.filter(r => r.status === 'failed').length;
+        console.log(`[MultiUploader] 后台 TCL 上传完成: ${tclSuccess} 成功 / ${tclFailed} 失败 / ${tclResults.length} 总数`);
+
+        // 通过回调通知每个 TCL 任务的结果，确保历史记录能正确记录
+        // 这样 handleServiceResult 会被调用，addResultToHistoryItem 也会触发
+        tclResults.forEach(result => {
+          if (onServiceResult) {
+            onServiceResult(result);
+          }
+        });
       }).catch(err => {
         console.error('[MultiUploader] 后台 TCL 任务异常:', err);
+        // 构造一个失败结果通知调用方
+        const failedResult: SingleServiceResult = {
+          serviceId: 'tcl',
+          status: 'failed',
+          error: `TCL 后台上传异常: ${err?.message || String(err)}`
+        };
+        if (onServiceResult) {
+          onServiceResult(failedResult);
+        }
       });
 
     } else {

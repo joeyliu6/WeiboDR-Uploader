@@ -404,9 +404,8 @@ fn check_cookie_field(cookie: &str, field: &str, _service_id: &str) -> bool {
             }
 
             let value = &remaining[..value_end];
-            eprintln!("[Cookie验证] 字段 {} = {} (长度: {})", field,
-                if value.len() > 20 { format!("{}...", &value[..20]) } else { value.to_string() },
-                value.len());
+            // 安全日志：只打印字段名和长度，不打印实际值，防止敏感信息泄露
+            eprintln!("[Cookie验证] 字段 {} 存在 (长度: {} 字符)", field, value.len());
 
             return true;
         }
@@ -812,12 +811,9 @@ fn attempt_cookie_capture_and_save_generic(
         .collect::<Vec<_>>()
         .join("; ");
 
-    let cookie_preview = if merged_cookie.len() > 100 {
-        format!("{}... (共 {} 字符)", &merged_cookie[..100], merged_cookie.len())
-    } else {
-        merged_cookie.clone()
-    };
-    eprintln!("[Cookie监控] 合并后的 Cookie: {}", cookie_preview);
+    // 安全日志：只打印 Cookie 长度和字段数量，不打印实际内容
+    let field_count = merged_cookie.matches('=').count();
+    eprintln!("[Cookie监控] 合并后的 Cookie: {} 个字段，共 {} 字符", field_count, merged_cookie.len());
 
     if validate_cookie_fields(service_id, &merged_cookie, required_fields, any_of_fields) {
         eprintln!("[Cookie监控] ✓ 验证通过，尝试保存 {} Cookie", service_id);
@@ -1330,13 +1326,44 @@ async fn list_r2_objects(
     Ok(objects)
 }
 
+/// AWS S3 签名 V4 兼容的 URI 路径编码
+///
+/// 根据 AWS 文档，URI 编码规则：
+/// - 不编码：A-Z, a-z, 0-9, '-', '.', '_', '~'
+/// - 其他字符使用 %XX 格式编码
+/// - 空格编码为 %20（不是 +）
+/// - 斜杠 '/' 不编码（作为路径分隔符）
 fn uri_encode_path(path: &str) -> String {
     path.split('/')
-        .map(|segment| {
-            urlencoding::encode(segment).into_owned()
-        })
+        .map(|segment| aws_uri_encode(segment, false))
         .collect::<Vec<_>>()
         .join("/")
+}
+
+/// AWS S3 签名 V4 兼容的 URI 编码
+///
+/// encode_slash: 是否编码斜杠（用于签名时的规范化 URI 需要 false，查询参数需要 true）
+fn aws_uri_encode(input: &str, encode_slash: bool) -> String {
+    let mut encoded = String::with_capacity(input.len() * 3);
+
+    for byte in input.bytes() {
+        match byte {
+            // 不编码：A-Z, a-z, 0-9, '-', '.', '_', '~'
+            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
+                encoded.push(byte as char);
+            }
+            // 斜杠根据参数决定是否编码
+            b'/' if !encode_slash => {
+                encoded.push('/');
+            }
+            // 其他字符使用 %XX 格式编码
+            _ => {
+                encoded.push_str(&format!("%{:02X}", byte));
+            }
+        }
+    }
+
+    encoded
 }
 
 #[tauri::command]

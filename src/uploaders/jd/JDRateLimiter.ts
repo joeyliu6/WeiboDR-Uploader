@@ -44,12 +44,17 @@ export class JDRateLimiter {
         });
     }
 
+    // 最大等待时间限制，防止无限等待（2 分钟）
+    private readonly MAX_WAIT_TIME = 120000;
+
     /**
      * 调度器：逐个处理队列中的请求
      * 严格保证：
      * 1. 每次只放行一个请求
      * 2. 两个请求之间至少间隔 MIN_INTERVAL
      * 3. 如果触发熔断，必须等待熔断结束
+     *
+     * 优化：使用单次等待代替循环检测，减少 CPU 占用
      */
     private async processQueue() {
         // 如果正在处理中，无需重复启动
@@ -57,31 +62,49 @@ export class JDRateLimiter {
         this.isProcessing = true;
 
         while (this.queue.length > 0) {
-            const now = Date.now();
+            // 使用循环等待直到满足条件，但有最大重试次数限制
+            const MAX_RETRIES = 10;
+            let retryCount = 0;
 
-            // 计算目标执行时间
-            // 必须满足两个条件：
-            // 1. 比上一次请求晚 MIN_INTERVAL
-            // 2. 比熔断结束时间晚 (如果正在熔断)
-            let targetTime = Math.max(
-                now,
-                this.lastRequestTime + this.MIN_INTERVAL,
-                this.circuitBreakerEndTime
-            );
+            while (retryCount < MAX_RETRIES) {
+                const now = Date.now();
 
-            const waitTime = targetTime - now;
+                // 计算目标执行时间
+                // 必须满足两个条件：
+                // 1. 比上一次请求晚 MIN_INTERVAL
+                // 2. 比熔断结束时间晚 (如果正在熔断)
+                const targetTime = Math.max(
+                    now,
+                    this.lastRequestTime + this.MIN_INTERVAL,
+                    this.circuitBreakerEndTime
+                );
 
-            if (waitTime > 0) {
-                // console.log(`[JDRateLimiter] 调度等待 ${waitTime}ms (Queue: ${this.queue.length})`);
-                await new Promise(resolve => setTimeout(resolve, waitTime));
+                let waitTime = targetTime - now;
+
+                // 限制最大等待时间
+                if (waitTime > this.MAX_WAIT_TIME) {
+                    console.warn(`[JDRateLimiter] 等待时间 ${waitTime}ms 超过上限，限制为 ${this.MAX_WAIT_TIME}ms`);
+                    waitTime = this.MAX_WAIT_TIME;
+                }
+
+                if (waitTime > 0) {
+                    await new Promise(resolve => setTimeout(resolve, waitTime));
+                }
+
+                // 检查是否可以执行（熔断时间没有在等待期间更新）
+                if (Date.now() >= this.circuitBreakerEndTime) {
+                    break; // 可以执行，退出内层循环
+                }
+
+                // 熔断时间在等待期间更新了，重新计算
+                retryCount++;
+                if (retryCount < MAX_RETRIES) {
+                    console.log(`[JDRateLimiter] 等待期间触发了新熔断，重新计算等待时间 (${retryCount}/${MAX_RETRIES})`);
+                }
             }
 
-            // 再次检查时间 (防止等待期间熔断时间又更新了，或者 targets 变了? 
-            // 其实这里主要是防止等待期间 triggerCircuitBreaker 被触发，导致 circuitBreakerEndTime 变大)
-            // 如果等待后发现现在还在熔断时间内，loop continue，重新计算等待
-            if (Date.now() < this.circuitBreakerEndTime) {
-                console.log(`[JDRateLimiter] 等待期间触发了新熔断，继续等待...`);
-                continue;
+            if (retryCount >= MAX_RETRIES) {
+                console.warn(`[JDRateLimiter] 达到最大重试次数，强制执行请求`);
             }
 
             // 取出队首请求并执行

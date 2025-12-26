@@ -28,22 +28,36 @@ export function useQueueState() {
 
   /**
    * 更新队列项
-   * ✅ 修复: 深拷贝嵌套对象，避免引用共享导致队列项相互影响
+   * ✅ 修复: 完整深拷贝嵌套对象（包括 serviceProgress.metadata），
+   *         避免引用共享导致队列项相互影响
    */
   const updateItem = (itemId: string, updates: Partial<QueueItem>) => {
     const index = queueItems.value.findIndex(item => item.id === itemId);
     if (index !== -1) {
       const currentItem = queueItems.value[index];
 
-      // 深拷贝 serviceProgress，避免多个队列项共享同一个对象引用
+      // 深拷贝 serviceProgress，包括内部的 metadata 对象
       const updatedServiceProgress = updates.serviceProgress
         ? {
             ...currentItem.serviceProgress,
             ...Object.fromEntries(
-              Object.entries(updates.serviceProgress).map(([key, value]) => [
-                key,
-                { ...currentItem.serviceProgress?.[key as keyof typeof currentItem.serviceProgress], ...value }
-              ])
+              Object.entries(updates.serviceProgress).map(([key, value]) => {
+                const currentProgress = currentItem.serviceProgress?.[key as keyof typeof currentItem.serviceProgress];
+                // 对 metadata 也进行深拷贝
+                const mergedMetadata = value?.metadata || currentProgress?.metadata
+                  ? { ...currentProgress?.metadata, ...value?.metadata }
+                  : undefined;
+
+                return [
+                  key,
+                  {
+                    ...currentProgress,
+                    ...value,
+                    // 如果有 metadata，使用深拷贝的版本
+                    ...(mergedMetadata !== undefined ? { metadata: mergedMetadata } : {})
+                  }
+                ];
+              })
             )
           }
         : currentItem.serviceProgress;

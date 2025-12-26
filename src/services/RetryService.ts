@@ -155,12 +155,18 @@ export class RetryService {
       return;
     }
 
-    // 指数退避延迟
-    const delays = [0, 2000, 4000];
-    const delay = delays[currentRetryCount] || 4000;
+    // 真正的指数退避延迟
+    // 公式：baseDelay * 2^retryCount，带随机抖动防止惊群效应
+    // 第 1 次：1-2 秒，第 2 次：2-4 秒，第 3 次：4-8 秒...
+    const BASE_DELAY = 1000;
+    const MAX_DELAY = 30000; // 最大延迟 30 秒
+    const exponentialDelay = Math.min(BASE_DELAY * Math.pow(2, currentRetryCount), MAX_DELAY);
+    // 添加 0-50% 的随机抖动
+    const jitter = exponentialDelay * Math.random() * 0.5;
+    const delay = Math.round(exponentialDelay + jitter);
 
     if (delay > 0) {
-      console.log(`[重试] 等待 ${delay}ms 后重试...`);
+      console.log(`[重试] 等待 ${delay}ms 后重试（指数退避 + 抖动）...`);
       await new Promise(resolve => setTimeout(resolve, delay));
     }
 

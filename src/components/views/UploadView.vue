@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, onMounted, onUnmounted, computed } from 'vue';
-import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
+import type { UnlistenFn } from '@tauri-apps/api/event';
 import UploadQueue from '../UploadQueue.vue';
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
@@ -144,29 +145,29 @@ const handleDrop = (e: DragEvent) => {
   }
 };
 
-// 设置 Tauri 文件拖拽监听器
+// 设置 Tauri 文件拖拽监听器（Tauri v2 API）
 async function setupTauriFileDropListener() {
   try {
-    // 监听文件拖拽事件
-    const unlistenDrop = await listen<string[]>('tauri://file-drop', async (event) => {
-      const filePaths = event.payload;
-      console.log('[上传] 收到拖拽文件:', filePaths);
-      await uploadManager.handleFilesUpload(filePaths);
-      isDragging.value = false;
+    const webview = getCurrentWebview();
+    // Tauri v2 使用 onDragDropEvent 统一监听所有拖拽事件
+    const unlisten = await webview.onDragDropEvent(async (event) => {
+      if (event.payload.type === 'over') {
+        // 悬停状态
+        isDragging.value = true;
+      } else if (event.payload.type === 'drop') {
+        // 放下文件
+        const filePaths = event.payload.paths;
+        console.log('[上传] 收到拖拽文件:', filePaths);
+        await uploadManager.handleFilesUpload(filePaths);
+        isDragging.value = false;
+      } else {
+        // 取消拖拽 (leave 或其他)
+        isDragging.value = false;
+      }
     });
 
-    // 监听拖拽悬停事件
-    const unlistenHover = await listen('tauri://file-drop-hover', () => {
-      isDragging.value = true;
-    });
-
-    // 监听拖拽取消事件
-    const unlistenCancelled = await listen('tauri://file-drop-cancelled', () => {
-      isDragging.value = false;
-    });
-
-    fileDropUnlisteners.value = [unlistenDrop, unlistenHover, unlistenCancelled];
-    console.log('[上传] Tauri 文件拖拽监听器已设置');
+    fileDropUnlisteners.value = [unlisten];
+    console.log('[上传] Tauri 文件拖拽监听器已设置 (v2 API)');
   } catch (error) {
     console.error('[上传] 设置 Tauri 文件拖拽监听器失败:', error);
   }

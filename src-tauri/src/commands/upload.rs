@@ -221,34 +221,42 @@ pub async fn upload_file_stream(
     let progress_stream = stream.map(move |chunk: Result<tokio_util::bytes::BytesMut, std::io::Error>| {
         if let Ok(bytes) = &chunk {
             // 安全处理 Mutex lock，避免 panic
-            if let Ok(mut uploaded) = uploaded_clone.lock() {
-                *uploaded += bytes.len() as u64;
-                let current_progress = *uploaded;
+            // 使用 unwrap_or_else 恢复被污染的 Mutex（进度计数器不影响业务正确性）
+            let mut uploaded_guard = match uploaded_clone.lock() {
+                Ok(guard) => guard,
+                Err(poisoned) => {
+                    // Mutex 被污染（之前有 panic），尝试恢复
+                    // 对于进度计数器，恢复是安全的，因为它不影响上传结果
+                    eprintln!("[上传] 警告: Mutex 锁被污染，尝试恢复进度计数器");
+                    poisoned.into_inner()
+                }
+            };
 
-                // ✅ 修复: 限制进度最高99%，防止在业务验证前就显示100%
-                let safe_progress = if current_progress >= total_len_clone {
-                    // 数据已发送完毕，但服务器尚未响应，保持在99%
-                    if total_len_clone > 0 {
-                        total_len_clone.saturating_sub(total_len_clone / 100).max(1)
-                    } else {
-                        0
-                    }
+            *uploaded_guard += bytes.len() as u64;
+            let current_progress = *uploaded_guard;
+            drop(uploaded_guard); // 尽早释放锁
+
+            // ✅ 修复: 限制进度最高99%，防止在业务验证前就显示100%
+            let safe_progress = if current_progress >= total_len_clone {
+                // 数据已发送完毕，但服务器尚未响应，保持在99%
+                if total_len_clone > 0 {
+                    total_len_clone.saturating_sub(total_len_clone / 100).max(1)
                 } else {
-                    current_progress
-                };
-
-                // 发送进度事件到前端(带步骤信息)
-                let _ = window_clone.emit("upload://progress", ProgressPayload {
-                    id: id_clone.clone(),
-                    progress: safe_progress,
-                    total: total_len_clone,
-                    step: Some("正在上传...".to_string()),
-                    step_index: Some(2),
-                    total_steps: Some(3),
-                });
+                    0
+                }
             } else {
-                eprintln!("[上传] 警告: Mutex 锁被污染，跳过进度更新");
-            }
+                current_progress
+            };
+
+            // 发送进度事件到前端(带步骤信息)
+            let _ = window_clone.emit("upload://progress", ProgressPayload {
+                id: id_clone.clone(),
+                progress: safe_progress,
+                total: total_len_clone,
+                step: Some("正在上传...".to_string()),
+                step_index: Some(2),
+                total_steps: Some(3),
+            });
         }
         chunk
     });

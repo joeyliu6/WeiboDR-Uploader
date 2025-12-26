@@ -30,7 +30,8 @@
         "decorations": false,
         "shadow": true,
         "visible": false,
-        "label": "main"
+        "label": "main",
+        "dragDropEnabled": true
       }
     ]
   },
