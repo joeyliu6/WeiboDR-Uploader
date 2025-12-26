@@ -24,6 +24,7 @@ import type {
 } from '../config/types';
 import { MultiServiceUploader, type MultiUploadResult } from '../core/MultiServiceUploader';
 import { historyDB } from './HistoryDatabase';
+import { getErrorMessage } from '../types/errors';
 
 /** 链接检测结果（来自 Rust 后端） */
 interface CheckLinkResult {
@@ -969,7 +970,7 @@ export class MarkdownRepairService {
         link: url,
         is_valid: false,
         status_code: null,
-        error: String(error),
+        error: getErrorMessage(error),
         error_type: 'network',
         suggestion: null,
         response_time: null

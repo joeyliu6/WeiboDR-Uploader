@@ -22,6 +22,8 @@ import { useThemeManager } from '../../composables/useTheme';
 import { useConfigManager } from '../../composables/useConfig';
 import { useHistoryManager, invalidateCache } from '../../composables/useHistory';
 import { useAnalytics } from '../../composables/useAnalytics';
+import { useAutoSync, createDefaultAutoSyncConfig, type AutoSyncConfig } from '../../composables/useAutoSync';
+import SyncConflictDialog from '../dialogs/SyncConflictDialog.vue';
 import { Store } from '../../store';
 import { WebDAVClient } from '../../utils/webdav';
 import { historyDB } from '../../services/HistoryDatabase';
@@ -528,6 +530,83 @@ const exportHistoryLoading = ref(false);
 const importHistoryLoading = ref(false);
 const uploadHistoryLoading = ref(false);
 const downloadHistoryLoading = ref(false);
+
+// ========== 自动同步功能 ==========
+// 自动同步配置
+const autoSyncConfig = ref<AutoSyncConfig>(createDefaultAutoSyncConfig());
+
+// 初始化自动同步 composable
+const {
+  isEnabled: isAutoSyncEnabled,
+  lastAutoSync,
+  nextAutoSync,
+  lastResult: autoSyncLastResult,
+  isSyncing: isAutoSyncing,
+  remainingTimeFormatted,
+  start: startAutoSync,
+  stop: stopAutoSync,
+  syncNow: syncNowAuto,
+  updateInterval: updateAutoSyncInterval
+} = useAutoSync(
+  () => activeWebDAVProfile.value,
+  {
+    interval: autoSyncConfig.value.intervalMinutes * 60 * 1000,
+    syncOnMount: false,
+    syncSettings: true,
+    syncHistory: true
+  }
+);
+
+// 自动同步开关变化处理
+function handleAutoSyncToggle(enabled: boolean) {
+  autoSyncConfig.value.enabled = enabled;
+  if (enabled) {
+    startAutoSync();
+    toast.success('自动同步已启用', `每 ${autoSyncConfig.value.intervalMinutes} 分钟同步一次`);
+  } else {
+    stopAutoSync();
+    toast.info('自动同步已关闭');
+  }
+  saveAutoSyncConfig();
+}
+
+// 自动同步间隔变化处理
+function handleAutoSyncIntervalChange(minutes: number) {
+  const validMinutes = Math.max(5, Math.min(1440, minutes));
+  autoSyncConfig.value.intervalMinutes = validMinutes;
+  updateAutoSyncInterval(validMinutes);
+  saveAutoSyncConfig();
+}
+
+// 保存自动同步配置
+async function saveAutoSyncConfig() {
+  try {
+    const config = await configStore.get<UserConfig>('config');
+    if (config) {
+      config.autoSync = autoSyncConfig.value;
+      await configStore.set('config', config);
+      await configStore.save();
+    }
+  } catch (e) {
+    console.error('[自动同步] 保存配置失败:', e);
+  }
+}
+
+// 加载自动同步配置
+async function loadAutoSyncConfig() {
+  try {
+    const config = await configStore.get<UserConfig>('config');
+    if (config?.autoSync) {
+      autoSyncConfig.value = config.autoSync;
+      // 如果之前启用了自动同步，则自动恢复
+      if (autoSyncConfig.value.enabled && activeWebDAVProfile.value) {
+        startAutoSync();
+      }
+    }
+  } catch (e) {
+    console.error('[自动同步] 加载配置失败:', e);
+  }
+}
 
 // ========== Markdown 修复功能 ==========
 // 工作流程阶段
@@ -1775,6 +1854,7 @@ onMounted(async () => {
 
   await loadSettings();
   await loadSyncStatus();  // 加载同步状态
+  await loadAutoSyncConfig();  // 加载自动同步配置
 
   // 初始化七鱼可用状态（使用缓存值，避免检测前显示错误状态）
   if (syncStatus.value.qiyuCheckStatus?.lastCheckResult !== undefined) {
@@ -2806,6 +2886,82 @@ onUnmounted(() => {
             <Button label="添加配置" icon="pi pi-plus" @click="addWebDAVProfile" outlined />
           </div>
         </div>
+
+        <Divider />
+
+        <!-- 自动同步配置 -->
+        <div class="sub-section">
+          <h3>自动同步</h3>
+          <p class="helper-text">定时自动备份配置和历史记录到云端。</p>
+
+          <div class="auto-sync-settings">
+            <!-- 自动同步开关 -->
+            <div class="auto-sync-toggle">
+              <div class="toggle-label">
+                <span>启用自动同步</span>
+                <span v-if="isAutoSyncEnabled" class="auto-sync-status">
+                  <template v-if="isAutoSyncing">
+                    <i class="pi pi-spin pi-spinner"></i> 同步中...
+                  </template>
+                  <template v-else-if="remainingTimeFormatted">
+                    下次同步: {{ remainingTimeFormatted }}
+                  </template>
+                </span>
+              </div>
+              <ToggleSwitch
+                :modelValue="autoSyncConfig.enabled"
+                @update:modelValue="handleAutoSyncToggle"
+                :disabled="!activeWebDAVProfile"
+              />
+            </div>
+
+            <!-- 同步间隔设置 -->
+            <div v-if="autoSyncConfig.enabled" class="auto-sync-interval">
+              <label>同步间隔（分钟）</label>
+              <div class="interval-input">
+                <InputText
+                  type="number"
+                  :modelValue="autoSyncConfig.intervalMinutes"
+                  @update:modelValue="(val: string | number) => handleAutoSyncIntervalChange(Number(val))"
+                  :min="5"
+                  :max="1440"
+                  style="width: 100px"
+                />
+                <span class="interval-hint">5 ~ 1440 分钟</span>
+              </div>
+            </div>
+
+            <!-- 上次同步状态 -->
+            <div v-if="lastAutoSync" class="auto-sync-last">
+              <span class="last-sync-label">上次自动同步:</span>
+              <span :class="['last-sync-result', autoSyncLastResult === 'success' ? 'success' : autoSyncLastResult === 'failed' ? 'error' : 'partial']">
+                {{ lastAutoSync.toLocaleString() }}
+                <template v-if="autoSyncLastResult === 'success'"> ✓</template>
+                <template v-else-if="autoSyncLastResult === 'partial'"> (部分成功)</template>
+                <template v-else-if="autoSyncLastResult === 'failed'"> ✗</template>
+              </span>
+            </div>
+
+            <!-- 立即同步按钮 -->
+            <div v-if="autoSyncConfig.enabled" class="auto-sync-actions">
+              <Button
+                label="立即同步"
+                icon="pi pi-sync"
+                @click="syncNowAuto"
+                :loading="isAutoSyncing"
+                :disabled="!activeWebDAVProfile"
+                outlined
+                size="small"
+              />
+            </div>
+
+            <!-- 未配置 WebDAV 提示 -->
+            <div v-if="!activeWebDAVProfile" class="auto-sync-warning">
+              <i class="pi pi-info-circle"></i>
+              <span>请先配置 WebDAV 连接后才能使用自动同步</span>
+            </div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -3411,6 +3567,112 @@ onUnmounted(() => {
 
 .empty-webdav p {
   margin-bottom: 16px;
+}
+
+/* ========== 自动同步样式 ========== */
+.auto-sync-settings {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.auto-sync-toggle {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  background-color: var(--bg-section);
+  border-radius: 8px;
+}
+
+.auto-sync-toggle .toggle-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.auto-sync-toggle .toggle-label span:first-child {
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.auto-sync-status {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.auto-sync-status .pi-spinner {
+  margin-right: 4px;
+}
+
+.auto-sync-interval {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 0 16px;
+}
+
+.auto-sync-interval label {
+  font-size: 14px;
+  color: var(--text-secondary);
+}
+
+.interval-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.interval-hint {
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+.auto-sync-last {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 0 16px;
+  font-size: 13px;
+}
+
+.last-sync-label {
+  color: var(--text-secondary);
+}
+
+.last-sync-result {
+  font-weight: 500;
+}
+
+.last-sync-result.success {
+  color: var(--success-color, #10b981);
+}
+
+.last-sync-result.error {
+  color: var(--error-color, #ef4444);
+}
+
+.last-sync-result.partial {
+  color: var(--warning-color, #f59e0b);
+}
+
+.auto-sync-actions {
+  padding: 0 16px;
+}
+
+.auto-sync-warning {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 16px;
+  background-color: var(--warning-bg, rgba(245, 158, 11, 0.1));
+  border-radius: 8px;
+  font-size: 13px;
+  color: var(--warning-color, #f59e0b);
+}
+
+.auto-sync-warning .pi {
+  font-size: 16px;
 }
 
 /* ========== 同步状态样式 ========== */

@@ -11,6 +11,7 @@ import {
   ConnectionTestResult,
   ProgressCallback
 } from './types';
+import { getErrorMessage, isAuthError } from '../../types/errors';
 
 /**
  * 进度事件负载
@@ -194,11 +195,17 @@ export abstract class BaseUploader implements IUploader {
 
       console.log(`[${this.serviceName}] 上传成功:`, result);
       return result;
-    } catch (error: any) {
+    } catch (error: unknown) {
       console.error(`[${this.serviceName}] 上传失败:`, error);
 
-      // 转换错误信息
-      const errorMessage = error.message || error.toString();
+      // 使用统一的错误处理函数解析 AppError
+      const errorMessage = getErrorMessage(error);
+
+      // 检查是否为认证错误（Cookie 过期等）
+      if (isAuthError(error)) {
+        throw new Error(`认证失败: ${errorMessage}`);
+      }
+
       throw new Error(`${this.serviceName}上传失败: ${errorMessage}`);
     } finally {
       // 7. 清理资源（防止内存泄漏）

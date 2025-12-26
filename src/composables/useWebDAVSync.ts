@@ -2,7 +2,7 @@
 // WebDAV 同步管理 Composable
 // v2.10: 从 SettingsView.vue 中提取，提供统一的同步状态管理
 
-import { ref, computed, type Ref, type ComputedRef } from 'vue';
+import { ref, computed, type Ref } from 'vue';
 import { Store } from '../store';
 import { WebDAVClient } from '../utils/webdav';
 import { historyDB } from '../services/HistoryDatabase';
@@ -225,7 +225,7 @@ export function useWebDAVSync() {
    */
   async function uploadSettings(
     profile: WebDAVProfile,
-    options: { force?: boolean } = {}
+    _options: { force?: boolean } = {}
   ): Promise<SyncResult> {
     if (isSyncing.value) {
       return { success: false, target: 'settings', operation: 'upload', message: '正在同步中' };

@@ -19,6 +19,7 @@ import { useConfigManager } from '../../composables/useConfig';
 import { getActivePrefix } from '../../config/types';
 import { MultiServiceUploader } from '../../core/MultiServiceUploader';
 import { historyDB } from '../../services/HistoryDatabase';
+import { getErrorMessage } from '../../types/errors';
 import type { ServiceType, HistoryItem } from '../../config/types';
 
 const toast = useToast();
@@ -227,7 +228,7 @@ const checkLink = async (serviceResult: ServiceCheckResult): Promise<void> => {
   } catch (error) {
     serviceResult.isValid = false;
     serviceResult.errorType = 'network';
-    serviceResult.error = String(error);
+    serviceResult.error = getErrorMessage(error);
     serviceResult.suggestion = '检测失败';
   }
 };
