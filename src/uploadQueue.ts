@@ -270,6 +270,9 @@ export class UploadQueueManager {
     });
 
     console.log(`[UploadQueue] ${item.fileName} 上传成功`);
+
+    // 【内存优化】自动修剪队列，保留最近 100 条已完成记录
+    this.trimQueue(100);
   }
 
   /**
@@ -465,5 +468,33 @@ export class UploadQueueManager {
     // 在新架构中，重试回调直接在 UploadView 中处理
     // 这里保留方法以保持接口兼容
     console.log('[UploadQueue] 重试回调将由 UploadView 处理');
+  }
+
+  /**
+   * 【内存优化】修剪队列，保留最近的 N 条已完成项目
+   * @param maxSize 最大保留数量，默认 100
+   */
+  trimQueue(maxSize: number = 100): void {
+    const items = this.queueState.queueItems.value;
+
+    // 筛选已完成的项目（success 或 error）
+    const completedItems = items.filter(
+      item => item.status === 'success' || item.status === 'error'
+    );
+
+    // 如果已完成项目超过限制，删除最旧的
+    if (completedItems.length > maxSize) {
+      // 队列是按时间倒序排列的（最新在前），所以取后面的删除
+      const itemsToRemove = completedItems.slice(maxSize);
+
+      itemsToRemove.forEach(item => {
+        const index = this.queueState.queueItems.value.findIndex(i => i.id === item.id);
+        if (index !== -1) {
+          this.queueState.queueItems.value.splice(index, 1);
+        }
+      });
+
+      console.log(`[UploadQueue] 内存优化: 已删除 ${itemsToRemove.length} 条旧记录，保留最近 ${maxSize} 条`);
+    }
   }
 }

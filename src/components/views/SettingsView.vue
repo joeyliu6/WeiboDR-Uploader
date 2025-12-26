@@ -28,6 +28,7 @@ import { Store } from '../../store';
 import { WebDAVClient } from '../../utils/webdav';
 import { historyDB } from '../../services/HistoryDatabase';
 import { markdownRepairService, type RepairProgress, type DetectionResult } from '../../services/MarkdownRepairService';
+import { clearAllCache as clearThumbnailCache } from '../../services/ThumbnailService';
 import type { ThemeMode, UserConfig, ServiceType, HistoryItem, SyncStatus, WebDAVProfile, ServiceCheckStatus, MarkdownRepairOptions, MarkdownRepairResult, MarkdownDetectOptions, MarkdownExecuteOptions, ReplacementCandidate } from '../../config/types';
 import { DEFAULT_CONFIG, DEFAULT_PREFIXES, PRIVATE_SERVICES, PUBLIC_SERVICES, migrateConfig, isValidUserConfig } from '../../config/types';
 
@@ -43,11 +44,29 @@ const handleClearHistory = async () => {
   await historyManager.clearHistory();
 };
 
+// 【内存优化】清理应用缓存
+const handleClearAppCache = async () => {
+  isClearingCache.value = true;
+  try {
+    // 清理缩略图 IndexedDB 缓存
+    await clearThumbnailCache();
+    toast.success('缓存已清理', '应用缓存已成功清理，可能需要重新加载部分数据');
+  } catch (error) {
+    console.error('[设置] 清理缓存失败:', error);
+    toast.error('清理失败', String(error));
+  } finally {
+    isClearingCache.value = false;
+  }
+};
+
 // Cookie 监听器清理函数
 const cookieUnlisten = ref<UnlistenFn | null>(null);
 
 // 应用版本号
 const appVersion = ref<string>('');
+
+// 【内存优化】清理缓存状态
+const isClearingCache = ref(false);
 
 // --- 导航状态管理 ---
 type SettingsTab = 'general' | 'r2' | 'builtin' | 'cookie_auth' | 'links' | 'md_repair' | 'backup';
@@ -1972,14 +1991,24 @@ onUnmounted(() => {
 
         <div class="form-group">
           <label class="group-label">数据管理</label>
-          <p class="helper-text">管理上传历史记录。</p>
-          <Button
-            label="清空历史记录"
-            icon="pi pi-trash"
-            severity="danger"
-            outlined
-            @click="handleClearHistory"
-          />
+          <p class="helper-text">管理上传历史记录和应用缓存。</p>
+          <div class="flex gap-2 flex-wrap">
+            <Button
+              label="清空历史记录"
+              icon="pi pi-trash"
+              severity="danger"
+              outlined
+              @click="handleClearHistory"
+            />
+            <Button
+              label="清理应用缓存"
+              icon="pi pi-refresh"
+              severity="secondary"
+              outlined
+              @click="handleClearAppCache"
+              :loading="isClearingCache"
+            />
+          </div>
         </div>
 
         <Divider />

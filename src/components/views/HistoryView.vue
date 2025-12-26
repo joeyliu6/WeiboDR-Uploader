@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onActivated, onDeactivated, watch, nextTick } from 'vue';
 import { onClickOutside } from '@vueuse/core';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import DataTable from 'primevue/datatable';
@@ -46,7 +46,8 @@ const debouncedSearch = debounce((term: string) => {
 }, 300);
 
 // 缩略图 URL 缓存（同步：微博图床）
-const THUMB_CACHE_MAX_SIZE = 1000; // 缓存上限，防止内存无限增长
+// 【内存优化】缓存上限从 1000 减少到 500，减少内存占用
+const THUMB_CACHE_MAX_SIZE = 500;
 const thumbUrlCache = new Map<string, string | undefined>();
 
 // 设置缩略图缓存（带 LRU 淘汰）
@@ -297,6 +298,12 @@ onActivated(async () => {
     console.log('[HistoryView] 缓存已失效，重新加载历史记录');
     await historyManager.loadHistory();
   }
+});
+
+// 【内存优化】视图停用时清理缩略图缓存，释放内存
+onDeactivated(() => {
+  clearThumbCache();
+  console.log('[HistoryView] 视图停用，已清理缩略图缓存');
 });
 
 // 注意：不再清理 watchers，因为使用单例模式后状态是共享的
