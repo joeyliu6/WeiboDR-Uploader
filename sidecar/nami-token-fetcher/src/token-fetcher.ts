@@ -173,17 +173,35 @@ export async function fetchNamiToken(config: NamiConfig): Promise<NamiDynamicHea
       executablePath: browserInfo.path,
       headless: true,
       args: [
+        // 基础安全参数
         '--no-sandbox',
         '--disable-setuid-sandbox',
         '--disable-dev-shm-usage',
         '--disable-gpu',
         '--disable-web-security',
-        '--window-size=1280,720'
+        // 内存优化：禁用非必要功能
+        '--disable-extensions',
+        '--disable-plugins',
+        '--disable-background-networking',
+        '--disable-default-apps',
+        '--disable-sync',
+        '--disable-translate',
+        '--disable-background-timer-throttling',
+        '--disable-renderer-backgrounding',
+        '--disable-backgrounding-occluded-windows',
+        '--memory-pressure-off',
+        '--disable-ipc-flooding-protection',
+        '--disable-features=TranslateUI',
+        // 缓存优化
+        '--aggressive-cache-discard',
+        '--disk-cache-size=1',
+        // 减小视口尺寸以节省内存
+        '--window-size=800,600'
       ]
     });
 
     const page = await browser.newPage();
-    await page.setViewport({ width: 1280, height: 720 });
+    await page.setViewport({ width: 800, height: 600 });
 
     // 设置 User-Agent
     await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36');

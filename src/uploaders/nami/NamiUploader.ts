@@ -4,6 +4,8 @@
 import { BaseUploader } from '../base/BaseUploader';
 import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
 import { NamiServiceConfig } from '../../config/types';
+import { getTokenManager, type NamiDynamicHeaders } from '../../services/TokenManager';
+import { invoke } from '@tauri-apps/api/core';
 
 /**
  * Rust 返回的纳米上传结果
@@ -14,13 +16,33 @@ interface NamiRustResult {
   instant: boolean;  // 是否秒传
 }
 
+/** Token 刷新间隔（25分钟，略小于30分钟的有效期） */
+const TOKEN_REFRESH_INTERVAL_MS = 25 * 60 * 1000;
+
+/** Token 有效期（30分钟） */
+const TOKEN_VALIDITY_MS = 30 * 60 * 1000;
+
+/** 提前刷新阈值（5分钟） */
+const TOKEN_REFRESH_THRESHOLD_MS = 5 * 60 * 1000;
+
 /**
  * 纳米图床上传器
  * 使用火山引擎 TOS 对象存储
+ *
+ * 特点：
+ * - 需要动态 Headers（通过 Sidecar 获取）
+ * - Token 有效期约 30 分钟
+ * - 支持自动刷新 Token
  */
 export class NamiUploader extends BaseUploader {
   readonly serviceId = 'nami';
   readonly serviceName = '纳米图床';
+
+  /** 上次 Token 获取时间 */
+  private lastTokenFetchTime = 0;
+
+  /** 当前配置的凭证（用于检测配置变化） */
+  private currentCredentials: { cookie: string; authToken: string } | null = null;
 
   /**
    * 返回对应的 Rust 命令名
@@ -58,6 +80,98 @@ export class NamiUploader extends BaseUploader {
   }
 
   /**
+   * 检查凭证是否发生变化
+   */
+  private credentialsChanged(config: NamiServiceConfig): boolean {
+    if (!this.currentCredentials) {
+      return true;
+    }
+
+    return (
+      this.currentCredentials.cookie !== config.cookie ||
+      this.currentCredentials.authToken !== config.authToken
+    );
+  }
+
+  /**
+   * 确保有新鲜的动态 Token
+   *
+   * 在以下情况下会刷新 Token：
+   * 1. 从未获取过 Token
+   * 2. Token 即将过期（25分钟内获取的 Token 不会刷新）
+   * 3. 用户凭证发生变化
+   */
+  private async ensureFreshToken(config: NamiServiceConfig): Promise<void> {
+    const now = Date.now();
+    const timeSinceLastFetch = now - this.lastTokenFetchTime;
+
+    // 检查是否需要刷新
+    const needsRefresh =
+      this.lastTokenFetchTime === 0 ||
+      timeSinceLastFetch > TOKEN_REFRESH_INTERVAL_MS ||
+      this.credentialsChanged(config);
+
+    if (!needsRefresh) {
+      this.log('debug', 'Token 仍然有效，跳过刷新', {
+        timeSinceLastFetch: Math.round(timeSinceLastFetch / 1000) + 's'
+      });
+      return;
+    }
+
+    this.log('info', '开始刷新纳米 Token...', {
+      reason: this.lastTokenFetchTime === 0
+        ? '首次获取'
+        : this.credentialsChanged(config)
+          ? '凭证变化'
+          : 'Token 即将过期'
+    });
+
+    try {
+      // 配置 TokenManager 的刷新函数
+      const tokenManager = getTokenManager();
+      tokenManager.setNamiRefreshFn(config.cookie, config.authToken);
+
+      // 通过 Sidecar 获取动态 Headers
+      const dynamicHeaders = await invoke<NamiDynamicHeaders>('fetch_nami_token', {
+        cookie: config.cookie,
+        authToken: config.authToken,
+      });
+
+      // 缓存 Token
+      tokenManager.setToken(
+        'nami',
+        dynamicHeaders,
+        TOKEN_VALIDITY_MS,
+        TOKEN_REFRESH_THRESHOLD_MS
+      );
+
+      // 更新状态
+      this.lastTokenFetchTime = now;
+      this.currentCredentials = {
+        cookie: config.cookie,
+        authToken: config.authToken
+      };
+
+      this.log('info', '纳米 Token 刷新成功', {
+        accessToken: dynamicHeaders.accessToken ? '已获取' : '未获取',
+        zmToken: dynamicHeaders.zmToken ? '已获取' : '未获取'
+      });
+
+    } catch (error: any) {
+      // Token 刷新失败，但不阻止上传尝试
+      // Rust 端会自行获取动态 Headers
+      this.log('warn', '纳米 Token 刷新失败，将在上传时重新获取', {
+        error: error.message || error.toString()
+      });
+
+      // 如果是首次获取失败，抛出错误
+      if (this.lastTokenFetchTime === 0) {
+        throw new Error(`无法获取纳米 Token: ${error.message || error}`);
+      }
+    }
+  }
+
+  /**
    * 上传文件到纳米图床
    */
   async upload(
@@ -70,7 +184,13 @@ export class NamiUploader extends BaseUploader {
     this.log('info', '开始上传到纳米图床', { filePath });
 
     try {
+      // 确保有新鲜的 Token（不阻塞主流程）
+      await this.ensureFreshToken(config).catch((error) => {
+        this.log('warn', 'Token 预刷新失败，继续尝试上传', { error: error.message });
+      });
+
       // 调用基类的 Rust 上传方法
+      // Rust 端会处理动态 Headers 的获取
       const rustResult = await this.uploadViaRust(
         filePath,
         {
@@ -93,7 +213,24 @@ export class NamiUploader extends BaseUploader {
       };
     } catch (error: any) {
       this.log('error', '纳米图床上传失败', error);
-      throw new Error(`纳米图床上传失败: ${error.message || error.toString()}`);
+
+      // 检查是否是 Token 相关错误
+      const errorMsg = error.message || error.toString();
+      if (
+        errorMsg.includes('Token') ||
+        errorMsg.includes('认证') ||
+        errorMsg.includes('401') ||
+        errorMsg.includes('403')
+      ) {
+        // 清除 Token 缓存，下次上传时会重新获取
+        this.lastTokenFetchTime = 0;
+        this.currentCredentials = null;
+        getTokenManager().clearToken('nami');
+
+        throw new Error(`纳米图床认证失败，请检查 Cookie 和 Auth-Token 是否有效: ${errorMsg}`);
+      }
+
+      throw new Error(`纳米图床上传失败: ${errorMsg}`);
     }
   }
 
@@ -102,5 +239,23 @@ export class NamiUploader extends BaseUploader {
    */
   getPublicUrl(result: UploadResult): string {
     return result.url;
+  }
+
+  /**
+   * 强制刷新 Token
+   *
+   * 可在设置页面调用，用于测试 Token 获取
+   */
+  async forceRefreshToken(config: NamiServiceConfig): Promise<boolean> {
+    // 重置状态，强制刷新
+    this.lastTokenFetchTime = 0;
+    this.currentCredentials = null;
+
+    try {
+      await this.ensureFreshToken(config);
+      return true;
+    } catch {
+      return false;
+    }
   }
 }
