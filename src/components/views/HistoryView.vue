@@ -604,7 +604,7 @@ const handleScroll = (event: Event) => {
         <!-- 右侧统计区 -->
         <div class="stats-area">
           <div class="stat-item">
-            <span class="stat-val">{{ historyManager.filteredItems.value.length }}</span>
+            <span class="stat-val">{{ historyManager.totalCount.value }}</span>
             <span class="stat-key">总数</span>
           </div>
           <template v-if="historyManager.hasSelection.value">
