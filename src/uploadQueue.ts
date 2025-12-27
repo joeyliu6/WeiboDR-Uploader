@@ -173,9 +173,10 @@ export class UploadQueueManager {
       statusText = step;
     }
 
+    // 修复竞态条件：只更新当前服务的进度，不覆盖其他服务的状态
+    // updateItem 会自动做深度合并，所以只需传递要更新的服务即可
     const updates: Partial<QueueItem> = {
       serviceProgress: {
-        ...item.serviceProgress,
         [serviceId]: {
           ...item.serviceProgress[serviceId],
           progress: safePercent,
@@ -211,6 +212,7 @@ export class UploadQueueManager {
 
   /**
    * 标记队列项上传成功
+   * 修复竞态条件：只更新需要更新的服务，不覆盖其他服务的并发更新
    */
   markItemComplete(itemId: string, primaryUrl: string): void {
     const item = this.getItem(itemId);
@@ -219,14 +221,17 @@ export class UploadQueueManager {
       return;
     }
 
-    // 更新成功的图床状态(不覆盖失败状态)
-    const serviceProgress = { ...item.serviceProgress };
+    // 修复竞态条件：只构建需要更新的服务进度
+    // 不再使用 { ...item.serviceProgress } 展开全部，避免覆盖并发更新
+    const serviceProgressUpdates: Record<string, any> = {};
+
     item.enabledServices.forEach((serviceId: ServiceType) => {
-      const currentStatus = serviceProgress[serviceId]?.status || '';
+      const currentProgress = item.serviceProgress[serviceId];
+      const currentStatus = currentProgress?.status || '';
       // 只标记那些进度为100且不是失败状态的服务
-      if (serviceProgress[serviceId]?.progress === 100 && !currentStatus.includes('失败') && !currentStatus.includes('✗')) {
-        serviceProgress[serviceId] = {
-          ...serviceProgress[serviceId],
+      if (currentProgress?.progress === 100 && !currentStatus.includes('失败') && !currentStatus.includes('✗')) {
+        serviceProgressUpdates[serviceId] = {
+          ...currentProgress,
           status: '✓ 完成',
           isRetrying: false // 清除重试标记
         };
@@ -242,28 +247,33 @@ export class UploadQueueManager {
       primaryUrl
     };
 
-    item.enabledServices.forEach((serviceId: ServiceType) => {
-      const serviceLink = serviceProgress[serviceId]?.link;
-      if (serviceLink) {
-        // 设置各个服务的链接字段
-        if (serviceId === 'weibo') {
-          linkFields.weiboLink = serviceLink;
-          // 从 serviceProgress 中获取 PID（如果有的话）
-          const weiboPid = serviceProgress[serviceId]?.metadata?.pid;
-          if (weiboPid) {
-            linkFields.weiboPid = weiboPid;
+    // 重新读取最新的 item 状态来获取链接字段
+    const latestItem = this.getItem(itemId);
+    if (latestItem) {
+      latestItem.enabledServices.forEach((serviceId: ServiceType) => {
+        const serviceLink = latestItem.serviceProgress[serviceId]?.link;
+        if (serviceLink) {
+          // 设置各个服务的链接字段
+          if (serviceId === 'weibo') {
+            linkFields.weiboLink = serviceLink;
+            // 从 serviceProgress 中获取 PID（如果有的话）
+            const weiboPid = latestItem.serviceProgress[serviceId]?.metadata?.pid;
+            if (weiboPid) {
+              linkFields.weiboPid = weiboPid;
+            }
+          } else if (serviceId === 'r2') {
+            linkFields.r2Link = serviceLink;
+          } else if (serviceId === 'tcl') {
+            linkFields.tclLink = serviceLink;
           }
-        } else if (serviceId === 'r2') {
-          linkFields.r2Link = serviceLink;
-        } else if (serviceId === 'tcl') {
-          linkFields.tclLink = serviceLink;
         }
-      }
-    });
+      });
+    }
 
+    // 只传递需要更新的服务进度，让 updateItem 做深度合并
     this.updateItem(itemId, {
       status: 'success',
-      serviceProgress,
+      serviceProgress: serviceProgressUpdates,
       ...linkFields,
       weiboStatus: item.enabledServices.includes('weibo') ? '✓ 完成' : '已跳过',  // 向后兼容
       r2Status: item.enabledServices.includes('r2') ? '✓ 完成' : '已跳过'
@@ -439,9 +449,9 @@ export class UploadQueueManager {
       return;
     }
 
+    // 修复竞态条件：只更新当前服务的状态，不覆盖其他服务的状态
     const updates: Partial<QueueItem> = {
       serviceProgress: {
-        ...item.serviceProgress,
         [serviceId]: {
           ...item.serviceProgress[serviceId],
           progress: 0,

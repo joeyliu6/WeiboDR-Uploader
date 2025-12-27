@@ -59,7 +59,12 @@ const isStatusUploading = (status: string | undefined): boolean => {
   if (!status) return false;
   // 排除"等待中"，只匹配真正的上传中状态
   if (status.includes('等待中')) return false;
-  return status.includes('%') || status.includes('上传') || status.includes('准备');
+  // 包含 '%' 或 '上传' 或 '准备' 表示上传中
+  // 或者包含步骤格式 "(数字/数字)" 也表示上传中（如 "获取STS凭证中... (2/5)"）
+  return status.includes('%') ||
+         status.includes('上传') ||
+         status.includes('准备') ||
+         /\(\d+\/\d+\)/.test(status);  // 匹配步骤格式
 };
 
 // 统计各状态数量
@@ -89,10 +94,18 @@ const getStackedProgress = (item: QueueItem) => {
 // 获取状态描述文本
 const getStatusText = (item: QueueItem): string => {
   const counts = getStatusCounts(item);
+  const total = item.enabledServices?.length || 0;
+
   if (counts.uploading > 0) return '正在同步...';
   if (counts.error > 0 && counts.success > 0) return '上传完成，部分失败';
-  if (counts.error > 0) return '上传失败';
-  if (counts.success > 0) return '全部完成';
+  if (counts.error > 0 && counts.error === total) return '上传失败';
+
+  // 只有当所有任务都完成（成功+失败=总数）才显示"全部完成"
+  if (counts.success > 0 && counts.success + counts.error === total) return '全部完成';
+
+  // 部分完成，还有等待中的
+  if (counts.success > 0 && counts.pending > 0) return '部分完成...';
+
   return '等待中...';
 };
 

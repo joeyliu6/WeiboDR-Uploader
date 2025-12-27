@@ -385,34 +385,37 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
             const item = queueManager!.getItem(itemId);
             if (!item) return;
 
-            const updatedServiceProgress = { ...item.serviceProgress };
+            // 修复竞态条件：只更新当前服务的进度，不覆盖其他服务的状态
+            // updateItem 会自动做深度合并，所以只需传递要更新的服务即可
+            const serviceId = serviceResult.serviceId;
+            let serviceUpdate: Record<string, any> = {};
 
             if (serviceResult.status === 'success' && serviceResult.result) {
               // 成功：立即更新状态并显示链接
               let link = serviceResult.result.url;
-              if (serviceResult.serviceId === 'weibo' && activePrefix.value) {
+              if (serviceId === 'weibo' && activePrefix.value) {
                 link = activePrefix.value + link;
               }
 
-              updatedServiceProgress[serviceResult.serviceId] = {
-                ...updatedServiceProgress[serviceResult.serviceId],
+              serviceUpdate[serviceId] = {
+                ...item.serviceProgress?.[serviceId],
                 status: '✓ 完成',
                 progress: 100,
                 link: link
               };
             } else if (serviceResult.status === 'failed') {
               // 失败：更新错误状态
-              updatedServiceProgress[serviceResult.serviceId] = {
-                ...updatedServiceProgress[serviceResult.serviceId],
+              serviceUpdate[serviceId] = {
+                ...item.serviceProgress?.[serviceId],
                 status: '✗ 失败',
                 progress: 0,
                 error: serviceResult.error || '上传失败'
               };
             }
 
-            // 实时更新 UI
+            // 实时更新 UI（只更新当前服务，不影响其他服务）
             queueManager!.updateItem(itemId, {
-              serviceProgress: updatedServiceProgress
+              serviceProgress: serviceUpdate
             });
           };
 
