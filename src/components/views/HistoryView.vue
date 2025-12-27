@@ -100,6 +100,14 @@ const lightboxImage = ref('');
 const lightboxTitle = ref('');
 const lightboxItem = ref<HistoryItem | null>(null);
 
+// 悬浮预览状态（用于表格视图缩略图悬浮预览）
+const hoverPreview = ref({
+  visible: false,
+  url: '',
+  alt: '',
+  style: {} as Record<string, string>
+});
+
 // 图床筛选选项
 const serviceOptions = [
   { label: '全部图床', value: 'all' },
@@ -485,6 +493,53 @@ const getMediumImageUrl = (item: HistoryItem): string => {
   return result.result.url;
 };
 
+// === 悬浮预览相关函数 ===
+
+// 鼠标进入缩略图，显示悬浮预览
+const handlePreviewEnter = (event: MouseEvent, item: HistoryItem) => {
+  const url = getMediumImageUrl(item);
+  if (!url) return;
+
+  const rect = (event.currentTarget as HTMLElement).getBoundingClientRect();
+  const previewMaxHeight = 300;
+  const previewMaxWidth = 300;
+  const margin = 8;
+
+  // 计算预览框位置（默认居中于缩略图右侧）
+  let top = rect.top + rect.height / 2 - previewMaxHeight / 2;
+  let left = rect.right + margin;
+
+  // 边界检测：顶部
+  if (top < margin) {
+    top = margin;
+  }
+
+  // 边界检测：底部
+  if (top + previewMaxHeight > window.innerHeight - margin) {
+    top = window.innerHeight - previewMaxHeight - margin;
+  }
+
+  // 边界检测：右侧（如果超出则显示在左侧）
+  if (left + previewMaxWidth > window.innerWidth - margin) {
+    left = rect.left - previewMaxWidth - margin;
+  }
+
+  hoverPreview.value = {
+    visible: true,
+    url,
+    alt: item.localFileName,
+    style: {
+      top: `${top}px`,
+      left: `${left}px`
+    }
+  };
+};
+
+// 鼠标离开缩略图，隐藏悬浮预览
+const handlePreviewLeave = () => {
+  hoverPreview.value.visible = false;
+};
+
 // 打开 Lightbox
 const openLightbox = (item: HistoryItem): void => {
   lightboxItem.value = item;
@@ -681,7 +736,11 @@ const handleScroll = (event: Event) => {
         <!-- 预览列（36px 缩略图 + 悬浮预览） -->
         <Column header="预览" style="width: 60px">
           <template #body="slotProps">
-            <div class="thumb-preview-wrapper">
+            <div
+              class="thumb-preview-wrapper"
+              @mouseenter="handlePreviewEnter($event, slotProps.data)"
+              @mouseleave="handlePreviewLeave"
+            >
               <div class="thumb-box" @click="openLightbox(slotProps.data)">
                 <img
                   v-if="getThumbUrl(slotProps.data)"
@@ -691,18 +750,6 @@ const handleScroll = (event: Event) => {
                   @error="(e: any) => e.target.src = '/placeholder.png'"
                 />
                 <i v-else class="pi pi-image thumb-placeholder"></i>
-              </div>
-              <!-- 悬浮预览层 -->
-              <div
-                v-if="getThumbUrl(slotProps.data)"
-                class="thumb-hover-preview"
-              >
-                <img
-                  :src="getMediumImageUrl(slotProps.data)"
-                  :alt="slotProps.data.localFileName"
-                  loading="lazy"
-                  @error="(e: any) => e.target.style.display = 'none'"
-                />
               </div>
             </div>
           </template>
@@ -969,6 +1016,21 @@ const handleScroll = (event: Event) => {
       </Transition>
 
     </div>
+
+    <!-- 全局悬浮预览层（Teleport 到 body，避免被父容器 overflow 裁剪） -->
+    <Teleport to="body">
+      <div
+        v-if="hoverPreview.visible && hoverPreview.url"
+        class="global-thumb-hover-preview"
+        :style="hoverPreview.style"
+      >
+        <img
+          :src="hoverPreview.url"
+          :alt="hoverPreview.alt"
+          @error="(e: any) => e.target.style.display = 'none'"
+        />
+      </div>
+    </Teleport>
   </div>
 </template>
 
@@ -1322,34 +1384,6 @@ const handleScroll = (event: Event) => {
 .thumb-preview-wrapper {
   position: relative;
   display: inline-block;
-}
-
-/* 悬浮预览层 */
-.thumb-hover-preview {
-  position: absolute;
-  z-index: 1000;
-  left: calc(100% + 8px);
-  top: 50%;
-  transform: translateY(-50%);
-  opacity: 0;
-  visibility: hidden;
-  transition: opacity 0.2s ease, visibility 0.2s ease;
-  pointer-events: none;
-}
-
-.thumb-preview-wrapper:hover .thumb-hover-preview {
-  opacity: 1;
-  visibility: visible;
-}
-
-.thumb-hover-preview img {
-  max-width: 300px;
-  max-height: 300px;
-  border-radius: 8px;
-  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  object-fit: contain;
 }
 
 /* 文件名单元格 */
@@ -1972,5 +2006,31 @@ const handleScroll = (event: Event) => {
   .floating-action-bar {
     padding: 8px 12px;
   }
+}
+</style>
+
+<!-- 全局样式（不带 scoped，用于 Teleport 渲染到 body 的元素） -->
+<style>
+/* 全局悬浮预览层（fixed 定位，不受父容器 overflow 限制） */
+.global-thumb-hover-preview {
+  position: fixed;
+  z-index: 9999;
+  pointer-events: none;
+  animation: globalPreviewFadeIn 0.2s ease;
+}
+
+@keyframes globalPreviewFadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+.global-thumb-hover-preview img {
+  max-width: 300px;
+  max-height: 300px;
+  border-radius: 8px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  object-fit: contain;
 }
 </style>
