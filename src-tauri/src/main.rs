@@ -178,8 +178,8 @@ fn main() {
                 .build()?;
 
             // 4. 创建系统托盘（原生菜单，右键显示）
-            // 使用高分辨率图标以支持 4K 高分屏
-            let tray_icon = Image::from_bytes(include_bytes!("../icons/icon.png"))
+            // 使用 256x256 PNG 作为托盘图标（适合高分屏缩放）
+            let tray_icon = Image::from_bytes(include_bytes!("../icons/128x128@2x.png"))
                 .unwrap_or_else(|_| app.default_window_icon().unwrap().clone());
             let _tray = TrayIconBuilder::new()
                 .icon(tray_icon)
@@ -231,7 +231,7 @@ fn main() {
                 })
                 .build(app)?;
 
-            // 4. 窗口初始化
+            // 5. 窗口初始化
             let window = match app.get_webview_window("main") {
                 Some(w) => w,
                 None => {
@@ -239,6 +239,16 @@ fn main() {
                     return Err("无法获取主窗口".into());
                 }
             };
+
+            // 6. 设置高分辨率窗口图标（修复 Windows 高分屏任务栏图标模糊问题）
+            // Tauri 默认只读取 ICO 的第一个条目（16x16），导致任务栏图标模糊
+            // 参考: https://github.com/tauri-apps/tauri/issues/14596
+            #[cfg(target_os = "windows")]
+            {
+                if let Ok(icon) = Image::from_bytes(include_bytes!("../icons/128x128@2x.png")) {
+                    let _ = window.set_icon(icon);
+                }
+            }
 
             // --- 最佳适配方案逻辑 Start ---
             if let Ok(Some(monitor)) = window.current_monitor() {
