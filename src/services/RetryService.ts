@@ -258,6 +258,7 @@ export class RetryService {
 
     updates[serviceId] = {
       ...updates[serviceId],
+      serviceId,
       status: '✓ 完成',
       progress: 100,
       link: link,
@@ -371,6 +372,7 @@ export class RetryService {
     const updates = { ...item.serviceProgress };
     updates[serviceId] = {
       ...updates[serviceId],
+      serviceId,
       status: '✗ 失败',
       progress: 0,
       error: errorMsg,
@@ -409,6 +411,7 @@ export class RetryService {
 
           updatedServiceProgress[serviceResult.serviceId] = {
             ...updatedServiceProgress[serviceResult.serviceId],
+            serviceId: serviceResult.serviceId,
             status: '✓ 完成',
             progress: 100,
             link: link
@@ -416,6 +419,7 @@ export class RetryService {
         } else if (serviceResult.status === 'failed') {
           updatedServiceProgress[serviceResult.serviceId] = {
             ...updatedServiceProgress[serviceResult.serviceId],
+            serviceId: serviceResult.serviceId,
             status: '✗ 失败',
             progress: 0,
             error: serviceResult.error || '上传失败'

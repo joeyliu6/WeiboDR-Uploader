@@ -29,7 +29,7 @@ export interface QueueItem {
   fileName: string;
   filePath: string;
   enabledServices: ServiceType[];  // 启用的图床列表
-  serviceProgress: Record<ServiceType, ServiceProgress>;  // 各图床独立进度
+  serviceProgress: Partial<Record<ServiceType, ServiceProgress>>;  // 各图床独立进度
   status: 'pending' | 'uploading' | 'success' | 'error';
   errorMessage?: string;
   primaryUrl?: string;  // 主力图床的URL
