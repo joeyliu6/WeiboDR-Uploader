@@ -425,7 +425,6 @@ export const DEFAULT_CONFIG: UserConfig = {
     }
   },
   outputFormat: 'baidu-proxy',
-  baiduPrefix: 'https://image.baidu.com/search/down?thumburl=',
   linkPrefixConfig: {
     enabled: true,
     selectedIndex: 0,

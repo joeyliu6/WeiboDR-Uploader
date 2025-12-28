@@ -45,13 +45,6 @@ struct STSResponse {
     msg: Option<String>,
 }
 
-#[derive(Debug, Deserialize)]
-#[allow(dead_code)]
-struct InitMultipartResponse {
-    #[serde(rename = "UploadId")]
-    upload_id: String,
-}
-
 /// 计算文件 SHA1 哈希（取前40位hex）
 fn calculate_file_hash(buffer: &[u8]) -> String {
     let mut hasher = Sha1::new();

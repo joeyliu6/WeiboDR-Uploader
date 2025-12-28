@@ -306,48 +306,6 @@ export function useAnalytics() {
   }
 
   /**
-   * 设置用户属性
-   * @param properties 用户属性
-   */
-  async function setUserProperties(properties: Record<string, unknown>): Promise<void> {
-    if (!isEnabled.value) return;
-
-    try {
-      if (!cachedClientId) {
-        cachedClientId = await getOrCreateClientId();
-      }
-      cachedSessionId = await getOrRefreshSessionId();
-
-      const payload = {
-        client_id: cachedClientId,
-        user_properties: Object.fromEntries(
-          Object.entries(properties).map(([key, value]) => [key, { value }])
-        ),
-        events: [{
-          name: 'user_properties_update',
-          params: {
-            session_id: cachedSessionId,
-            engagement_time_msec: 100
-          }
-        }]
-      };
-
-      const url = `${GA_ENDPOINT}?measurement_id=${GA_MEASUREMENT_ID}&api_secret=${GA_API_SECRET}`;
-      await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify(payload)
-      });
-
-      console.log('[Analytics] 用户属性已设置');
-    } catch (error) {
-      console.error('[Analytics] 设置用户属性失败:', error);
-    }
-  }
-
-  /**
    * 启用 Analytics
    * 修复 #2：使用展开运算符保留其他字段
    */
@@ -410,7 +368,6 @@ export function useAnalytics() {
     // 方法
     initialize,
     trackEvent,
-    setUserProperties,
     enable,
     disable,
 
