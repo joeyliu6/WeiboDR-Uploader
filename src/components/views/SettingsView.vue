@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWebview } from '@tauri-apps/api/webview';
 import type { UnlistenFn } from '@tauri-apps/api/event';
 import { save, open } from '@tauri-apps/plugin-dialog';
 import { writeTextFile, readTextFile } from '@tauri-apps/plugin-fs';
@@ -28,7 +29,6 @@ import { Store } from '../../store';
 import { WebDAVClient } from '../../utils/webdav';
 import { historyDB } from '../../services/HistoryDatabase';
 import { markdownRepairService, type RepairProgress, type DetectionResult } from '../../services/MarkdownRepairService';
-import { clearAllCache as clearThumbnailCache } from '../../services/ThumbnailService';
 import type { ThemeMode, UserConfig, ServiceType, HistoryItem, SyncStatus, WebDAVProfile, ServiceCheckStatus, MarkdownRepairOptions, MarkdownRepairResult, MarkdownDetectOptions, MarkdownExecuteOptions, ReplacementCandidate } from '../../config/types';
 import { DEFAULT_CONFIG, DEFAULT_PREFIXES, PRIVATE_SERVICES, PUBLIC_SERVICES, migrateConfig, isValidUserConfig } from '../../config/types';
 
@@ -44,12 +44,13 @@ const handleClearHistory = async () => {
   await historyManager.clearHistory();
 };
 
-// 【内存优化】清理应用缓存
+// 清理应用缓存
 const handleClearAppCache = async () => {
   isClearingCache.value = true;
   try {
-    // 清理缩略图 IndexedDB 缓存
-    await clearThumbnailCache();
+    // 清理 webview 缓存（包括 HTTP 缓存、Cookies、localStorage 等）
+    const webview = getCurrentWebview();
+    await webview.clearAllBrowsingData();
     toast.success('缓存已清理', '应用缓存已成功清理，可能需要重新加载部分数据');
   } catch (error) {
     console.error('[设置] 清理缓存失败:', error);
@@ -65,7 +66,7 @@ const cookieUnlisten = ref<UnlistenFn | null>(null);
 // 应用版本号
 const appVersion = ref<string>('');
 
-// 【内存优化】清理缓存状态
+// 清理缓存状态
 const isClearingCache = ref(false);
 
 // --- 导航状态管理 ---
