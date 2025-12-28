@@ -24,9 +24,10 @@ import { useAnalytics } from './composables/useAnalytics';
 
 // PrimeVue 样式
 import 'primeicons/primeicons.css';
-import './theme/transitions.css';
 import './theme/dark-theme.css';
 import './theme/light-theme.css';
+import './theme/primevue-overrides.css';
+import './theme/transitions.css';
 
 // 创建 Vue 应用实例
 const app = createApp(App);

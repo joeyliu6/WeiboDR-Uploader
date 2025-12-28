@@ -1055,22 +1055,9 @@ const handleScroll = (event: Event) => {
   padding: 20px 24px;
 }
 
-/* history-container 滚动条样式 */
-.history-container::-webkit-scrollbar {
-  width: 8px;
-}
-
+/* history-container 滚动条样式 - 使用透明 track */
 .history-container::-webkit-scrollbar-track {
   background: transparent;
-}
-
-.history-container::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
-  border-radius: 4px;
-}
-
-.history-container::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 /* === Dashboard Strip（顶部控制条）=== */
@@ -1505,23 +1492,9 @@ const handleScroll = (event: Event) => {
   height: 100%;
 }
 
-/* 滚动条样式 */
-.virtual-waterfall-container::-webkit-scrollbar,
-:deep(.virtual-waterfall)::-webkit-scrollbar {
-  width: 8px;
-}
-
+/* 滚动条样式 - 使用透明 track */
 :deep(.virtual-waterfall)::-webkit-scrollbar-track {
   background: transparent;
-}
-
-:deep(.virtual-waterfall)::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
-  border-radius: 4px;
-}
-
-:deep(.virtual-waterfall)::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 /* 加载更多提示样式 */
@@ -1724,24 +1697,6 @@ const handleScroll = (event: Event) => {
   font-size: 0.65rem !important;
   padding: 2px 6px !important;
   height: auto !important;
-}
-
-/* 滚动条 */
-.history-view::-webkit-scrollbar {
-  width: 8px;
-}
-
-.history-view::-webkit-scrollbar-track {
-  background: var(--bg-input);
-}
-
-.history-view::-webkit-scrollbar-thumb {
-  background: var(--border-subtle);
-  border-radius: 4px;
-}
-
-.history-view::-webkit-scrollbar-thumb:hover {
-  background: var(--text-muted);
 }
 
 /* === Lightbox 图片查看器 === */

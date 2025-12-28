@@ -60,6 +60,32 @@
   --shadow-modal: 0 20px 25px -5px rgba(0, 0, 0, 0.3),
                   0 10px 10px -5px rgba(0, 0, 0, 0.2);
 
+  /* ===== 焦点环 ===== */
+  --focus-ring-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
+
+  /* ===== 状态背景色 ===== */
+  --state-info-bg: rgba(59, 130, 246, 0.15);
+  --state-success-bg: rgba(16, 185, 129, 0.15);
+  --state-warn-bg: rgba(234, 179, 8, 0.15);
+  --state-error-bg: rgba(239, 68, 68, 0.15);
+
+  /* ===== 状态文字色 ===== */
+  --state-info-text: var(--primary);
+  --state-success-text: var(--success);
+  --state-warn-text: var(--warning);
+  --state-error-text: var(--error);
+
+  /* ===== 滚动条 ===== */
+  --scrollbar-thumb: rgba(148, 163, 184, 0.3);
+  --scrollbar-thumb-hover: rgba(148, 163, 184, 0.5);
+  --scrollbar-track: var(--bg-input);
+
+  /* ===== 禁用状态 ===== */
+  --bg-disabled: rgba(51, 65, 85, 0.5);
+
+  /* ===== 选中状态背景 ===== */
+  --selected-bg: rgba(59, 130, 246, 0.2);
+
   /* ===== 色彩方案 ===== */
   color-scheme: dark;
 }
@@ -109,19 +135,6 @@
   background-color: var(--bg-input);
 }
 
-/* 滚动条 */
-:root.dark-theme ::-webkit-scrollbar-track {
-  background: var(--bg-input);
-}
-
-:root.dark-theme ::-webkit-scrollbar-thumb {
-  background: rgba(148, 163, 184, 0.3);
-}
-
-:root.dark-theme ::-webkit-scrollbar-thumb:hover {
-  background: rgba(148, 163, 184, 0.5);
-}
-
 /* 表格斑马条纹 */
 :root.dark-theme table tr:nth-child(even) {
   background-color: rgba(51, 65, 85, 0.3);
@@ -132,365 +145,3 @@
   box-shadow: var(--shadow-float);
 }
 
-/* ===== PrimeVue 组件样式覆盖 - Dark Theme ===== */
-
-/* InputText 组件 */
-:root.dark-theme .p-inputtext {
-  color: var(--text-main);
-  background-color: var(--bg-input);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-inputtext::placeholder {
-  color: var(--text-muted);
-}
-
-:root.dark-theme .p-inputtext:enabled:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-inputtext:enabled:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-:root.dark-theme .p-inputtext:disabled {
-  color: var(--text-disabled);
-  background-color: rgba(51, 65, 85, 0.5);
-}
-
-/* Textarea 组件 */
-:root.dark-theme .p-textarea {
-  color: var(--text-main);
-  background-color: var(--bg-input);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-textarea::placeholder {
-  color: var(--text-muted);
-}
-
-:root.dark-theme .p-textarea:enabled:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-textarea:enabled:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-:root.dark-theme .p-textarea:disabled {
-  color: var(--text-disabled);
-  background-color: rgba(51, 65, 85, 0.5);
-}
-
-/* Password 组件 */
-:root.dark-theme .p-password .p-password-input {
-  color: var(--text-main);
-  background-color: var(--bg-input);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-password .p-password-input::placeholder {
-  color: var(--text-muted);
-}
-
-:root.dark-theme .p-password .p-password-input:enabled:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-password .p-password-input:enabled:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-:root.dark-theme .p-password .p-password-input:disabled {
-  color: var(--text-disabled);
-}
-
-/* Select 组件 */
-:root.dark-theme .p-select {
-  color: var(--text-main);
-  background-color: var(--bg-input);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-select-label {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-select:enabled:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-select:enabled:focus {
-  border-color: var(--border-focus);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2);
-}
-
-:root.dark-theme .p-select-overlay {
-  background-color: var(--bg-card);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-select-option {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-select-option:not(.p-select-option-selected):hover {
-  background-color: var(--hover-overlay-subtle);
-}
-
-:root.dark-theme .p-select-option.p-select-option-selected {
-  background-color: rgba(59, 130, 246, 0.2);
-  color: var(--primary);
-}
-
-/* Checkbox 组件 */
-:root.dark-theme .p-checkbox {
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-checkbox:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-checkbox.p-checked {
-  background-color: var(--primary);
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-checkbox-label {
-  color: var(--text-main);
-}
-
-/* RadioButton 组件 */
-:root.dark-theme .p-radiobutton {
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-radiobutton:hover {
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-radiobutton.p-checked {
-  background-color: var(--primary);
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-radiobutton-label {
-  color: var(--text-main);
-}
-
-/* SelectButton 组件 */
-:root.dark-theme .p-selectbutton .p-togglebutton {
-  color: var(--text-main);
-  background-color: var(--bg-input);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-selectbutton .p-togglebutton:hover {
-  background-color: var(--hover-overlay-subtle);
-}
-
-:root.dark-theme .p-selectbutton .p-togglebutton.p-togglebutton-checked {
-  background-color: var(--primary);
-  color: var(--text-on-primary);
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-selectbutton .p-togglebutton.p-togglebutton-checked .p-togglebutton-content {
-  background-color: transparent;
-  color: var(--text-on-primary);
-}
-
-/* DataTable 组件 */
-:root.dark-theme .p-datatable {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-datatable .p-datatable-thead > tr > th {
-  background-color: var(--bg-card);
-  color: var(--text-main);
-  border-color: var(--border-subtle);
-}
-
-:root.dark-theme .p-datatable .p-datatable-tbody > tr {
-  background-color: var(--bg-card);
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-datatable .p-datatable-tbody > tr:hover {
-  background-color: var(--hover-overlay-subtle);
-}
-
-:root.dark-theme .p-datatable .p-datatable-tbody > tr > td {
-  border-color: var(--border-subtle);
-}
-
-/* DataTable 分页器 - 修复底部白线 */
-:root.dark-theme .p-datatable-paginator-bottom {
-  border-color: var(--border-subtle);
-}
-
-/* Dialog 组件 */
-:root.dark-theme .p-dialog {
-  background-color: var(--bg-card);
-  border-color: var(--border-subtle);
-  box-shadow: var(--shadow-modal);
-}
-
-:root.dark-theme .p-dialog .p-dialog-header {
-  background-color: var(--bg-card);
-  color: var(--text-main);
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-:root.dark-theme .p-dialog .p-dialog-content {
-  background-color: var(--bg-card);
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-dialog .p-dialog-footer {
-  background-color: var(--bg-card);
-  border-top: 1px solid var(--border-subtle);
-}
-
-/* Message 组件 */
-:root.dark-theme .p-message {
-  background-color: var(--bg-card);
-  border-color: var(--border-subtle);
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-message.p-message-info {
-  background-color: rgba(59, 130, 246, 0.15);
-  border-color: var(--primary);
-  color: var(--primary);
-}
-
-:root.dark-theme .p-message.p-message-success {
-  background-color: rgba(16, 185, 129, 0.15);
-  border-color: var(--success);
-  color: var(--success);
-}
-
-:root.dark-theme .p-message.p-message-warn {
-  background-color: rgba(234, 179, 8, 0.15);
-  border-color: var(--warning);
-  color: var(--warning);
-}
-
-:root.dark-theme .p-message.p-message-error {
-  background-color: rgba(239, 68, 68, 0.15);
-  border-color: var(--error);
-  color: var(--error);
-}
-
-/* ProgressBar 组件 */
-:root.dark-theme .p-progressbar {
-  background-color: var(--bg-input);
-}
-
-:root.dark-theme .p-progressbar .p-progressbar-value {
-  background-color: var(--primary);
-}
-
-/* Tag 组件 */
-:root.dark-theme .p-tag {
-  background-color: var(--primary);
-  color: var(--text-on-primary);
-}
-
-:root.dark-theme .p-tag.p-tag-success {
-  background-color: var(--success);
-}
-
-:root.dark-theme .p-tag.p-tag-warning {
-  background-color: var(--warning);
-}
-
-:root.dark-theme .p-tag.p-tag-danger {
-  background-color: var(--error);
-}
-
-/* Tooltip 组件 */
-:root.dark-theme .p-tooltip .p-tooltip-text {
-  background-color: var(--bg-card);
-  color: var(--text-secondary);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-float);
-  font-size: 12px;
-}
-
-/* Toast 组件 */
-:root.dark-theme .p-toast .p-toast-message {
-  background-color: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  box-shadow: var(--shadow-float);
-}
-
-:root.dark-theme .p-toast .p-toast-message .p-toast-message-content {
-  color: var(--text-main);
-}
-
-/* Toast 详细文字 - 使用白色便于阅读 */
-:root.dark-theme .p-toast .p-toast-message .p-toast-detail {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-info {
-  background-color: rgba(59, 130, 246, 0.15);
-  border-color: var(--primary);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-info .p-toast-message-content {
-  color: var(--primary);
-}
-
-/* Info Toast 详细文字 */
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-info .p-toast-detail {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-success {
-  background-color: rgba(16, 185, 129, 0.15);
-  border-color: var(--success);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-success .p-toast-message-content {
-  color: var(--success);
-}
-
-/* Success Toast 详细文字 */
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-success .p-toast-detail {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-warn {
-  background-color: rgba(234, 179, 8, 0.15);
-  border-color: var(--warning);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-warn .p-toast-message-content {
-  color: var(--warning);
-}
-
-/* Warn Toast 详细文字 */
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-warn .p-toast-detail {
-  color: var(--text-main);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-error {
-  background-color: rgba(239, 68, 68, 0.15);
-  border-color: var(--error);
-}
-
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-error .p-toast-message-content {
-  color: var(--error);
-}
-
-/* Error Toast 详细文字 */
-:root.dark-theme .p-toast .p-toast-message.p-toast-message-error .p-toast-detail {
-  color: var(--text-main);
-}
