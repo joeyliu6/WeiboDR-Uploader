@@ -18,9 +18,6 @@ const STORE_NAME = 'thumbnails';
 // 【内存优化】标记是否已执行过启动清理
 let hasCleanedOnStartup = false;
 
-// 内存缓存（避免重复创建 Blob URL）
-const memoryCache = new Map<string, string>();
-
 /**
  * 打开 IndexedDB 数据库 (仅用于清理缓存)
  */
@@ -96,23 +93,10 @@ export async function getThumbnailUrl(originalUrl: string): Promise<string | nul
 }
 
 /**
- * 清理内存缓存
- */
-export function clearMemoryCache(): void {
-  for (const blobUrl of memoryCache.values()) {
-    URL.revokeObjectURL(blobUrl);
-  }
-  memoryCache.clear();
-  console.log('[ThumbnailService] 内存缓存已清理');
-}
-
-/**
- * 清理所有缓存（包括 IndexedDB）
+ * 清理所有缓存（IndexedDB）
  * 保留此功能以便用户清理之前版本产生的缓存文件
  */
 export async function clearAllCache(): Promise<void> {
-  clearMemoryCache();
-
   try {
     const db = await openDB();
     return new Promise((resolve, reject) => {
