@@ -6,15 +6,14 @@
 use tauri::{Window, Emitter, Manager};
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use sha1::{Sha1, Digest as Sha1Digest};
 use sha2::Sha256;
 use hmac::{Hmac, Mac};
 use chrono::Utc;
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
 use super::nami_token::fetch_nami_token_internal;
+use super::utils::read_file_bytes;
 
 type HmacSha256 = Hmac<Sha256>;
 
@@ -97,7 +96,7 @@ impl TosSigner {
     /// HMAC-SHA256（安全处理，避免 panic）
     fn hmac_sha256(key: &[u8], data: &str) -> Result<Vec<u8>, AppError> {
         let mut mac = HmacSha256::new_from_slice(key)
-            .map_err(|e| AppError::external(format!("HMAC 初始化失败: {}", e)))?;
+            .into_external_err_with("HMAC 初始化失败")?;
         mac.update(data.as_bytes());
         Ok(mac.finalize().into_bytes().to_vec())
     }
@@ -258,10 +257,10 @@ async fn get_sts_credentials(
         .body(body)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("STS 请求失败: {}", e)))?;
+        .into_network_err_with("STS 请求失败")?;
 
     let status = response.status();
-    let text = response.text().await.map_err(|e| AppError::network(format!("读取 STS 响应失败: {}", e)))?;
+    let text = response.text().await.into_network_err_with("读取 STS 响应失败")?;
 
     println!("[Nami] STS 响应: {}", text);
 
@@ -309,9 +308,9 @@ async fn init_multipart_upload(
         request = request.header(&key, &value);
     }
 
-    let response = request.send().await.map_err(|e| AppError::network(format!("初始化上传请求失败: {}", e)))?;
+    let response = request.send().await.into_network_err_with("初始化上传请求失败")?;
     let status = response.status();
-    let text = response.text().await.map_err(|e| AppError::network(format!("读取初始化响应失败: {}", e)))?;
+    let text = response.text().await.into_network_err_with("读取初始化响应失败")?;
 
     if !status.is_success() {
         return Err(AppError::upload("纳米", format!("初始化上传失败 (HTTP {}): {}", status, text)));
@@ -381,7 +380,7 @@ async fn upload_part(
         request = request.header(&key, &value);
     }
 
-    let response = request.send().await.map_err(|e| AppError::network(format!("上传分片失败: {}", e)))?;
+    let response = request.send().await.into_network_err_with("上传分片失败")?;
     let status = response.status();
 
     if !status.is_success() {
@@ -442,7 +441,7 @@ async fn complete_multipart_upload(
         request = request.header(&key, &value);
     }
 
-    let response = request.send().await.map_err(|e| AppError::network(format!("完成上传请求失败: {}", e)))?;
+    let response = request.send().await.into_network_err_with("完成上传请求失败")?;
     let status = response.status();
 
     if !status.is_success() {
@@ -465,16 +464,7 @@ pub async fn upload_to_nami(
     println!("[Nami] 开始上传文件: {}", file_path);
 
     // 1. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
+    let (buffer, file_size) = read_file_bytes(&file_path).await?;
 
     // 2. 获取文件扩展名
     let file_name = std::path::Path::new(&file_path)
@@ -495,7 +485,7 @@ pub async fn upload_to_nami(
     // 注意：使用标准 TLS 验证，确保通信安全
     let client = Client::builder()
         .build()
-        .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        .into_network_err_with("创建 HTTP 客户端失败")?;
 
     // 5. 检查文件是否已存在（秒传）
     if check_file_exists(&client, &file_key).await {
@@ -608,7 +598,7 @@ pub async fn test_nami_connection(app: tauri::AppHandle, cookie: String, auth_to
     let client = Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build()
-        .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        .into_network_err_with("创建 HTTP 客户端失败")?;
 
     // 尝试获取动态 Headers 来验证 Cookie 和 Auth-Token
     println!("[Nami Test] 验证 Cookie 和 Auth-Token...");

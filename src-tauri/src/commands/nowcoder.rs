@@ -5,11 +5,10 @@
 use tauri::Window;
 use serde::{Deserialize, Serialize};
 use reqwest::multipart;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use std::time::{SystemTime, UNIX_EPOCH};
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
+use super::utils::read_file_bytes;
 
 /// 测试牛客 Cookie 是否有效
 #[tauri::command]
@@ -37,7 +36,7 @@ pub async fn test_nowcoder_cookie(nowcoder_cookie: String) -> Result<String, App
     // 构建带时间戳的 URL
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| AppError::external(format!("无法获取时间戳: {}", e)))?
+        .into_external_err_with("无法获取时间戳")?
         .as_millis();
 
     let url = format!("https://www.nowcoder.com/uploadImage?type=1&_={}", timestamp);
@@ -46,7 +45,7 @@ pub async fn test_nowcoder_cookie(nowcoder_cookie: String) -> Result<String, App
     let part = multipart::Part::bytes(minimal_png)
         .file_name("test.png".to_string())
         .mime_str("image/png")
-        .map_err(|e| AppError::validation(format!("无法设置 MIME 类型: {}", e)))?;
+        .into_validation_err_with("无法设置 MIME 类型")?;
 
     let form = multipart::Form::new().part("file", part);
 
@@ -61,10 +60,10 @@ pub async fn test_nowcoder_cookie(nowcoder_cookie: String) -> Result<String, App
         .multipart(form)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+        .into_network_err_with("请求失败")?;
 
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取响应: {}", e)))?;
+        .into_network_err_with("无法读取响应")?;
 
     println!("[Nowcoder] 测试响应: {}", response_text);
 
@@ -102,16 +101,7 @@ pub async fn upload_to_nowcoder(
     println!("[Nowcoder] 开始上传文件: {}", file_path);
 
     // 1. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
+    let (buffer, file_size) = read_file_bytes(&file_path).await?;
 
     // 2. 验证文件类型（只允许图片）
     let file_name = std::path::Path::new(&file_path)
@@ -130,7 +120,7 @@ pub async fn upload_to_nowcoder(
     // 3. 构建带时间戳的 URL
     let timestamp = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| AppError::external(format!("无法获取时间戳: {}", e)))?
+        .into_external_err_with("无法获取时间戳")?
         .as_millis();
 
     let url = format!("https://www.nowcoder.com/uploadImage?type=1&_={}", timestamp);
@@ -146,7 +136,7 @@ pub async fn upload_to_nowcoder(
     let part = multipart::Part::bytes(buffer)
         .file_name(normalized_file_name)
         .mime_str("image/*")
-        .map_err(|e| AppError::validation(format!("无法设置 MIME 类型: {}", e)))?;
+        .into_validation_err_with("无法设置 MIME 类型")?;
 
     let form = multipart::Form::new()
         .part("file", part);
@@ -162,11 +152,11 @@ pub async fn upload_to_nowcoder(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+        .into_network_err_with("请求失败")?;
 
     // 6. 解析响应
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取响应: {}", e)))?;
+        .into_network_err_with("无法读取响应")?;
 
     println!("[Nowcoder] API 响应: {}", response_text);
 

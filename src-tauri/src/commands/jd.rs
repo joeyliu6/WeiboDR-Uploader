@@ -5,10 +5,9 @@
 use tauri::{Window, Emitter};
 use serde::{Deserialize, Serialize};
 use reqwest::multipart;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
+use super::utils::read_file_bytes;
 
 /// 京东上传结果
 #[derive(Debug, Serialize, Deserialize)]
@@ -47,10 +46,10 @@ async fn get_aid_info() -> Result<AidInfo, AppError> {
         .header("Referer", "https://jdcs.jd.com/chat/index.action?venderId=1&appId=jd.waiter&customerAppId=im.customer&entry=jd_web_EnterpriseZC")
         .send()
         .await
-        .map_err(|e| AppError::network(format!("获取 aid 请求失败: {}", e)))?;
+        .into_network_err_with("获取 aid 请求失败")?;
 
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取 aid 响应: {}", e)))?;
+        .into_network_err_with("无法读取 aid 响应")?;
 
     println!("[JD] Aid API 响应: {}", response_text);
 
@@ -118,12 +117,7 @@ pub async fn upload_to_jd(
     }));
 
     // 1. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
+    let (buffer, file_size) = read_file_bytes(&file_path).await?;
 
     // 2. 验证文件大小（限制 15MB）
     if file_size > MAX_FILE_SIZE {
@@ -132,10 +126,6 @@ pub async fn upload_to_jd(
             file_size as f64 / 1024.0 / 1024.0
         )));
     }
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
 
     // 3. 验证文件类型（只允许图片）
     let file_name = std::path::Path::new(&file_path)
@@ -177,7 +167,7 @@ pub async fn upload_to_jd(
     let part = multipart::Part::bytes(buffer)
         .file_name(normalized_file_name)
         .mime_str("image/*")
-        .map_err(|e| AppError::validation(format!("无法设置 MIME 类型: {}", e)))?;
+        .into_validation_err_with("无法设置 MIME 类型")?;
 
     let form = multipart::Form::new()
         .part("upload", part)  // 京东用 "upload" 字段名
@@ -208,7 +198,7 @@ pub async fn upload_to_jd(
         .timeout(std::time::Duration::from_secs(60))
         .send()
         .await
-        .map_err(|e| AppError::network(format!("上传请求失败: {}", e)))?;
+        .into_network_err_with("上传请求失败")?;
 
     // 发送进度: 75% - 处理响应
     let _ = window.emit("upload://progress", serde_json::json!({
@@ -222,7 +212,7 @@ pub async fn upload_to_jd(
 
     // 7. 解析响应
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取响应: {}", e)))?;
+        .into_network_err_with("无法读取响应")?;
 
     println!("[JD] 上传 API 响应: {}", response_text);
 

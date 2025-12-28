@@ -8,7 +8,7 @@ mod error;
 mod commands;
 
 use tauri::{Manager, Emitter};
-use error::AppError;
+use error::{AppError, IntoAppError};
 #[cfg(target_os = "macos")]
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, Submenu};
 #[cfg(not(target_os = "macos"))]
@@ -1056,7 +1056,7 @@ async fn test_r2_connection(
         || config.access_key_id.is_empty()
         || config.secret_access_key.is_empty()
         || config.bucket_name.is_empty() {
-        return Err(AppError::validation("配置不完整: AccountID、KeyID、Secret 和 Bucket 均为必填项。"));
+        return Err(AppError::config("配置不完整: AccountID、KeyID、Secret 和 Bucket 均为必填项。"));
     }
 
     let endpoint_url = format!("https://{}.r2.cloudflarestorage.com/{}", config.account_id, config.bucket_name);
@@ -1114,20 +1114,20 @@ async fn test_r2_connection(
             if status.is_success() {
                 Ok("R2 连接成功！".to_string())
             } else if status == reqwest::StatusCode::NOT_FOUND {
-                Err(AppError::upload("R2", format!("存储桶 (Bucket) '{}' 未找到", config.bucket_name)))
+                Err(AppError::storage(format!("存储桶 (Bucket) '{}' 未找到", config.bucket_name)))
             } else if status == reqwest::StatusCode::FORBIDDEN {
                 Err(AppError::auth("R2 认证失败: Access Key ID 或 Secret Access Key 无效，或权限不足"))
             } else {
-                Err(AppError::network(format!("连接失败: HTTP {}", status)))
+                Err(AppError::storage(format!("连接失败: HTTP {}", status)))
             }
         }
         Err(err) => {
             if err.is_connect() {
-                Err(AppError::network("无法连接到 R2 服务器，请检查网络连接"))
+                Err(AppError::storage("无法连接到 R2 服务器，请检查网络连接"))
             } else if err.is_timeout() {
-                Err(AppError::network("请求超时"))
+                Err(AppError::storage("请求超时"))
             } else {
-                Err(AppError::network(format!("连接失败: {}", err)))
+                Err(AppError::storage(format!("连接失败: {}", err)))
             }
         }
     }
@@ -1145,7 +1145,7 @@ async fn test_webdav_connection(
     http_client: tauri::State<'_, HttpClient>
 ) -> Result<String, AppError> {
     if config.url.is_empty() || config.username.is_empty() || config.password.is_empty() {
-        return Err(AppError::validation("配置不完整: URL、用户名和密码均为必填项。"));
+        return Err(AppError::config("配置不完整: URL、用户名和密码均为必填项。"));
     }
     let auth_header = format!(
         "Basic {}",
@@ -1165,20 +1165,20 @@ async fn test_webdav_connection(
             if status.is_success() || status.as_u16() == 207 {
                 Ok("WebDAV 连接成功！".to_string())
             } else if status == reqwest::StatusCode::UNAUTHORIZED {
-                Err(AppError::auth("WebDAV 认证失败: 用户名或密码错误"))
+                Err(AppError::webdav("认证失败: 用户名或密码错误"))
             } else if status == reqwest::StatusCode::NOT_FOUND {
-                Err(AppError::network("URL 未找到，请检查链接是否正确"))
+                Err(AppError::webdav("URL 未找到，请检查链接是否正确"))
             } else {
-                Err(AppError::network(format!("服务器返回状态 {}", status)))
+                Err(AppError::webdav(format!("服务器返回状态 {}", status)))
             }
         }
         Err(err) => {
             if err.is_connect() {
-                Err(AppError::network("无法连接到服务器，请检查 URL 或网络"))
+                Err(AppError::webdav("无法连接到服务器，请检查 URL 或网络"))
             } else if err.is_timeout() {
-                Err(AppError::network("请求超时"))
+                Err(AppError::webdav("请求超时"))
             } else {
-                Err(AppError::network(format!("连接失败: {}", err)))
+                Err(AppError::webdav(format!("连接失败: {}", err)))
             }
         }
     }
@@ -1196,7 +1196,7 @@ async fn list_r2_objects(
         || config.access_key_id.is_empty()
         || config.secret_access_key.is_empty()
         || config.bucket_name.is_empty() {
-        return Err(AppError::validation("R2 配置不完整，请先在设置中配置所有必填字段"));
+        return Err(AppError::config("R2 配置不完整，请先在设置中配置所有必填字段"));
     }
 
     let mut objects: Vec<R2Object> = Vec::new();
@@ -1264,15 +1264,15 @@ async fn list_r2_objects(
             .header("Authorization", &authorization_header)
             .send()
             .await
-            .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+            .into_storage_err_with("请求失败")?;
 
         if !response.status().is_success() {
             let status = response.status();
             let body = response.text().await.unwrap_or_default();
-            return Err(AppError::upload("R2", format!("列出对象失败 (HTTP {}): {}", status, body)));
+            return Err(AppError::storage(format!("列出对象失败 (HTTP {}): {}", status, body)));
         }
 
-        let body = response.text().await.map_err(|e| AppError::network(format!("读取响应失败: {}", e)))?;
+        let body = response.text().await.into_storage_err_with("读取响应失败")?;
 
         let mut reader = Reader::from_str(&body);
         reader.config_mut().trim_text(true);
@@ -1341,7 +1341,7 @@ async fn list_r2_objects(
                     }
                 }
                 Ok(Event::Eof) => break,
-                Err(e) => return Err(AppError::external(format!("解析 XML 失败: {}", e))),
+                Err(e) => return Err(AppError::storage(format!("解析 XML 失败: {}", e))),
                 _ => {}
             }
             buf.clear();
@@ -1410,7 +1410,7 @@ async fn delete_r2_object(
         || config.access_key_id.is_empty()
         || config.secret_access_key.is_empty()
         || config.bucket_name.is_empty() {
-        return Err(AppError::validation("R2 配置不完整，请先在设置中配置所有必填字段"));
+        return Err(AppError::config("R2 配置不完整，请先在设置中配置所有必填字段"));
     }
 
     if key.is_empty() {
@@ -1495,7 +1495,7 @@ async fn delete_r2_object(
 
                         if status.is_client_error() {
                             eprintln!("[R2删除] 客户端错误，不重试: {}", last_error);
-                            return Err(AppError::upload("R2", last_error));
+                            return Err(AppError::storage(last_error));
                         }
 
                         eprintln!("[R2删除] 服务器错误，将重试: {}", last_error);
@@ -1518,7 +1518,7 @@ async fn delete_r2_object(
             }
     }
 
-    Err(AppError::network(format!("删除失败（已重试 {} 次）: {}", max_retries, last_error)))
+    Err(AppError::storage(format!("删除失败（已重试 {} 次）: {}", max_retries, last_error)))
 }
 
 #[tauri::command]

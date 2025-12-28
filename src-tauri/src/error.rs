@@ -43,10 +43,6 @@ pub enum AppError {
     #[serde(rename = "EXTERNAL")]
     External { message: String },
 
-    /// 服务不可用：图床服务暂时不可用
-    #[serde(rename = "SERVICE_UNAVAILABLE")]
-    ServiceUnavailable { service: String, message: String },
-
     /// 验证错误：参数验证失败
     #[serde(rename = "VALIDATION")]
     Validation { message: String },
@@ -124,9 +120,6 @@ impl std::fmt::Display for AppError {
             Self::Config { message } => write!(f, "配置错误: {}", message),
             Self::Clipboard { message } => write!(f, "剪贴板错误: {}", message),
             Self::External { message } => write!(f, "外部服务错误: {}", message),
-            Self::ServiceUnavailable { service, message } => {
-                write!(f, "{} 不可用: {}", service, message)
-            }
             Self::Validation { message } => write!(f, "验证错误: {}", message),
             Self::WebDAV { message } => write!(f, "WebDAV 错误: {}", message),
             Self::Storage { message } => write!(f, "存储错误: {}", message),
@@ -203,14 +196,6 @@ impl AppError {
         }
     }
 
-    /// 创建服务不可用错误
-    pub fn service_unavailable(service: impl Into<String>, message: impl Into<String>) -> Self {
-        AppError::ServiceUnavailable {
-            service: service.into(),
-            message: message.into(),
-        }
-    }
-
     /// 创建验证错误
     pub fn validation(message: impl Into<String>) -> Self {
         AppError::Validation {
@@ -235,24 +220,8 @@ impl AppError {
 
 // ==================== Result 扩展 trait ====================
 
-/// 为 Result<T, String> 提供转换为 Result<T, AppError> 的便捷方法
-pub trait ResultExt<T> {
-    /// 将 Result<T, String> 转换为 Result<T, AppError>
-    fn map_app_err<F>(self, f: F) -> Result<T, AppError>
-    where
-        F: FnOnce(String) -> AppError;
-}
-
-impl<T> ResultExt<T> for Result<T, String> {
-    fn map_app_err<F>(self, f: F) -> Result<T, AppError>
-    where
-        F: FnOnce(String) -> AppError,
-    {
-        self.map_err(f)
-    }
-}
-
 /// 为 Result<T, E> 提供错误消息转换的便捷方法
+#[allow(dead_code)]
 pub trait IntoAppError<T> {
     /// 将错误转换为网络错误
     fn into_network_err(self) -> Result<T, AppError>;
@@ -262,6 +231,30 @@ pub trait IntoAppError<T> {
 
     /// 将错误转换为配置错误
     fn into_config_err(self) -> Result<T, AppError>;
+
+    /// 将错误转换为外部服务错误
+    fn into_external_err(self) -> Result<T, AppError>;
+
+    /// 将错误转换为存储错误
+    fn into_storage_err(self) -> Result<T, AppError>;
+
+    /// 将错误转换为 WebDAV 错误
+    fn into_webdav_err(self) -> Result<T, AppError>;
+
+    /// 将错误转换为文件 IO 错误（带自定义前缀）
+    fn into_file_io_err_with(self, prefix: &str) -> Result<T, AppError>;
+
+    /// 将错误转换为网络错误（带自定义前缀）
+    fn into_network_err_with(self, prefix: &str) -> Result<T, AppError>;
+
+    /// 将错误转换为外部服务错误（带自定义前缀）
+    fn into_external_err_with(self, prefix: &str) -> Result<T, AppError>;
+
+    /// 将错误转换为存储错误（带自定义前缀）
+    fn into_storage_err_with(self, prefix: &str) -> Result<T, AppError>;
+
+    /// 将错误转换为验证错误（带自定义前缀）
+    fn into_validation_err_with(self, prefix: &str) -> Result<T, AppError>;
 }
 
 impl<T, E: std::fmt::Display> IntoAppError<T> for Result<T, E> {
@@ -275,5 +268,37 @@ impl<T, E: std::fmt::Display> IntoAppError<T> for Result<T, E> {
 
     fn into_config_err(self) -> Result<T, AppError> {
         self.map_err(|e| AppError::config(e.to_string()))
+    }
+
+    fn into_external_err(self) -> Result<T, AppError> {
+        self.map_err(|e| AppError::external(e.to_string()))
+    }
+
+    fn into_storage_err(self) -> Result<T, AppError> {
+        self.map_err(|e| AppError::storage(e.to_string()))
+    }
+
+    fn into_webdav_err(self) -> Result<T, AppError> {
+        self.map_err(|e| AppError::webdav(e.to_string()))
+    }
+
+    fn into_file_io_err_with(self, prefix: &str) -> Result<T, AppError> {
+        self.map_err(|e| AppError::file_io(format!("{}: {}", prefix, e)))
+    }
+
+    fn into_network_err_with(self, prefix: &str) -> Result<T, AppError> {
+        self.map_err(|e| AppError::network(format!("{}: {}", prefix, e)))
+    }
+
+    fn into_external_err_with(self, prefix: &str) -> Result<T, AppError> {
+        self.map_err(|e| AppError::external(format!("{}: {}", prefix, e)))
+    }
+
+    fn into_storage_err_with(self, prefix: &str) -> Result<T, AppError> {
+        self.map_err(|e| AppError::storage(format!("{}: {}", prefix, e)))
+    }
+
+    fn into_validation_err_with(self, prefix: &str) -> Result<T, AppError> {
+        self.map_err(|e| AppError::validation(format!("{}: {}", prefix, e)))
     }
 }

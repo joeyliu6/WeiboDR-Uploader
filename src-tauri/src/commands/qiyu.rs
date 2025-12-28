@@ -7,12 +7,11 @@
 use tauri::{Window, Emitter, Manager};
 use serde::Serialize;
 use reqwest::Client;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use std::time::{SystemTime, UNIX_EPOCH, Duration};
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
 use super::qiyu_token::fetch_qiyu_token_internal;
+use super::utils::read_file_bytes;
 
 #[derive(Debug, Serialize)]
 pub struct QiyuUploadResult {
@@ -49,16 +48,7 @@ pub async fn upload_to_qiyu(
     println!("[Qiyu] Token 获取成功，Object 路径: {}", object_path);
 
     // 3. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
+    let (buffer, file_size) = read_file_bytes(&file_path).await?;
 
     // 4. 验证文件类型（只允许图片）
     let file_name = std::path::Path::new(&file_path)
@@ -101,7 +91,7 @@ pub async fn upload_to_qiyu(
     let client = Client::builder()
         .timeout(Duration::from_secs(45))
         .build()
-        .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        .into_network_err_with("创建 HTTP 客户端失败")?;
 
     let response = client
         .post(&upload_url)
@@ -110,7 +100,7 @@ pub async fn upload_to_qiyu(
         .body(buffer)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("上传请求失败: {}", e)))?;
+        .into_network_err_with("上传请求失败")?;
 
     // 7. 检查响应状态
     let status = response.status();
@@ -123,13 +113,13 @@ pub async fn upload_to_qiyu(
     // API 响应格式: {"requestId": "...", "offset": ..., "context": "...", "callbackRetMsg": "..."}
     // HTTP 200 即视为成功
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取响应: {}", e)))?;
+        .into_network_err_with("无法读取响应")?;
     println!("[Qiyu] API 响应: {}", response_text);
 
     // 9. 构建 CDN URL (使用当前时间戳作为 createTime)
     let create_time = SystemTime::now()
         .duration_since(UNIX_EPOCH)
-        .map_err(|e| AppError::external(format!("无法获取时间戳: {}", e)))?
+        .into_external_err_with("无法获取时间戳")?
         .as_millis();
 
     let cdn_url = format!(

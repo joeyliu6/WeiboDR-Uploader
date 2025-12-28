@@ -5,10 +5,9 @@
 use tauri::{Window, Emitter};
 use serde::{Deserialize, Serialize};
 use reqwest::multipart;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
+use super::utils::read_file_bytes;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct TCLUploadResult {
@@ -79,16 +78,7 @@ pub async fn upload_to_tcl(
     }));
 
     // 1. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
+    let (buffer, file_size) = read_file_bytes(&file_path).await?;
 
     // 2. 验证文件类型（只允许图片）
     let file_name = std::path::Path::new(&file_path)
@@ -117,7 +107,7 @@ pub async fn upload_to_tcl(
     let part = multipart::Part::bytes(buffer)
         .file_name(normalized_file_name)
         .mime_str("image/*")
-        .map_err(|e| AppError::validation(format!("无法设置 MIME 类型: {}", e)))?;
+        .into_validation_err_with("无法设置 MIME 类型")?;
 
     let form = multipart::Form::new()
         .part("file", part);
@@ -139,7 +129,7 @@ pub async fn upload_to_tcl(
         .multipart(form)
         .send()
         .await
-        .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+        .into_network_err_with("请求失败")?;
 
     // 发送进度: 66% - 处理响应
     let _ = window.emit("upload://progress", serde_json::json!({
@@ -153,7 +143,7 @@ pub async fn upload_to_tcl(
 
     // 5. 解析响应
     let response_text = response.text().await
-        .map_err(|e| AppError::network(format!("无法读取响应: {}", e)))?;
+        .into_network_err_with("无法读取响应")?;
 
     println!("[TCL] API 响应: {}", response_text);
 

@@ -13,8 +13,6 @@
 use tauri::Window;
 use serde::{Deserialize, Serialize};
 use reqwest::Client;
-use tokio::fs::File;
-use tokio::io::AsyncReadExt;
 use std::time::Duration;
 use md5::{Md5, Digest};
 use hmac::{Hmac, Mac};
@@ -22,7 +20,8 @@ use sha1::Sha1;
 use base64::{Engine, engine::general_purpose::STANDARD};
 use regex::Regex;
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
+use super::utils::read_file_bytes;
 
 type HmacSha1 = Hmac<Sha1>;
 
@@ -95,7 +94,7 @@ fn calculate_oss_signature(
     );
 
     let mut mac = HmacSha1::new_from_slice(access_key.as_bytes())
-        .map_err(|e| AppError::external(format!("HMAC 初始化失败: {}", e)))?;
+        .into_external_err_with("HMAC 初始化失败")?;
     mac.update(string_to_sign.as_bytes());
 
     Ok(STANDARD.encode(mac.finalize().into_bytes()))
@@ -171,16 +170,7 @@ async fn upload_to_zhihu_inner(
     println!("[Zhihu] 开始上传文件: {}", file_path);
 
     // 1. 读取文件
-    let mut file = File::open(&file_path).await
-        .map_err(|e| AppError::file_io(format!("无法打开文件: {}", e)))?;
-
-    let file_size = file.metadata().await
-        .map_err(|e| AppError::file_io(format!("无法获取文件元数据: {}", e)))?
-        .len();
-
-    let mut buffer = Vec::new();
-    file.read_to_end(&mut buffer).await
-        .map_err(|e| AppError::file_io(format!("无法读取文件: {}", e)))?;
+    let (buffer, file_size) = read_file_bytes(file_path).await?;
 
     // 2. 验证文件类型（只允许图片）
     let file_name = std::path::Path::new(&file_path)
@@ -206,7 +196,7 @@ async fn upload_to_zhihu_inner(
     let client = Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
-        .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        .into_network_err_with("创建 HTTP 客户端失败")?;
 
     let credentials_response = client
         .post("https://api.zhihu.com/images")
@@ -221,10 +211,10 @@ async fn upload_to_zhihu_inner(
         }))
         .send()
         .await
-        .map_err(|e| AppError::network(format!("获取上传凭证失败: {}", e)))?;
+        .into_network_err_with("获取上传凭证失败")?;
 
     let credentials_text = credentials_response.text().await
-        .map_err(|e| AppError::network(format!("读取凭证响应失败: {}", e)))?;
+        .into_network_err_with("读取凭证响应失败")?;
 
     println!("[Zhihu] 凭证响应: {}", credentials_text);
 
@@ -271,7 +261,7 @@ async fn upload_to_zhihu_inner(
             .body(buffer.clone())
             .send()
             .await
-            .map_err(|e| AppError::network(format!("OSS 上传失败: {}", e)))?;
+            .into_network_err_with("OSS 上传失败")?;
 
         let oss_status = oss_response.status();
         if !oss_status.is_success() {
@@ -294,7 +284,7 @@ async fn upload_to_zhihu_inner(
             }))
             .send()
             .await
-            .map_err(|e| AppError::network(format!("通知上传完成失败: {}", e)))?;
+            .into_network_err_with("通知上传完成失败")?;
 
         if !notify_response.status().is_success() {
             let notify_error = notify_response.text().await.unwrap_or_default();
@@ -338,10 +328,10 @@ async fn poll_image_status(
             .header("Referer", "https://www.zhihu.com/")
             .send()
             .await
-            .map_err(|e| AppError::network(format!("查询图片状态失败: {}", e)))?;
+            .into_network_err_with("查询图片状态失败")?;
 
         let response_text = response.text().await
-            .map_err(|e| AppError::network(format!("读取状态响应失败: {}", e)))?;
+            .into_network_err_with("读取状态响应失败")?;
 
         let status: ImageStatusResponse = serde_json::from_str(&response_text)
             .map_err(|e| AppError::upload("知乎", format!("解析状态响应失败: {} (响应: {})", e, response_text)))?;
@@ -378,7 +368,7 @@ pub async fn test_zhihu_connection(zhihu_cookie: String) -> Result<String, AppEr
     let client = Client::builder()
         .timeout(Duration::from_secs(15))
         .build()
-        .map_err(|e| AppError::network(format!("创建 HTTP 客户端失败: {}", e)))?;
+        .into_network_err_with("创建 HTTP 客户端失败")?;
 
     // 尝试获取上传凭证来验证 Cookie
     let response = client
@@ -394,7 +384,7 @@ pub async fn test_zhihu_connection(zhihu_cookie: String) -> Result<String, AppEr
         }))
         .send()
         .await
-        .map_err(|e| AppError::network(format!("请求失败: {}", e)))?;
+        .into_network_err_with("请求失败")?;
 
     let status = response.status();
     let response_text = response.text().await.unwrap_or_default();

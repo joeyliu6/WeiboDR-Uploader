@@ -11,7 +11,7 @@ use tokio::fs::File;
 use tokio::io::AsyncReadExt;
 use tokio::time::{timeout, Duration};
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
 
 #[derive(Serialize, Deserialize)]
 pub struct R2UploadResult {
@@ -59,7 +59,7 @@ pub async fn upload_to_r2(
     // 2. 获取文件大小
     let file_size = tokio::fs::metadata(&path)
         .await
-        .map_err(|e| AppError::file_io(format!("读取文件元数据失败: {}", e)))?
+        .into_file_io_err_with("读取文件元数据失败")?
         .len();
 
     println!("[R2] 文件大小: {} bytes", file_size);
@@ -97,12 +97,12 @@ pub async fn upload_to_r2(
     // 6. 读取文件
     let mut file = File::open(&path)
         .await
-        .map_err(|e| AppError::file_io(format!("打开文件失败: {}", e)))?;
+        .into_file_io_err_with("打开文件失败")?;
 
     let mut buffer = Vec::new();
     file.read_to_end(&mut buffer)
         .await
-        .map_err(|e| AppError::file_io(format!("读取文件失败: {}", e)))?;
+        .into_file_io_err_with("读取文件失败")?;
 
     // 发送 50% 进度（文件已读取）
     emit_progress(&window, &id, file_size / 2, file_size);
@@ -126,23 +126,23 @@ pub async fn upload_to_r2(
             .await
     })
     .await
-    .map_err(|_| AppError::network("R2 上传超时: 网络连接不稳定或文件过大，请稍后重试"))?
+    .map_err(|_| AppError::storage("R2 上传超时: 网络连接不稳定或文件过大，请稍后重试"))?
     .map_err(|e| {
         let error_msg = format!("R2 上传失败: {}", e);
         println!("[R2] 错误: {}", error_msg);
 
         // 转换为更友好的错误提示
         if error_msg.contains("NoSuchBucket") {
-            return AppError::upload("R2", format!("存储桶不存在: {}", bucket_name));
+            return AppError::storage(format!("存储桶不存在: {}", bucket_name));
         } else if error_msg.contains("AccessDenied") || error_msg.contains("InvalidAccessKeyId") {
             return AppError::auth("R2 认证失败: 请检查 Account ID、Access Key ID 和 Secret Access Key");
         } else if error_msg.contains("SignatureDoesNotMatch") {
             return AppError::auth("R2 签名错误: 请检查 Secret Access Key 是否正确");
         } else if error_msg.contains("timeout") {
-            return AppError::network("R2 上传超时: 网络连接不稳定，请重试");
+            return AppError::storage("R2 上传超时: 网络连接不稳定，请重试");
         }
 
-        AppError::upload("R2", error_msg)
+        AppError::storage(error_msg)
     })?;
 
     // ✅ 修复: 删除此处的100%事件发送

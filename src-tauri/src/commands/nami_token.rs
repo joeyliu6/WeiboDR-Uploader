@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct NamiDynamicHeaders {
@@ -54,12 +54,12 @@ pub async fn fetch_nami_token_internal(
 
     let sidecar = app.shell()
         .sidecar("nami-token-fetcher")
-        .map_err(|e| AppError::external(format!("创建 sidecar 失败: {}", e)))?;
+        .into_external_err_with("创建 sidecar 失败")?;
 
     let (mut rx, _child) = sidecar
         .args(["fetch-token", "--cookie", &cookie, "--auth-token", &auth_token])
         .spawn()
-        .map_err(|e| AppError::external(format!("启动 sidecar 失败: {}", e)))?;
+        .into_external_err_with("启动 sidecar 失败")?;
 
     let mut output = String::new();
     let mut stderr_output = String::new();

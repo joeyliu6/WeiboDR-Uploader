@@ -8,7 +8,7 @@ use tauri_plugin_shell::ShellExt;
 use tauri_plugin_shell::process::CommandEvent;
 use tokio::time::{timeout, Duration};
 
-use crate::error::AppError;
+use crate::error::{AppError, IntoAppError};
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct QiyuToken {
@@ -38,12 +38,12 @@ pub async fn check_chrome_installed(app: tauri::AppHandle) -> Result<bool, AppEr
 
     let sidecar = app.shell()
         .sidecar("qiyu-token-fetcher")
-        .map_err(|e| AppError::external(format!("创建 sidecar 失败: {}", e)))?;
+        .into_external_err_with("创建 sidecar 失败")?;
 
     let (mut rx, _child) = sidecar
         .args(["check-chrome"])
         .spawn()
-        .map_err(|e| AppError::external(format!("启动 sidecar 失败: {}", e)))?;
+        .into_external_err_with("启动 sidecar 失败")?;
 
     let mut output = String::new();
     let mut stderr_output = String::new();
@@ -133,12 +133,12 @@ pub async fn fetch_qiyu_token_internal(app: &tauri::AppHandle) -> Result<QiyuTok
 
     let sidecar = app.shell()
         .sidecar("qiyu-token-fetcher")
-        .map_err(|e| AppError::external(format!("创建 sidecar 失败: {}", e)))?;
+        .into_external_err_with("创建 sidecar 失败")?;
 
     let (mut rx, _child) = sidecar
         .args(["fetch-token"])
         .spawn()
-        .map_err(|e| AppError::external(format!("启动 sidecar 失败: {}", e)))?;
+        .into_external_err_with("启动 sidecar 失败")?;
 
     let mut output = String::new();
     let mut stderr_output = String::new();
