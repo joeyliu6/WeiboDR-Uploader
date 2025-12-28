@@ -20,7 +20,6 @@ import { useHistoryManager, type ViewMode } from '../../composables/useHistory';
 import { useToast } from '../../composables/useToast';
 import { useConfigManager } from '../../composables/useConfig';
 import { debounce } from '../../utils/debounce';
-import { getThumbnailUrl } from '../../services/ThumbnailService';
 import 'primeicons/primeicons.css';
 
 // 【性能优化】DateTimeFormat 提取到组件外，全局复用
@@ -173,11 +172,6 @@ watch([isAllSelected, isSomeSelected], () => {
 // 全选/取消全选
 const handleSelectAll = () => {
   historyManager.toggleSelectAll(selectAll.value);
-};
-
-// 批量复制（原有方法，保留兼容）
-const handleBulkCopy = async () => {
-  await historyManager.bulkCopyLinks(historyManager.selectedIds.value);
 };
 
 // === 浮动操作栏 - 复制下拉菜单 ===
@@ -580,13 +574,12 @@ const getPreviewUrl = (item: HistoryItem): string | undefined => {
 // === 虚拟滚动相关 ===
 
 // 网格视图：计算每个卡片的高度（用于虚拟瀑布流）
-// 使用固定的图片容器高度，确保计算高度与实际渲染高度一致
-const CARD_IMAGE_HEIGHT = 150;  // 固定图片容器高度
-const CARD_INFO_HEIGHT = 72;    // 信息区域高度（包含 padding）
+// 谷歌相册风格：只展示图片，无信息区域
+const CARD_IMAGE_HEIGHT = 180;  // 固定图片容器高度
 const CARD_BORDER = 2;          // 边框
 
 const calcItemHeight = (_item: HistoryItem, _itemWidth: number): number => {
-  return CARD_IMAGE_HEIGHT + CARD_INFO_HEIGHT + CARD_BORDER;
+  return CARD_IMAGE_HEIGHT + CARD_BORDER;
 };
 
 // 网格列数（响应式）
@@ -813,15 +806,14 @@ const handleScroll = (event: Event) => {
               class="waterfall-card"
               :class="{ selected: isGridSelected(item) }"
             >
-              <!-- 图片区域 -->
-              <div class="card-image-container" @click="toggleGridSelection(item)">
+              <!-- 图片区域（谷歌相册风格：只展示图片） -->
+              <div class="card-image-container" @click="openLightbox(item)">
                 <img
                   v-if="getPreviewUrl(item)"
                   :src="getPreviewUrl(item)"
                   :alt="item.localFileName"
                   class="waterfall-image"
                   loading="lazy"
-                  @click.stop="openLightbox(item)"
                   @error="(e: any) => e.target.src = '/placeholder.png'"
                 />
                 <!-- 图片加载中：骨架屏 -->
@@ -829,46 +821,16 @@ const handleScroll = (event: Event) => {
                   <Skeleton width="100%" height="100%" animation="wave" />
                 </div>
 
-                <!-- 覆盖层 (Glassmorphism) -->
-                <div class="card-overlay">
-                  <div class="overlay-actions">
-                    <Button
-                      icon="pi pi-copy"
-                      class="p-button-rounded p-button-text p-button-sm overlay-btn"
-                      @click.stop="handleCopyLink(item)"
-                      v-tooltip.top="'复制链接'"
-                    />
-                    <Button
-                      icon="pi pi-external-link"
-                      class="p-button-rounded p-button-text p-button-sm overlay-btn"
-                      @click.stop="openLightbox(item)"
-                      v-tooltip.top="'查看大图'"
-                    />
-                  </div>
-                </div>
-              </div>
+                <!-- 顶部渐变阴影（为复选框提供可见性背景） -->
+                <div class="card-top-gradient"></div>
 
-              <!-- 选中指示器 -->
-              <div v-if="isGridSelected(item)" class="card-selection-overlay">
-                <i class="pi pi-check-circle"></i>
-              </div>
-
-              <!-- 信息区域 -->
-              <div class="card-info">
-                <div class="info-top">
-                  <span class="filename" :title="item.localFileName">{{ item.localFileName }}</span>
-                </div>
-                <div class="info-bottom">
-                  <span class="date">{{ formatTime(item.timestamp) }}</span>
-                  <div class="service-badges-mini">
-                    <Tag
-                      v-for="serviceId in getSuccessfulServices(item).slice(0, 2)"
-                      :key="serviceId"
-                      :value="getServiceName(serviceId)"
-                      severity="secondary"
-                      class="mini-badge"
-                    />
-                  </div>
+                <!-- 左上角圆形复选框（谷歌相册风格） -->
+                <div
+                  class="card-checkbox"
+                  :class="{ checked: isGridSelected(item) }"
+                  @click.stop="toggleGridSelection(item)"
+                >
+                  <i v-if="isGridSelected(item)" class="pi pi-check"></i>
                 </div>
               </div>
             </div>
@@ -888,7 +850,7 @@ const handleScroll = (event: Event) => {
         </div>
       </div>
 
-      <!-- Lightbox 图片查看器 -->
+      <!-- Lightbox 图片查看器（谷歌相册风格） -->
       <Dialog
         v-model:visible="lightboxVisible"
         modal
@@ -899,20 +861,33 @@ const handleScroll = (event: Event) => {
         :contentStyle="{ padding: 0, background: 'transparent' }"
       >
         <div class="lightbox-container" @click="lightboxVisible = false">
+          <!-- 主图片 -->
           <img :src="lightboxImage" class="lightbox-img" @click.stop />
 
-          <div class="lightbox-caption" @click.stop>
-            <div class="lightbox-info">
-              <span class="lightbox-title">{{ lightboxTitle }}</span>
-              <span class="lightbox-time" v-if="lightboxItem">{{ formatTime(lightboxItem.timestamp) }}</span>
+          <!-- 底部信息栏（谷歌相册风格） -->
+          <div class="lightbox-bottom-bar" @click.stop>
+            <!-- 左侧：图片信息 -->
+            <div class="lightbox-info-section">
+              <span class="lightbox-filename">{{ lightboxTitle }}</span>
+              <div class="lightbox-meta">
+                <span class="lightbox-time" v-if="lightboxItem">
+                  <i class="pi pi-calendar"></i>
+                  {{ formatTime(lightboxItem.timestamp) }}
+                </span>
+                <span class="lightbox-services" v-if="lightboxItem">
+                  <i class="pi pi-cloud-upload"></i>
+                  {{ getSuccessfulServices(lightboxItem).map(s => getServiceName(s)).join('、') }}
+                </span>
+              </div>
             </div>
 
+            <!-- 右侧：操作按钮 -->
             <div class="lightbox-actions" v-if="lightboxItem">
               <Button
                 icon="pi pi-copy"
                 text
                 rounded
-                class="text-white"
+                class="lightbox-action-btn"
                 @click="handleCopyLink(lightboxItem)"
                 v-tooltip.top="'复制链接'"
               />
@@ -920,7 +895,7 @@ const handleScroll = (event: Event) => {
                 icon="pi pi-external-link"
                 text
                 rounded
-                class="text-white"
+                class="lightbox-action-btn"
                 @click="openInBrowser(lightboxItem)"
                 v-tooltip.top="'在浏览器打开'"
               />
@@ -929,7 +904,7 @@ const handleScroll = (event: Event) => {
                 severity="danger"
                 text
                 rounded
-                class="text-white"
+                class="lightbox-action-btn lightbox-action-danger"
                 @click="deleteSingleItem(lightboxItem)"
                 v-tooltip.top="'删除'"
               />
@@ -1526,35 +1501,24 @@ const handleScroll = (event: Event) => {
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
   overflow: hidden;
-  transition: transform 0.2s, box-shadow 0.2s, border-color 0.2s;
   position: relative;
 }
 
-.waterfall-card:hover {
-  transform: translateY(-2px);
-  border-color: var(--primary);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-}
-
-.waterfall-card:hover .card-overlay {
-  opacity: 1;
-}
-
-/* 选中状态（增强） */
+/* 选中状态 */
 .waterfall-card.selected {
   border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.2), 0 4px 12px rgba(59, 130, 246, 0.15);
 }
 
 
-/* 图片容器 - 固定高度确保虚拟滚动计算准确 */
+/* 图片容器 - 谷歌相册风格：图片占满整个卡片 */
 .card-image-container {
   position: relative;
   width: 100%;
-  height: 150px;  /* 固定高度，与 CARD_IMAGE_HEIGHT 常量一致 */
+  height: 180px;  /* 固定高度，与 CARD_IMAGE_HEIGHT 常量一致 */
   background: var(--bg-input);
   cursor: pointer;
   overflow: hidden;
+  border-radius: 12px;
 }
 
 /* 定制 Image 组件样式 */
@@ -1582,124 +1546,79 @@ const handleScroll = (event: Event) => {
   height: 100%;
 }
 
-/* 覆盖层（毛玻璃效果） */
-.card-overlay {
+/* 顶部渐变阴影（谷歌相册风格：为复选框提供可见性背景） */
+.card-top-gradient {
   position: absolute;
   top: 0;
   left: 0;
   right: 0;
-  bottom: 0;
-  background: rgba(0, 0, 0, 0.3);
-  backdrop-filter: blur(2px);
+  height: 60px;
+  background: linear-gradient(
+    to bottom,
+    rgba(0, 0, 0, 0.4) 0%,
+    rgba(0, 0, 0, 0.15) 50%,
+    transparent 100%
+  );
   opacity: 0;
   transition: opacity 0.2s ease;
-  display: flex;
-  align-items: flex-end;
-  padding: 0.5rem;
-  justify-content: center;
+  pointer-events: none;
+  border-radius: 12px 12px 0 0;
 }
 
-.overlay-actions {
-  display: flex;
-  gap: 0.5rem;
-  background: rgba(255, 255, 255, 0.9);
-  padding: 4px 8px;
-  border-radius: 20px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+.waterfall-card:hover .card-top-gradient,
+.waterfall-card.selected .card-top-gradient {
+  opacity: 1;
 }
 
-:root.dark-theme .overlay-actions {
-  background: rgba(30, 30, 30, 0.9);
-}
-
-.overlay-btn {
-  width: 28px !important;
-  height: 28px !important;
-  color: var(--text-primary) !important;
-}
-
-.overlay-btn:hover {
-  background: rgba(0, 0, 0, 0.1) !important;
-}
-
-/* 选中指示器（增强：蓝色背景 + 弹跳动画） */
-.card-selection-overlay {
+/* 左上角圆形复选框（谷歌相册风格） */
+.card-checkbox {
   position: absolute;
   top: 8px;
-  right: 8px;
-  color: white;
-  background: var(--primary);
+  left: 8px;
+  width: 20px;
+  height: 20px;
   border-radius: 50%;
-  width: 24px;
-  height: 24px;
+  border: 2px solid rgba(255, 255, 255, 0.9);
+  background: rgba(0, 0, 0, 0.3);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.2s ease, background 0.15s ease, border-color 0.15s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 12px;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.4);
   z-index: 10;
-  animation: checkBounce 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.3);
 }
 
-@keyframes checkBounce {
-  0% {
-    transform: scale(0);
-    opacity: 0;
-  }
-  50% {
-    transform: scale(1.2);
-  }
-  100% {
-    transform: scale(1);
-    opacity: 1;
-  }
+.card-checkbox:hover {
+  background: rgba(0, 0, 0, 0.5);
 }
 
-/* 信息区域 */
-.card-info {
-  padding: 0.75rem;
+/* 悬浮卡片时显示复选框 */
+.waterfall-card:hover .card-checkbox {
+  opacity: 1;
 }
 
-.info-top {
-  margin-bottom: 0.5rem;
+/* 选中状态的复选框（蓝色主题色） */
+.card-checkbox.checked {
+  opacity: 1;
+  background: var(--primary);
+  border-color: var(--primary);
 }
 
-.filename {
-  font-size: 0.85rem;
-  font-weight: 500;
-  color: var(--text-primary);
-  display: block;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+.card-checkbox.checked:hover {
+  background: var(--primary);
+  border-color: var(--primary);
+  filter: brightness(1.1);
 }
 
-.info-bottom {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  gap: 0.5rem;
+.card-checkbox.checked i {
+  color: white;
+  font-size: 10px;
+  font-weight: bold;
 }
 
-.date {
-  font-size: 0.7rem;
-  color: var(--text-secondary);
-  font-family: var(--font-mono);
-}
-
-.service-badges-mini {
-  display: flex;
-  gap: 4px;
-  flex-wrap: wrap;
-}
-
-.mini-badge {
-  font-size: 0.65rem !important;
-  padding: 2px 6px !important;
-  height: auto !important;
-}
-
-/* === Lightbox 图片查看器 === */
+/* === Lightbox 图片查看器（谷歌相册风格）=== */
 :deep(.lightbox-dialog .p-dialog-mask) {
   background: rgba(0, 0, 0, 0.9);
   backdrop-filter: blur(10px);
@@ -1726,52 +1645,87 @@ const handleScroll = (event: Event) => {
 
 .lightbox-img {
   max-width: 100%;
-  max-height: 80vh;
-  border-radius: 4px;
+  max-height: 75vh;
+  border-radius: 8px;
   box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
   cursor: default;
 }
 
-.lightbox-caption {
-  background: rgba(0, 0, 0, 0.7);
+/* 底部信息栏（谷歌相册风格） */
+.lightbox-bottom-bar {
+  background: rgba(0, 0, 0, 0.75);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
   color: white;
-  padding: 8px 16px;
-  border-radius: 20px;
+  padding: 12px 20px;
+  border-radius: 12px;
   display: flex;
   align-items: center;
-  gap: 12px;
-  backdrop-filter: blur(10px);
+  justify-content: space-between;
+  gap: 24px;
   cursor: default;
+  min-width: 400px;
+  max-width: 90vw;
 }
 
-.lightbox-info {
+.lightbox-info-section {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
 }
 
-.lightbox-title {
+.lightbox-filename {
   font-size: 14px;
-  font-weight: 500;
+  font-weight: 600;
+  color: white;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.lightbox-time {
-  font-size: 11px;
+.lightbox-meta {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+
+.lightbox-time,
+.lightbox-services {
+  font-size: 12px;
+  color: rgba(255, 255, 255, 0.75);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.lightbox-time i,
+.lightbox-services i {
+  font-size: 12px;
   opacity: 0.8;
-  font-family: var(--font-mono);
 }
 
 .lightbox-actions {
   display: flex;
-  gap: 8px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
-.text-white {
+.lightbox-action-btn {
   color: white !important;
+  width: 36px !important;
+  height: 36px !important;
 }
 
-.text-white:hover {
-  background: rgba(255, 255, 255, 0.2) !important;
+.lightbox-action-btn:hover {
+  background: rgba(255, 255, 255, 0.15) !important;
+}
+
+.lightbox-action-danger:hover {
+  background: rgba(239, 68, 68, 0.2) !important;
+  color: #fca5a5 !important;
 }
 
 /* === 加载骨架屏 === */
