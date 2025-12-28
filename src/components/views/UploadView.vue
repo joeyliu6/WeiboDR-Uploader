@@ -486,7 +486,7 @@ onUnmounted(() => {
   background: var(--bg-card);
   border: 2px dashed var(--border-subtle);
   border-radius: 12px;
-  padding: 55px 40px;
+  padding: 60px 40px;
   text-align: center;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -559,10 +559,10 @@ onUnmounted(() => {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  padding: 19px 24px 24px 24px;
+  padding: 16px 24px 20px 24px;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  gap: 12px;
 }
 
 .service-group {
