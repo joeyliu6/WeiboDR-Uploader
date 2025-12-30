@@ -12,17 +12,16 @@ import type { ServiceType } from '../../config/types';
 import { useConfigManager } from '../../composables/useConfig';
 import { debounce } from '../../utils/debounce';
 import HistoryTableView from './history/HistoryTableView.vue';
-import HistoryGridView from './history/HistoryGridView.vue';
 import TimelineView from './TimelineView.vue';
 import 'primeicons/primeicons.css';
 
 // 视图模式类型
-type ViewMode = 'table' | 'grid' | 'timeline';
+type ViewMode = 'table' | 'timeline';
 
 const configManager = useConfigManager();
 
 // 当前视图模式
-const currentViewMode = ref<ViewMode>('grid');
+const currentViewMode = ref<ViewMode>('table');
 
 // Dashboard 状态（控制条）
 const currentFilter = ref<ServiceType | 'all'>('all');
@@ -35,7 +34,6 @@ const selectedCount = ref(0);
 // 视图选项
 const viewOptions = [
   { label: '表格', value: 'table' as ViewMode, icon: 'pi pi-table' },
-  { label: '瀑布流', value: 'grid' as ViewMode, icon: 'pi pi-th-large' },
   { label: '时间轴', value: 'timeline' as ViewMode, icon: 'pi pi-calendar' }
 ];
 
@@ -67,7 +65,9 @@ watch(localSearchTerm, (newTerm) => {
 onMounted(async () => {
   try {
     const config = await configManager.loadConfig();
-    const defaultMode = config.galleryViewPreferences?.viewMode ?? 'grid';
+    const defaultMode = (config.galleryViewPreferences?.viewMode as any) === 'grid' 
+      ? 'table' 
+      : (config.galleryViewPreferences?.viewMode as ViewMode) ?? 'table';
     currentViewMode.value = defaultMode;
     console.log('[HistoryView] 加载默认视图模式:', defaultMode);
   } catch (error) {
@@ -195,15 +195,6 @@ const handleSelectedCountUpdate = (count: number) => {
       <!-- 表格视图 -->
       <HistoryTableView
         v-if="currentViewMode === 'table'"
-        :filter="currentFilter"
-        :search-term="debouncedSearchTerm"
-        @update:total-count="handleTotalCountUpdate"
-        @update:selected-count="handleSelectedCountUpdate"
-      />
-
-      <!-- 瀑布流视图 -->
-      <HistoryGridView
-        v-else-if="currentViewMode === 'grid'"
         :filter="currentFilter"
         :search-term="debouncedSearchTerm"
         @update:total-count="handleTotalCountUpdate"
