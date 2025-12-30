@@ -204,9 +204,7 @@ const currentMonthLabel = computed(() => {
 // Initialization
 onMounted(async () => {
   console.log('[TimelineView] Mounted');
-  if (viewState.allHistoryItems.value.length === 0) {
-    await viewState.loadHistory();
-  }
+  await viewState.loadHistory();
 });
 
 onUnmounted(() => {

@@ -3,13 +3,14 @@
  * 历史记录视图入口组件
  * 负责 Dashboard Strip 和视图切换
  */
-import { ref, onMounted, watch } from 'vue';
+import { ref, onMounted, onActivated, watch } from 'vue';
 import IconField from 'primevue/iconfield';
 import InputIcon from 'primevue/inputicon';
 import InputText from 'primevue/inputtext';
 import Select from 'primevue/select';
 import type { ServiceType } from '../../config/types';
 import { useConfigManager } from '../../composables/useConfig';
+import { useHistoryManager } from '../../composables/useHistory';
 import { debounce } from '../../utils/debounce';
 import HistoryTableView from './history/HistoryTableView.vue';
 import TimelineView from './TimelineView.vue';
@@ -19,6 +20,7 @@ import 'primeicons/primeicons.css';
 type ViewMode = 'table' | 'timeline';
 
 const configManager = useConfigManager();
+const historyManager = useHistoryManager();
 
 // 当前视图模式
 const currentViewMode = ref<ViewMode>('table');
@@ -65,14 +67,20 @@ watch(localSearchTerm, (newTerm) => {
 onMounted(async () => {
   try {
     const config = await configManager.loadConfig();
-    const defaultMode = (config.galleryViewPreferences?.viewMode as any) === 'grid' 
-      ? 'table' 
+    const defaultMode = (config.galleryViewPreferences?.viewMode as any) === 'grid'
+      ? 'table'
       : (config.galleryViewPreferences?.viewMode as ViewMode) ?? 'table';
     currentViewMode.value = defaultMode;
     console.log('[HistoryView] 加载默认视图模式:', defaultMode);
   } catch (error) {
     console.error('[HistoryView] 加载配置失败:', error);
   }
+});
+
+// KeepAlive 激活时刷新数据（解决上传后切换回来不更新的问题）
+onActivated(async () => {
+  console.log('[HistoryView] 视图被激活，检查数据更新');
+  await historyManager.loadHistory();
 });
 
 // 切换视图模式
