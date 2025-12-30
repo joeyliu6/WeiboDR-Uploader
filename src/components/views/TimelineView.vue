@@ -41,25 +41,47 @@ const isSidebarVisible = ref(false);
 let scrollTimeout: number | undefined;
 let isHoveringSidebar = ref(false);
 
+// 触发来源：hover 用 0.5s 隐藏，scroll 用 1.5s 隐藏
+type ShowSource = 'scroll' | 'hover';
+let lastShowSource: ShowSource = 'scroll';
+
+// 滚动进度追踪
+const scrollProgress = ref(0);
+const visibleRatio = ref(1);
+
 const showSidebar = () => {
   isSidebarVisible.value = true;
 };
 
 const hideSidebarDebounced = () => {
   if (scrollTimeout) clearTimeout(scrollTimeout);
+  // 根据触发来源决定延迟时间
+  const delay = lastShowSource === 'hover' ? 500 : 1500;
   scrollTimeout = window.setTimeout(() => {
     if (!isHoveringSidebar.value) {
       isSidebarVisible.value = false;
     }
-  }, 1500);
+  }, delay);
+};
+
+// 更新滚动进度
+const updateScrollProgress = () => {
+  if (!scrollContainer.value) return;
+  const { scrollTop, scrollHeight, clientHeight } = scrollContainer.value;
+  const maxScroll = scrollHeight - clientHeight;
+  scrollProgress.value = maxScroll > 0 ? scrollTop / maxScroll : 0;
+  visibleRatio.value = scrollHeight > 0 ? clientHeight / scrollHeight : 1;
 };
 
 const handleScroll = () => {
+  lastShowSource = 'scroll';
   showSidebar();
   hideSidebarDebounced();
+  updateScrollProgress();
 };
 
 const handleSidebarEnter = () => {
+  lastShowSource = 'hover';
   isHoveringSidebar.value = true;
   showSidebar();
   if (scrollTimeout) clearTimeout(scrollTimeout);
@@ -70,13 +92,29 @@ const handleSidebarLeave = () => {
   hideSidebarDebounced();
 };
 
+// 滚动穿透：在时间轴上滚动时转发到主内容区域
+const handleSidebarWheel = (e: WheelEvent) => {
+  if (scrollContainer.value) {
+    scrollContainer.value.scrollTop += e.deltaY;
+  }
+};
 
-// Grouping Logic
+// 处理拖拽滚动
+const handleDragScroll = (progress: number) => {
+  if (!scrollContainer.value) return;
+  const { scrollHeight, clientHeight } = scrollContainer.value;
+  const maxScroll = scrollHeight - clientHeight;
+  scrollContainer.value.scrollTop = maxScroll * progress;
+};
+
+
+// Grouping Logic - 按天分组
 interface PhotoGroup {
-  id: string; // '2023-10'
-  label: string; // '2023年10月'
+  id: string; // '2024-5-15'
+  label: string; // '2024年5月15日'
   year: number;
   month: number; // 0-11
+  day: number;
   date: Date;
   items: HistoryItem[];
 }
@@ -89,15 +127,17 @@ const groups = computed(() => {
     const date = new Date(item.timestamp);
     const year = date.getFullYear();
     const month = date.getMonth();
-    const id = `${year}-${month}`;
-    
+    const day = date.getDate();
+    const id = `${year}-${month}-${day}`;
+
     if (!groupsMap.has(id)) {
       groupsMap.set(id, {
         id,
-        label: `${year}年${month + 1}月`,
+        label: `${year}年${month + 1}月${day}日`,
         year,
         month,
-        date: new Date(year, month, 1),
+        day,
+        date: new Date(year, month, day),
         items: []
       });
     }
@@ -115,20 +155,19 @@ const sidebarGroups = computed<TimeGroup[]>(() => {
     label: g.month + 1 + '月', // Short label for sidebar
     year: g.year,
     month: g.month,
+    day: g.day,
     date: g.date,
     count: g.items.length
   }));
 });
 
-// Scroll to group
-const handleScrollTo = (groupId: string) => {
-  const el = document.getElementById(`group-${groupId}`);
-  if (el && scrollContainer.value) {
-    // Scroll with offset for header
-    const top = el.offsetTop - 20; // 20px padding
-    scrollContainer.value.scrollTo({ top, behavior: 'smooth' });
-  }
-};
+// 当前月份标签（用于滑块显示）
+const currentMonthLabel = computed(() => {
+  if (groups.value.length === 0) return '';
+  const index = Math.floor(scrollProgress.value * (groups.value.length - 1));
+  const group = groups.value[Math.min(index, groups.value.length - 1)];
+  return `${group.month + 1}月`;
+});
 
 // Initialization
 onMounted(async () => {
@@ -250,15 +289,19 @@ const handleBulkDelete = () => viewState.bulkDelete();
     </div>
 
     <!-- Right Sidebar -->
-    <div 
+    <div
       class="sidebar-wrapper"
       :class="{ visible: isSidebarVisible }"
       @mouseenter="handleSidebarEnter"
       @mouseleave="handleSidebarLeave"
+      @wheel.prevent="handleSidebarWheel"
     >
-      <TimelineSidebar 
-        :groups="sidebarGroups" 
-        @scroll-to="handleScrollTo" 
+      <TimelineSidebar
+        :groups="sidebarGroups"
+        :scroll-progress="scrollProgress"
+        :visible-ratio="visibleRatio"
+        :current-month-label="currentMonthLabel"
+        @drag-scroll="handleDragScroll"
       />
     </div>
 
@@ -294,7 +337,7 @@ const handleBulkDelete = () => viewState.bulkDelete();
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
-  padding: 0 60px 0 20px; /* Right padding leaves space for sidebar */
+  padding: 0 70px 0 20px; /* 右侧留出空间给 sidebar */
   scroll-behavior: smooth;
 }
 
@@ -312,13 +355,13 @@ const handleBulkDelete = () => viewState.bulkDelete();
   right: 0;
   top: 0;
   bottom: 0;
-  width: 50px;
-  z-index: 10;
-  background: linear-gradient(to left, var(--bg-app) 20%, transparent 100%);
-  /* backdrop-filter could be added if supported and desired */
-  pointer-events: none; /* Let clicks pass through transparent areas */
+  width: 120px; /* 扩大以容纳月份标签 */
+  z-index: 20;
+  background: linear-gradient(to left, var(--bg-app) 40%, transparent 100%);
+  pointer-events: none;
   opacity: 0;
   transition: opacity 0.3s ease;
+  overflow: visible; /* 允许指示器溢出 */
 }
 
 .sidebar-wrapper.visible {
