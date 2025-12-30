@@ -101,6 +101,7 @@ fn main() {
             commands::link_checker::download_image_from_url,
             commands::clipboard::clipboard_has_image,
             commands::clipboard::read_clipboard_image,
+            commands::image_meta::get_image_metadata,
             get_or_create_secure_key
         ])
         .setup(|app| {

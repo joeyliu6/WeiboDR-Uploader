@@ -23,6 +23,27 @@ export interface ThemeConfig {
 }
 
 /**
+ * 图片元数据接口
+ * 由 Rust 后端 get_image_metadata 命令返回
+ */
+export interface ImageMetadata {
+  /** 图片宽度（像素） */
+  width: number;
+  /** 图片高度（像素） */
+  height: number;
+  /** 宽高比（width / height） */
+  aspect_ratio: number;
+  /** 文件大小（字节） */
+  file_size: number;
+  /** 图片格式（jpg, png, webp, gif, bmp 等） */
+  format: string;
+  /** 颜色类型（rgb, rgba, gray 等） */
+  color_type: string;
+  /** 是否包含 Alpha 通道 */
+  has_alpha: boolean;
+}
+
+/**
  * Google Analytics 配置接口
  */
 export interface AnalyticsConfig {
