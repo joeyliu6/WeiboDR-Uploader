@@ -13,10 +13,11 @@ import { useConfigManager } from '../../composables/useConfig';
 import { debounce } from '../../utils/debounce';
 import HistoryTableView from './history/HistoryTableView.vue';
 import HistoryGridView from './history/HistoryGridView.vue';
+import TimelineView from './TimelineView.vue';
 import 'primeicons/primeicons.css';
 
 // 视图模式类型
-type ViewMode = 'table' | 'grid';
+type ViewMode = 'table' | 'grid' | 'timeline';
 
 const configManager = useConfigManager();
 
@@ -34,7 +35,8 @@ const selectedCount = ref(0);
 // 视图选项
 const viewOptions = [
   { label: '表格', value: 'table' as ViewMode, icon: 'pi pi-table' },
-  { label: '瀑布流', value: 'grid' as ViewMode, icon: 'pi pi-th-large' }
+  { label: '瀑布流', value: 'grid' as ViewMode, icon: 'pi pi-th-large' },
+  { label: '时间轴', value: 'timeline' as ViewMode, icon: 'pi pi-calendar' }
 ];
 
 // 图床筛选选项
@@ -189,7 +191,7 @@ const handleSelectedCountUpdate = (count: number) => {
     </div>
 
     <!-- 视图容器（可滚动） -->
-    <div class="history-container">
+    <div class="history-container" :class="{ 'no-padding': currentViewMode === 'timeline' }">
       <!-- 表格视图 -->
       <HistoryTableView
         v-if="currentViewMode === 'table'"
@@ -201,6 +203,15 @@ const handleSelectedCountUpdate = (count: number) => {
 
       <!-- 瀑布流视图 -->
       <HistoryGridView
+        v-else-if="currentViewMode === 'grid'"
+        :filter="currentFilter"
+        :search-term="debouncedSearchTerm"
+        @update:total-count="handleTotalCountUpdate"
+        @update:selected-count="handleSelectedCountUpdate"
+      />
+
+      <!-- 时间轴视图 -->
+      <TimelineView
         v-else
         :filter="currentFilter"
         :search-term="debouncedSearchTerm"
@@ -224,7 +235,12 @@ const handleSelectedCountUpdate = (count: number) => {
   flex: 1;
   overflow-y: auto;
   overflow-x: hidden;
+  overflow-x: hidden;
   padding: 20px 24px;
+}
+
+.history-container.no-padding {
+  padding: 0;
 }
 
 /* history-container 滚动条样式 */
