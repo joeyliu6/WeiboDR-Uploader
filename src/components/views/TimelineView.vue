@@ -3,7 +3,7 @@
  * Timeline View (Google Photos style)
  * Groups photos by Month/Year and provides a timeline sidebar for navigation.
  */
-import { ref, computed, onMounted, onUnmounted, watch, nextTick } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import { useHistoryViewState, type LinkFormat } from '../../composables/useHistoryViewState';
 import { useThumbCache } from '../../composables/useThumbCache';
 import { useToast } from '../../composables/useToast';
@@ -49,6 +49,13 @@ let lastShowSource: ShowSource = 'scroll';
 const scrollProgress = ref(0);
 const visibleRatio = ref(1);
 
+// 拖动状态跟踪（拖动时跳过滚动事件处理）
+let isDragging = false;
+
+// 滚动节流
+let scrollThrottleTimer: number | undefined;
+const SCROLL_THROTTLE_MS = 16; // ~60fps
+
 const showSidebar = () => {
   isSidebarVisible.value = true;
 };
@@ -74,6 +81,15 @@ const updateScrollProgress = () => {
 };
 
 const handleScroll = () => {
+  // 拖动期间跳过滚动事件处理，避免循环更新
+  if (isDragging) return;
+
+  // 滚动节流
+  if (scrollThrottleTimer) return;
+  scrollThrottleTimer = window.setTimeout(() => {
+    scrollThrottleTimer = undefined;
+  }, SCROLL_THROTTLE_MS);
+
   lastShowSource = 'scroll';
   showSidebar();
   hideSidebarDebounced();
@@ -100,13 +116,27 @@ const handleSidebarWheel = (e: WheelEvent) => {
 };
 
 // 处理拖拽滚动
+let dragEndTimer: number | undefined;
 const handleDragScroll = (progress: number) => {
   if (!scrollContainer.value) return;
+
+  // 设置拖动状态，避免滚动事件循环
+  isDragging = true;
+
+  // 重置拖动结束定时器（拖动结束 100ms 后恢复）
+  if (dragEndTimer) clearTimeout(dragEndTimer);
+  dragEndTimer = window.setTimeout(() => {
+    isDragging = false;
+  }, 100);
+
   const { scrollHeight, clientHeight } = scrollContainer.value;
   const maxScroll = scrollHeight - clientHeight;
-  requestAnimationFrame(() => {
-    scrollContainer.value!.scrollTop = maxScroll * progress;
-  });
+
+  // 直接设置滚动位置，不用 requestAnimationFrame（减少延迟）
+  scrollContainer.value.scrollTop = maxScroll * progress;
+
+  // 手动更新进度（因为跳过了滚动事件）
+  scrollProgress.value = progress;
 };
 
 
@@ -340,7 +370,7 @@ const handleBulkDelete = () => viewState.bulkDelete();
   overflow-y: auto;
   overflow-x: hidden;
   padding: 0 70px 0 20px; /* 右侧留出空间给 sidebar */
-  scroll-behavior: smooth;
+  /* 移除 scroll-behavior: smooth，避免拖动时卡顿 */
 }
 
 /* 隐藏滚动条但保持可滚动功能 */

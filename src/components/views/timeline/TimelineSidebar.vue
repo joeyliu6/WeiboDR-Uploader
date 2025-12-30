@@ -38,6 +38,10 @@ const totalCount = computed(() => {
   return props.groups.reduce((sum, g) => sum + g.count, 0);
 });
 
+// 小点显示配置
+const MIN_RATIO_THRESHOLD = 0.01; // 占比阈值：1%
+const MIN_POSITION_GAP = 0.03;    // 最小间隔：3%
+
 // 按年分组，并计算每个年份在时间轴上的位置（按照片数量加权）
 const years = computed(() => {
   if (props.groups.length === 0 || totalCount.value === 0) return [];
@@ -74,21 +78,60 @@ const years = computed(() => {
     });
 });
 
-// 计算所有日期点的位置（基于 years 结构，确保顺序正确）
+// 计算月份点的位置（按月份聚合 + 占比过滤 + 间隔过滤）
 const allDots = computed(() => {
-  const dots: { id: string; position: number }[] = [];
+  if (totalCount.value === 0) return [];
+
+  const candidates: { id: string; position: number; count: number }[] = [];
 
   for (const yearData of years.value) {
-    const groupCount = yearData.groups.length;
+    // 按月份聚合：同年同月的天数据合并
+    const monthsMap = new Map<number, { count: number; firstIndex: number }>();
+
     yearData.groups.forEach((group, index) => {
-      // 每个点在该年份区域内的位置
-      const positionInYear = groupCount > 1 ? index / (groupCount - 1) : 0.5;
-      const position = yearData.startPosition + positionInYear * yearData.height;
-      dots.push({ id: group.id, position });
+      const month = group.month;
+      if (!monthsMap.has(month)) {
+        monthsMap.set(month, { count: 0, firstIndex: index });
+      }
+      monthsMap.get(month)!.count += group.count;
     });
+
+    // 为每个月份创建候选点
+    const groupCount = yearData.groups.length;
+    for (const [month, data] of monthsMap) {
+      const ratio = data.count / totalCount.value;
+
+      // 占比过滤：低于阈值的不显示
+      if (ratio < MIN_RATIO_THRESHOLD) continue;
+
+      // 计算位置（使用该月第一个分组的位置）
+      const positionInYear = groupCount > 1
+        ? data.firstIndex / (groupCount - 1)
+        : 0.5;
+      const position = yearData.startPosition + positionInYear * yearData.height;
+
+      candidates.push({
+        id: `${yearData.year}-${month}`,
+        position,
+        count: data.count
+      });
+    }
   }
 
-  return dots;
+  // 按位置排序，应用最小间隔过滤
+  candidates.sort((a, b) => a.position - b.position);
+
+  const result: { id: string; position: number }[] = [];
+  let lastPosition = -Infinity;
+
+  for (const dot of candidates) {
+    if (dot.position - lastPosition >= MIN_POSITION_GAP) {
+      result.push({ id: dot.id, position: dot.position });
+      lastPosition = dot.position;
+    }
+  }
+
+  return result;
 });
 
 // 滑块显示的月份（根据加权位置找到对应月份）
