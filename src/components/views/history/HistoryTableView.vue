@@ -45,7 +45,7 @@ const currentPageData = shallowRef<HistoryItem[]>([]);
 const currentPage = ref(1);
 const pageSize = ref(100);
 const totalRecords = ref(0);
-const isLoadingPage = ref(false);
+const isLoadingPage = ref(true);  // 初始为 true，组件挂载时显示骨架屏
 const first = ref(0);  // DataTable 的 first 参数（起始索引）
 
 // 日期格式化器
@@ -320,23 +320,30 @@ const handleBulkDelete = () => {
 
 <template>
   <div class="table-view-container">
-    <!-- 加载状态骨架屏 -->
-    <div v-if="viewState.isLoading.value" class="loading-skeleton">
-      <div class="skeleton-header">
-        <Skeleton width="3rem" height="1.5rem" />
-        <Skeleton width="60px" height="36px" />
-        <Skeleton width="200px" height="1.5rem" />
-        <Skeleton width="180px" height="1.5rem" />
-        <Skeleton width="120px" height="1.5rem" />
-      </div>
-      <div v-for="i in 8" :key="i" class="skeleton-row">
-        <Skeleton width="1.5rem" height="1.5rem" />
-        <Skeleton width="36px" height="36px" />
-        <Skeleton width="70%" height="1rem" />
-        <Skeleton width="100px" height="1.5rem" />
-        <Skeleton width="60px" height="1.5rem" />
-      </div>
-    </div>
+    <!-- 加载状态骨架屏（使用 table 布局匹配 DataTable） -->
+    <table v-if="viewState.isLoading.value || isLoadingPage" class="skeleton-table">
+      <thead>
+        <tr>
+          <th style="width: 3rem"><Skeleton width="1.5rem" height="1.5rem" /></th>
+          <th style="width: 60px"><Skeleton width="40px" height="1rem" /></th>
+          <th><Skeleton width="50px" height="1rem" /></th>
+          <th style="width: 180px"><Skeleton width="60px" height="1rem" /></th>
+        </tr>
+      </thead>
+      <tbody>
+        <tr v-for="i in 10" :key="i">
+          <td><Skeleton width="1.5rem" height="1.5rem" /></td>
+          <td><Skeleton width="36px" height="36px" borderRadius="4px" /></td>
+          <td>
+            <div class="skeleton-filename">
+              <Skeleton width="70%" height="1rem" />
+              <Skeleton width="140px" height="0.75rem" />
+            </div>
+          </td>
+          <td><Skeleton width="50px" height="1.5rem" borderRadius="4px" /></td>
+        </tr>
+      </tbody>
+    </table>
 
     <!-- 表格视图（服务端分页） -->
     <DataTable
@@ -392,11 +399,14 @@ const handleBulkDelete = () => {
             @mouseleave="handlePreviewLeave"
           >
             <div class="thumb-box" @click="openLightbox(slotProps.data)">
+              <!-- 骨架屏占位（图片加载完成后会被覆盖） -->
+              <Skeleton v-if="thumbCache.getThumbUrl(slotProps.data)" class="thumb-skeleton" />
               <img
                 v-if="thumbCache.getThumbUrl(slotProps.data)"
                 :src="thumbCache.getThumbUrl(slotProps.data)"
                 :alt="slotProps.data.localFileName"
                 loading="lazy"
+                class="thumb-img"
                 @error="(e: any) => e.target.src = '/placeholder.png'"
               />
               <i v-else class="pi pi-image thumb-placeholder"></i>
@@ -550,9 +560,22 @@ const handleBulkDelete = () => {
   cursor: zoom-in;
   background: var(--bg-input);
   display: inline-block;
+  position: relative;  /* 确保子元素可以绝对定位 */
 }
 
-.thumb-box img {
+.thumb-skeleton {
+  position: absolute;
+  inset: 0;
+  width: 100% !important;
+  height: 100% !important;
+  border-radius: 0;
+  z-index: 0;
+}
+
+.thumb-img {
+  position: absolute;
+  inset: 0;
+  z-index: 1;  /* 图片在骨架屏之上 */
   width: 100%;
   height: 100%;
   object-fit: cover;
@@ -631,34 +654,38 @@ const handleBulkDelete = () => {
   opacity: 0.5;
 }
 
-/* 加载骨架屏 */
-.loading-skeleton {
+/* 骨架屏表格布局 - 匹配 DataTable */
+.skeleton-table {
+  width: 100%;
+  border-collapse: collapse;
   background: var(--bg-card);
   border-radius: 12px;
-  padding: 16px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
+  overflow: hidden;
 }
 
-.skeleton-header {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 10px 16px;
+.skeleton-table th,
+.skeleton-table td {
+  padding: 8px 16px;
+  text-align: left;
+  vertical-align: middle;
+}
+
+.skeleton-table thead tr {
   border-bottom: 2px solid var(--border-subtle);
 }
 
-.skeleton-row {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  padding: 8px 16px;
+.skeleton-table tbody tr {
   border-bottom: 1px solid var(--border-subtle);
 }
 
-.skeleton-row:last-child {
+.skeleton-table tbody tr:last-child {
   border-bottom: none;
+}
+
+.skeleton-filename {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
 }
 </style>
 
