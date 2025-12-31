@@ -48,6 +48,15 @@ const totalRecords = ref(0);
 const isLoadingPage = ref(true);  // 初始为 true，组件挂载时显示骨架屏
 const first = ref(0);  // DataTable 的 first 参数（起始索引）
 
+// 骨架数据（加载时使用，确保骨架屏结构与真实数据完全一致）
+const skeletonData = Array.from({ length: 20 }, (_, i) => ({
+  id: `skeleton-${i}`,
+  _skeleton: true  // 标记为骨架数据
+})) as any[];
+
+// 判断是否为骨架数据
+const isSkeleton = (data: any) => data._skeleton === true;
+
 // 日期格式化器
 const dateFormatter = new Intl.DateTimeFormat('zh-CN', {
   year: 'numeric',
@@ -320,48 +329,21 @@ const handleBulkDelete = () => {
 
 <template>
   <div class="table-view-container">
-    <!-- 加载状态骨架屏（使用 table 布局匹配 DataTable） -->
-    <table v-if="viewState.isLoading.value || isLoadingPage" class="skeleton-table">
-      <thead>
-        <tr>
-          <th style="width: 3rem"><Skeleton width="1.5rem" height="1.5rem" /></th>
-          <th style="width: 60px"><Skeleton width="40px" height="1rem" /></th>
-          <th><Skeleton width="50px" height="1rem" /></th>
-          <th style="width: 180px"><Skeleton width="60px" height="1rem" /></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="i in 10" :key="i">
-          <td><Skeleton width="1.5rem" height="1.5rem" /></td>
-          <td><Skeleton width="36px" height="36px" borderRadius="4px" /></td>
-          <td>
-            <div class="skeleton-filename">
-              <Skeleton width="70%" height="1rem" />
-              <Skeleton width="140px" height="0.75rem" />
-            </div>
-          </td>
-          <td><Skeleton width="50px" height="1.5rem" borderRadius="4px" /></td>
-        </tr>
-      </tbody>
-    </table>
-
-    <!-- 表格视图（服务端分页） -->
+    <!-- 表格视图（服务端分页，加载时使用骨架数据） -->
     <DataTable
-      v-else
-      :value="currentPageData"
+      :value="isLoadingPage ? skeletonData : currentPageData"
       dataKey="id"
       lazy
-      paginator
+      :paginator="!isLoadingPage"
       :first="first"
       :rows="pageSize"
       :totalRecords="totalRecords"
-      :loading="isLoadingPage"
       @page="onPageChange"
       sortField="timestamp"
       :sortOrder="-1"
       class="history-table minimal-table"
       rowHover
-      :rowClass="(data: HistoryItem) => viewState.isSelected(data.id) ? 'row-selected' : ''"
+      :rowClass="(data: any) => data._skeleton ? '' : (viewState.isSelected(data.id) ? 'row-selected' : '')"
       :emptyMessage="totalRecords === 0 ? '暂无历史记录' : '未找到匹配的记录'"
     >
       <template #empty>
@@ -375,14 +357,18 @@ const handleBulkDelete = () => {
       <Column headerStyle="width: 3rem">
         <template #header>
           <Checkbox
+            v-if="!isLoadingPage"
             :model-value="selectAll"
             @update:model-value="handleHeaderCheckboxChange"
             :binary="true"
             :indeterminate="currentPageData.some(item => viewState.isSelected(item.id)) && !selectAll"
           />
+          <Skeleton v-else width="1.25rem" height="1.25rem" borderRadius="4px" />
         </template>
         <template #body="slotProps">
+          <Skeleton v-if="isSkeleton(slotProps.data)" width="1.25rem" height="1.25rem" borderRadius="4px" />
           <Checkbox
+            v-else
             :model-value="viewState.isSelected(slotProps.data.id)"
             @update:model-value="viewState.toggleSelection(slotProps.data.id)"
             :binary="true"
@@ -393,13 +379,20 @@ const handleBulkDelete = () => {
       <!-- 预览列 -->
       <Column header="预览" style="width: 60px">
         <template #body="slotProps">
+          <!-- 骨架屏状态 - 使用与真实数据相同的结构 -->
+          <div v-if="isSkeleton(slotProps.data)" class="thumb-preview-wrapper">
+            <div class="thumb-box">
+              <Skeleton width="100%" height="100%" borderRadius="0" />
+            </div>
+          </div>
+          <!-- 真实数据 -->
           <div
+            v-else
             class="thumb-preview-wrapper"
             @mouseenter="handlePreviewEnter($event, slotProps.data)"
             @mouseleave="handlePreviewLeave"
           >
             <div class="thumb-box" @click="openLightbox(slotProps.data)">
-              <!-- 骨架屏占位（图片加载完成后会被覆盖） -->
               <Skeleton v-if="thumbCache.getThumbUrl(slotProps.data)" class="thumb-skeleton" />
               <img
                 v-if="thumbCache.getThumbUrl(slotProps.data)"
@@ -418,7 +411,13 @@ const handleBulkDelete = () => {
       <!-- 文件名列 -->
       <Column field="localFileName" header="文件名" sortable style="width: 285px">
         <template #body="slotProps">
-          <div class="filename-cell">
+          <!-- 骨架屏状态 -->
+          <div v-if="isSkeleton(slotProps.data)" class="filename-cell">
+            <Skeleton width="70%" height="13px" />
+            <Skeleton width="140px" height="11px" class="mt-skeleton" />
+          </div>
+          <!-- 真实数据 -->
+          <div v-else class="filename-cell">
             <span class="fname" :title="slotProps.data.localFileName">
               {{ slotProps.data.localFileName }}
             </span>
@@ -430,7 +429,10 @@ const handleBulkDelete = () => {
       <!-- 已传图床列 -->
       <Column header="已传图床" style="width: 180px">
         <template #body="slotProps">
-          <div class="service-badges">
+          <!-- 骨架屏状态 -->
+          <Skeleton v-if="isSkeleton(slotProps.data)" width="50px" height="22px" borderRadius="4px" />
+          <!-- 真实数据 -->
+          <div v-else class="service-badges">
             <Tag
               v-for="serviceId in getSuccessfulServices(slotProps.data)"
               :key="serviceId"
@@ -506,6 +508,8 @@ const handleBulkDelete = () => {
   font-weight: 600;
   color: var(--text-secondary);
   text-transform: uppercase;
+  height: 40px !important;  /* 固定表头高度 */
+  box-sizing: border-box;
 }
 
 /* 行样式 */
@@ -548,6 +552,8 @@ const handleBulkDelete = () => {
   border-bottom: 1px solid var(--border-subtle) !important;
   font-size: 13px;
   vertical-align: middle;
+  height: 52px !important;  /* 固定行高，与骨架屏一致 */
+  box-sizing: border-box;
 }
 
 /* 缩略图盒子 */
@@ -654,38 +660,19 @@ const handleBulkDelete = () => {
   opacity: 0.5;
 }
 
-/* 骨架屏表格布局 - 匹配 DataTable */
-.skeleton-table {
-  width: 100%;
-  border-collapse: collapse;
-  background: var(--bg-card);
-  border-radius: 12px;
-  overflow: hidden;
+/* 骨架屏间距辅助类 */
+.mt-1 {
+  margin-top: 4px;
 }
 
-.skeleton-table th,
-.skeleton-table td {
-  padding: 8px 16px;
-  text-align: left;
+.mt-skeleton {
+  margin-top: 2px;
+}
+
+/* 修复骨架屏累积偏移：强制 Skeleton 使用 inline-block 布局 */
+:deep(.minimal-table .p-datatable-tbody .p-skeleton) {
+  display: inline-block !important;
   vertical-align: middle;
-}
-
-.skeleton-table thead tr {
-  border-bottom: 2px solid var(--border-subtle);
-}
-
-.skeleton-table tbody tr {
-  border-bottom: 1px solid var(--border-subtle);
-}
-
-.skeleton-table tbody tr:last-child {
-  border-bottom: none;
-}
-
-.skeleton-filename {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
 }
 </style>
 
