@@ -253,6 +253,20 @@ export function useVirtualTimeline(
     );
   });
 
+  /**
+   * ID -> HistoryItem 映射（缓存）
+   * 只在 groups 变化时重建，避免每次滚动都遍历
+   */
+  const itemMap = computed(() => {
+    const map = new Map<string, HistoryItem>();
+    for (const group of groups.value) {
+      for (const item of group.items) {
+        map.set(item.id, item);
+      }
+    }
+    return map;
+  });
+
   /** 可见的图片列表 */
   const visibleItems = computed<VisibleItem[]>(() => {
     if (!layoutResult.value) return [];
@@ -260,13 +274,8 @@ export function useVirtualTimeline(
     const [startIndex, endIndex] = visibleRowRange.value;
     const result: VisibleItem[] = [];
 
-    // 构建 id -> HistoryItem 的映射，用于快速查找
-    const itemMap = new Map<string, HistoryItem>();
-    for (const group of groups.value) {
-      for (const item of group.items) {
-        itemMap.set(item.id, item);
-      }
-    }
+    // 使用缓存的 itemMap，不再每次重建
+    const map = itemMap.value;
 
     // 收集可见行的所有图片
     for (let i = startIndex; i < endIndex; i++) {
@@ -274,7 +283,7 @@ export function useVirtualTimeline(
       if (!rowData) continue;
 
       for (const layoutItem of rowData.row.items) {
-        const historyItem = itemMap.get(layoutItem.id);
+        const historyItem = map.get(layoutItem.id);
         if (historyItem) {
           result.push({
             item: historyItem,

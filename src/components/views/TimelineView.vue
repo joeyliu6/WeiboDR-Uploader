@@ -101,9 +101,8 @@ const {
   viewportHeight,
   scrollTop,
 
-  // 三阶段渲染状态
+  // 三阶段渲染状态（仅用于控制图片加载行为）
   displayMode,
-  fastModeItems,
 
   // 可见数据
   visibleItems,
@@ -126,13 +125,28 @@ const {
   overscan: 3,
 });
 
-// ==================== 三阶段渲染：图片加载状态 ====================
+// ==================== 图片加载状态管理 ====================
 
 /** 已加载图片的 ID 集合 */
 const loadedImages = shallowRef(new Set<string>());
 
+/** 图片最后可见时间戳（用于延迟销毁） */
+const lastVisibleTime = new Map<string, number>();
+
+/** 图片加载重试次数 */
+const imageRetryCount = new Map<string, number>();
+
 /** 最大缓存加载状态的图片数量 */
 const MAX_LOADED_CACHE = 500;
+
+/** 延迟销毁时间（毫秒） */
+const DESTROY_DELAY = 2500;
+
+/** 最大重试次数 */
+const MAX_RETRY = 1;
+
+/** 清理定时器 */
+let cleanupTimer: number | undefined;
 
 /**
  * 标记图片已加载
@@ -141,13 +155,59 @@ function onImageLoad(id: string) {
   const newSet = new Set(loadedImages.value);
   newSet.add(id);
 
-  // 防止内存无限增长：超过阈值时清理
+  // 更新最后可见时间
+  lastVisibleTime.set(id, Date.now());
+
+  // 防止内存无限增长：使用 LRU 淘汰
   if (newSet.size > MAX_LOADED_CACHE) {
-    // 只保留当前可见的图片 ID
+    // 找到最早加载且不在可见区域的图片移除
     const visibleIds = new Set(visibleItems.value.map((v) => v.item.id));
-    loadedImages.value = visibleIds;
+    let removed = false;
+
+    for (const existingId of newSet) {
+      if (!visibleIds.has(existingId) && existingId !== id) {
+        newSet.delete(existingId);
+        lastVisibleTime.delete(existingId);
+        removed = true;
+        break;
+      }
+    }
+
+    // 如果所有图片都可见，移除最旧的一个（非当前）
+    if (!removed) {
+      for (const existingId of newSet) {
+        if (existingId !== id) {
+          newSet.delete(existingId);
+          lastVisibleTime.delete(existingId);
+          break;
+        }
+      }
+    }
+  }
+
+  loadedImages.value = newSet;
+}
+
+/**
+ * 图片加载失败处理（带重试）
+ */
+function onImageError(event: Event, id: string) {
+  const img = event.target as HTMLImageElement;
+  const currentRetry = imageRetryCount.get(id) || 0;
+
+  if (currentRetry < MAX_RETRY) {
+    imageRetryCount.set(id, currentRetry + 1);
+    // 延迟 500ms 后重试
+    setTimeout(() => {
+      if (img && img.src) {
+        const originalSrc = img.src;
+        img.src = '';
+        img.src = originalSrc;
+      }
+    }, 500);
   } else {
-    loadedImages.value = newSet;
+    // 达到重试上限，隐藏图片
+    img.style.display = 'none';
   }
 }
 
@@ -156,6 +216,55 @@ function onImageLoad(id: string) {
  */
 function isImageLoaded(id: string): boolean {
   return loadedImages.value.has(id);
+}
+
+/**
+ * 延迟清理过期的图片状态（不在可见区域超过 DESTROY_DELAY 的图片）
+ */
+function cleanupExpiredImages() {
+  const now = Date.now();
+  const visibleIds = new Set(visibleItems.value.map((v) => v.item.id));
+  let hasChanges = false;
+
+  // 更新当前可见图片的时间戳
+  for (const id of visibleIds) {
+    lastVisibleTime.set(id, now);
+  }
+
+  // 检查是否有需要清理的图片
+  const newSet = new Set(loadedImages.value);
+  for (const id of newSet) {
+    const lastTime = lastVisibleTime.get(id);
+    // 不在可见区域且超过延迟时间
+    if (!visibleIds.has(id) && lastTime && now - lastTime > DESTROY_DELAY) {
+      newSet.delete(id);
+      lastVisibleTime.delete(id);
+      imageRetryCount.delete(id);
+      hasChanges = true;
+    }
+  }
+
+  if (hasChanges) {
+    loadedImages.value = newSet;
+  }
+}
+
+/**
+ * 启动延迟清理定时器
+ */
+function startCleanupTimer() {
+  if (cleanupTimer) return;
+  cleanupTimer = window.setInterval(cleanupExpiredImages, 1000);
+}
+
+/**
+ * 停止延迟清理定时器
+ */
+function stopCleanupTimer() {
+  if (cleanupTimer) {
+    clearInterval(cleanupTimer);
+    cleanupTimer = undefined;
+  }
 }
 
 // ==================== Sidebar Data ====================
@@ -327,6 +436,10 @@ const handleBulkDelete = () => viewState.bulkDelete();
 
 onMounted(async () => {
   console.log('[TimelineView] Mounted with Justified Layout');
+
+  // 启动延迟清理定时器
+  startCleanupTimer();
+
   await viewState.loadHistory();
 
   // 初始加载后，检查并修复缺失元数据
@@ -341,6 +454,14 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
+  // 停止延迟清理定时器
+  stopCleanupTimer();
+
+  // 清理图片状态
+  loadedImages.value = new Set();
+  lastVisibleTime.clear();
+  imageRetryCount.clear();
+
   viewState.reset();
   thumbCache.clearThumbCache();
 
@@ -417,69 +538,51 @@ watch(
           </span>
         </div>
 
-        <!-- 阶段 1：快速滚动 - 正方形占位符 -->
-        <template v-if="displayMode === 'fast'">
-          <div
-            v-for="(pos, index) in fastModeItems"
-            :key="`fast-${index}`"
-            class="photo-placeholder"
-            :style="{
-              transform: `translate3d(${pos.x}px, ${pos.y}px, 0)`,
-              width: `${pos.width}px`,
-              height: `${pos.height}px`,
-            }"
-          >
-            <Skeleton width="100%" height="100%" borderRadius="8px" />
-          </div>
-        </template>
+        <!-- Justified Layout 图片列表（不再切换 DOM 结构） -->
+        <div
+          v-for="visible in visibleItems"
+          :key="visible.item.id"
+          class="photo-item"
+          :class="{ selected: viewState.isSelected(visible.item.id) }"
+          :style="{
+            transform: `translate3d(${visible.x}px, ${visible.y}px, 0)`,
+            width: `${visible.width}px`,
+            height: `${visible.height}px`,
+          }"
+        >
+          <div class="photo-wrapper" @click="openLightbox(visible.item)">
+            <!-- 图片未加载时显示 Skeleton 占位 -->
+            <Skeleton
+              v-if="!isImageLoaded(visible.item.id)"
+              width="100%"
+              height="100%"
+              borderRadius="8px"
+              class="photo-skeleton"
+            />
 
-        <!-- 阶段 2 & 3：正常滚动 - Justified Layout -->
-        <template v-else>
-          <div
-            v-for="visible in visibleItems"
-            :key="visible.item.id"
-            class="photo-item"
-            :class="{ selected: viewState.isSelected(visible.item.id) }"
-            :style="{
-              transform: `translate3d(${visible.x}px, ${visible.y}px, 0)`,
-              width: `${visible.width}px`,
-              height: `${visible.height}px`,
-            }"
-          >
-            <div class="photo-wrapper" @click="openLightbox(visible.item)">
-              <!-- 阶段 2：图片未加载 - Skeleton 占位 -->
-              <Skeleton
-                v-if="!isImageLoaded(visible.item.id)"
-                width="100%"
-                height="100%"
-                borderRadius="8px"
-                class="photo-skeleton"
-              />
+            <!-- 图片 - 快速滚动时不加载新图片，但已加载的始终显示 -->
+            <img
+              v-if="thumbCache.getThumbUrl(visible.item) && (isImageLoaded(visible.item.id) || displayMode !== 'fast')"
+              :src="thumbCache.getThumbUrl(visible.item)"
+              class="photo-img"
+              :class="{ loaded: isImageLoaded(visible.item.id) }"
+              @load="onImageLoad(visible.item.id)"
+              @error="onImageError($event, visible.item.id)"
+            />
 
-              <!-- 阶段 3：图片 - 始终渲染但初始隐藏，加载后显示 -->
-              <img
-                v-if="thumbCache.getThumbUrl(visible.item)"
-                :src="thumbCache.getThumbUrl(visible.item)"
-                class="photo-img"
-                :class="{ loaded: isImageLoaded(visible.item.id) }"
-                @load="onImageLoad(visible.item.id)"
-                @error="(e: any) => (e.target.style.display = 'none')"
-              />
+            <!-- Selection Overlay -->
+            <div class="selection-overlay"></div>
 
-              <!-- Selection Overlay -->
-              <div class="selection-overlay"></div>
-
-              <!-- Checkbox -->
-              <div
-                class="checkbox"
-                :class="{ checked: viewState.isSelected(visible.item.id) }"
-                @click.stop="viewState.toggleSelection(visible.item.id)"
-              >
-                <i v-if="viewState.isSelected(visible.item.id)" class="pi pi-check"></i>
-              </div>
+            <!-- Checkbox -->
+            <div
+              class="checkbox"
+              :class="{ checked: viewState.isSelected(visible.item.id) }"
+              @click.stop="viewState.toggleSelection(visible.item.id)"
+            >
+              <i v-if="viewState.isSelected(visible.item.id)" class="pi pi-check"></i>
             </div>
           </div>
-        </template>
+        </div>
 
         <!-- Loading More Indicator -->
         <div
@@ -600,14 +703,6 @@ watch(
 .group-subtitle {
   font-size: 12px;
   color: var(--text-secondary);
-}
-
-/* Photo Placeholder (快速滚动模式) */
-.photo-placeholder {
-  position: absolute;
-  border-radius: 8px;
-  overflow: hidden;
-  will-change: transform;
 }
 
 /* Photo Items */
