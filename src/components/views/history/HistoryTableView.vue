@@ -21,6 +21,8 @@ import { useToast } from '../../../composables/useToast';
 import { onCacheEventType } from '../../../events/cacheEvents';
 import HistoryLightbox from './HistoryLightbox.vue';
 import FloatingActionBar from './FloatingActionBar.vue';
+import ThumbnailImage from '../../common/ThumbnailImage.vue';
+import { getThumbnailCandidates } from '../../../composables/useThumbCache';
 
 // Props
 const props = defineProps<{
@@ -39,6 +41,7 @@ const configManager = useConfigManager();
 const viewState = useHistoryViewState();
 const historyManager = useHistoryManager();
 const thumbCache = useThumbCache();
+
 
 // === 服务端分页状态 ===
 const currentPageData = shallowRef<HistoryItem[]>([]);
@@ -393,16 +396,15 @@ const handleBulkDelete = () => {
             @mouseleave="handlePreviewLeave"
           >
             <div class="thumb-box" @click="openLightbox(slotProps.data)">
-              <Skeleton v-if="thumbCache.getThumbUrl(slotProps.data)" class="thumb-skeleton" />
-              <img
-                v-if="thumbCache.getThumbUrl(slotProps.data)"
-                :src="thumbCache.getThumbUrl(slotProps.data)"
+              <ThumbnailImage
+                :srcs="getThumbnailCandidates(slotProps.data, configManager.config.value)"
                 :alt="slotProps.data.localFileName"
-                loading="lazy"
-                class="thumb-img"
-                @error="(e: any) => e.target.src = '/placeholder.png'"
-              />
-              <i v-else class="pi pi-image thumb-placeholder"></i>
+                imageClass="thumb-img"
+              >
+                <template #placeholder>
+                  <i class="pi pi-image thumb-placeholder"></i>
+                </template>
+              </ThumbnailImage>
             </div>
           </div>
         </template>

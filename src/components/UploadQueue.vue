@@ -7,6 +7,9 @@ import { useToast } from '../composables/useToast';
 import { useQueueState } from '../composables/useQueueState';
 import type { QueueItem } from '../uploadQueue';
 import { deepClone, deepMerge } from '../utils/deepClone';
+import { generateThumbnailUrl, getThumbnailCandidates } from '../composables/useThumbCache';
+import ThumbnailImage from './common/ThumbnailImage.vue';
+import { useConfigManager } from '../composables/useConfig';
 
 /** 虚拟滚动阈值：超过此数量启用虚拟滚动 */
 const VIRTUAL_SCROLL_THRESHOLD = 20;
@@ -16,6 +19,7 @@ const ITEM_HEIGHT = 180;
 
 const toast = useToast();
 const { queueItems } = useQueueState();
+const { config } = useConfigManager();
 
 // ========== 状态计算缓存 ==========
 
@@ -217,11 +221,9 @@ defineExpose({
       queueItems.value[index] = mergedItem;
 
       const updatedItem = queueItems.value[index];
-      if (updatedItem.weiboPid && !updatedItem.thumbUrl) {
-        const baiduPrefix = 'https://image.baidu.com/search/down?thumburl=';
-        const bmiddleUrl = `https://tvax1.sinaimg.cn/bmiddle/${updatedItem.weiboPid}.jpg`;
-        queueItems.value[index].thumbUrl = `${baiduPrefix}${bmiddleUrl}`;
-      }
+      
+      // 注意：thumbUrl 设置逻辑已移除，因为现在使用 ThumbnailImage 组件
+      // 该组件会自动通过 getThumbnailCandidates 生成候选 URL 列表
     }
   },
   getItem: (id: string) => queueItems.value.find(i => i.id === id),
@@ -256,18 +258,19 @@ defineExpose({
           <!-- 头部：缩略图 + 文件名 + 统计标签 + 堆叠进度条 -->
           <div class="card-header">
             <!-- 缩略图 -->
+            <!-- 缩略图 -->
             <div class="thumbnail-wrapper">
-              <img
-                v-if="item.thumbUrl"
-                :src="item.thumbUrl"
+              <ThumbnailImage
+                :srcs="getThumbnailCandidates(item as any, config)"
                 :alt="item.fileName"
-                class="thumbnail"
-                referrerpolicy="no-referrer"
-                onerror="this.style.display='none'"
-              />
-              <div v-else class="thumbnail-placeholder">
-                <i class="pi pi-image"></i>
-              </div>
+                imageClass="thumbnail"
+              >
+                <template #placeholder>
+                  <div class="thumbnail-placeholder">
+                    <i class="pi pi-image"></i>
+                  </div>
+                </template>
+              </ThumbnailImage>
             </div>
 
             <!-- 头部内容 -->
@@ -373,17 +376,17 @@ defineExpose({
       <div class="card-header">
         <!-- 缩略图 -->
         <div class="thumbnail-wrapper">
-          <img
-            v-if="item.thumbUrl"
-            :src="item.thumbUrl"
+          <ThumbnailImage
+            :srcs="getThumbnailCandidates(item, config)"
             :alt="item.fileName"
-            class="thumbnail"
-            referrerpolicy="no-referrer"
-            onerror="this.style.display='none'"
-          />
-          <div v-else class="thumbnail-placeholder">
-            <i class="pi pi-image"></i>
-          </div>
+            imageClass="thumbnail"
+          >
+            <template #placeholder>
+              <div class="thumbnail-placeholder">
+                <i class="pi pi-image"></i>
+              </div>
+            </template>
+          </ThumbnailImage>
         </div>
 
         <!-- 头部内容 -->

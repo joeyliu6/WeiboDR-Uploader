@@ -15,6 +15,148 @@ const THUMB_CACHE_MAX_SIZE = 500;
 const thumbUrlCache = new Map<string, string | undefined>();
 
 /**
+ * 根据图床类型生成缩略图 URL
+ * 供上传队列等非 composable 场景使用
+ */
+export function generateThumbnailUrl(
+  serviceId: string,
+  url: string,
+  fileKey?: string,
+  config?: any
+): string {
+  let thumbUrl: string;
+
+  switch (serviceId) {
+    case 'weibo':
+      // 微博：使用 thumb150 获取 150x150 缩略图
+      if (fileKey) {
+        thumbUrl = `https://tvax1.sinaimg.cn/thumb150/${fileKey}.jpg`;
+        // 应用链接前缀（如果启用）
+        if (config) {
+          const activePrefix = getActivePrefix(config);
+          if (activePrefix) {
+            thumbUrl = `${activePrefix}${thumbUrl}`;
+          }
+        }
+      } else {
+        thumbUrl = url;
+      }
+      break;
+
+    case 'r2':
+      // R2：使用 wsrv.nl 图片代理
+      // 将原图 URL 编码后作为参数传递
+      thumbUrl = `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=75&h=75&fit=cover&a=center&q=75&output=webp`;
+      break;
+
+    case 'jd':
+      // 京东：在 /jfs/ 后添加 s76x76_ 前缀
+      thumbUrl = url.replace('/jfs/', '/s76x76_jfs/');
+      break;
+
+    case 'zhihu':
+      // 知乎：在扩展名前添加 _xs 后缀
+      thumbUrl = url.replace(/\.(\w+)$/, '_xs.$1');
+      break;
+
+    case 'qiyu':
+      // 七鱼：使用 NOS 图片处理参数
+      thumbUrl = `${url}?imageView&thumbnail=50x0`;
+      break;
+
+    case 'nami':
+      // 纳米：使用火山引擎 TOS 图片处理参数
+      thumbUrl = `${url}?x-tos-process=image/resize,l_75/quality,q_70/format,jpg`;
+      break;
+
+    case 'nowcoder':
+      // 牛客：使用阿里云 OSS 图片处理参数
+      thumbUrl = `${url}?x-oss-process=image%2Fresize%2Cw_75%2Ch_75%2Cm_mfit%2Fformat%2Cpng`;
+      break;
+
+    default:
+      // 其他图床：直接使用原图
+      thumbUrl = url;
+  }
+
+  return thumbUrl;
+}
+
+// 缩略图候选列表缓存
+const thumbnailCandidatesCache = new Map<string, string[]>();
+
+/**
+ * 获取缩略图候选列表（带缓存优化）
+ * 支持 HistoryItem 和 QueueItem
+ */
+export function getThumbnailCandidates(
+  item: HistoryItem | any,
+  config: any
+): string[] {
+  // 使用 item.id 作为缓存键
+  const cacheKey = item.id;
+
+  // 检查缓存（需要考虑 config 变化，简单起见，这里不缓存 config 相关的结果）
+  // 如果需要更精确的缓存，可以将 config 的相关字段也加入 cacheKey
+  if (thumbnailCandidatesCache.has(cacheKey)) {
+    return thumbnailCandidatesCache.get(cacheKey)!;
+  }
+
+  const candidates: string[] = [];
+
+  // 1. 处理 HistoryItem
+  if (item.results && Array.isArray(item.results)) {
+    // 优先添加主力图床
+    if (item.primaryService) {
+      const primary = item.results.find((r: any) => r.serviceId === item.primaryService && r.status === 'success');
+      if (primary && primary.result?.url) {
+        candidates.push(generateThumbnailUrl(primary.serviceId, primary.result.url, primary.result.fileKey, config));
+      }
+    }
+
+    // 添加其他成功上传的图床
+    item.results.forEach((r: any) => {
+      if (r.status === 'success' && r.result?.url && r.serviceId !== item.primaryService) {
+        candidates.push(generateThumbnailUrl(r.serviceId, r.result.url, r.result.fileKey, config));
+      }
+    });
+  }
+  // 2. 处理 QueueItem
+  else if (item.serviceProgress) {
+    // 优先使用 enabledServices 以保持确定的顺序
+    const services = item.enabledServices || [];
+
+    services.forEach((serviceId: string) => {
+      const progress = item.serviceProgress[serviceId];
+      // 检查状态 (兼容新旧状态文本)
+      const isSuccess = progress?.status === 'success' ||
+        progress?.status?.includes('完成') ||
+        progress?.status?.includes('✓') ||
+        !!progress?.link;
+
+      if (progress && isSuccess && progress.link) {
+        let fileKey = undefined;
+        if (serviceId === 'weibo') {
+          // 尝试从元数据或根属性获取 PID
+          fileKey = progress.metadata?.pid || item.weiboPid;
+        }
+        candidates.push(generateThumbnailUrl(serviceId, progress.link, fileKey, config));
+      }
+    });
+  }
+
+  // 去重
+  const uniqueCandidates = [...new Set(candidates)];
+
+  // 缓存结果
+  thumbnailCandidatesCache.set(cacheKey, uniqueCandidates);
+
+  return uniqueCandidates;
+}
+
+
+
+/**
  * 设置缩略图缓存（带 LRU 淘汰）
  */
 function setThumbCache(id: string, url: string | undefined): void {
@@ -31,6 +173,7 @@ function setThumbCache(id: string, url: string | undefined): void {
  */
 function clearThumbCache(): void {
   thumbUrlCache.clear();
+  thumbnailCandidatesCache.clear(); // 同时清空候选列表缓存
 }
 
 /**
@@ -142,6 +285,7 @@ export function useThumbCache() {
     for (const id of thumbUrlCache.keys()) {
       if (!newIds.has(id)) {
         thumbUrlCache.delete(id);
+        thumbnailCandidatesCache.delete(id); // 同时清理候选列表缓存
       }
     }
   }, { deep: false });

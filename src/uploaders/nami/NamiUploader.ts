@@ -228,6 +228,14 @@ export class NamiUploader extends BaseUploader {
   }
 
   /**
+   * 生成纳米缩略图 URL
+   * 使用火山引擎 TOS 图片处理参数
+   */
+  getThumbnailUrl(result: UploadResult): string {
+    return `${result.url}?x-tos-process=image/resize,l_75/quality,q_70/format,jpg`;
+  }
+
+  /**
    * 强制刷新 Token
    *
    * 可在设置页面调用，用于测试 Token 获取

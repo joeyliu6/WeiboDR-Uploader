@@ -125,6 +125,15 @@ export class R2Uploader extends BaseUploader {
   }
 
   /**
+   * 生成 R2 缩略图 URL
+   * 使用 wsrv.nl 图片代理服务生成缩略图
+   */
+  getThumbnailUrl(result: UploadResult): string {
+    const encodedUrl = encodeURIComponent(result.url);
+    return `https://wsrv.nl/?url=${encodedUrl}&w=75&h=75&fit=cover&a=center&q=75&output=webp`;
+  }
+
+  /**
    * 构建 R2 存储 Key
    */
   private buildKey(path: string, fileName: string): string {

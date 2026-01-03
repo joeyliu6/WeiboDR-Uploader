@@ -63,4 +63,12 @@ export class QiyuUploader extends BaseUploader {
   getPublicUrl(result: UploadResult): string {
     return result.url;
   }
+
+  /**
+   * 生成七鱼缩略图 URL
+   * 使用 NOS 图片处理参数
+   */
+  getThumbnailUrl(result: UploadResult): string {
+    return `${result.url}?imageView&thumbnail=50x0`;
+  }
 }

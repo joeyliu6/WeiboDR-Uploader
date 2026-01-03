@@ -87,4 +87,12 @@ export class ZhihuUploader extends BaseUploader {
   getPublicUrl(result: UploadResult): string {
     return result.url;
   }
+
+  /**
+   * 生成知乎缩略图 URL
+   * 在扩展名前添加 _xs 后缀
+   */
+  getThumbnailUrl(result: UploadResult): string {
+    return result.url.replace(/\.(\w+)$/, '_xs.$1');
+  }
 }

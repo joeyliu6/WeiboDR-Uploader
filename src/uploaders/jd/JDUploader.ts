@@ -114,7 +114,7 @@ export class JDUploader extends BaseUploader {
    * 京东图床没有专门的缩略图服务，直接返回原图
    */
   getThumbnailUrl(result: UploadResult): string {
-    return result.url;
+    return result.url.replace('/jfs/', '/s76x76_jfs/');
   }
 
   /**

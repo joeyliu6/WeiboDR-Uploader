@@ -106,7 +106,7 @@ export class WeiboUploader extends BaseUploader {
    */
   getThumbnailUrl(result: UploadResult): string {
     const pid = result.fileKey;
-    return `https://tvax1.sinaimg.cn/thumbnail/${pid}.jpg`;
+    return `https://tvax1.sinaimg.cn/thumb150/${pid}.jpg`;
   }
 
   /**

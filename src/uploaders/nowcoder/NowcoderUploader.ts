@@ -87,4 +87,12 @@ export class NowcoderUploader extends BaseUploader {
   getPublicUrl(result: UploadResult): string {
     return result.url;
   }
+
+  /**
+   * 生成牛客缩略图 URL
+   * 使用阿里云 OSS 图片处理参数
+   */
+  getThumbnailUrl(result: UploadResult): string {
+    return `${result.url}?x-oss-process=image%2Fresize%2Cw_75%2Ch_75%2Cm_mfit%2Fformat%2Cpng`;
+  }
 }

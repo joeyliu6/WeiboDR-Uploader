@@ -224,10 +224,17 @@ pub async fn upload_to_jd(
         return Err(AppError::upload_with_code("京东", upload_response.code, format!("API 返回错误码: {}", upload_response.code)));
     }
 
-    let image_url = upload_response.path
+    let raw_url = upload_response.path
         .ok_or_else(|| AppError::upload("京东", "API 未返回图片链接"))?;
 
-    println!("[JD] 上传成功: {}", image_url);
+    // 替换域名：dd-static.jd.com/ddimgp -> img30.360buyimg.com/imgzone
+    let image_url = raw_url.replace(
+        "dd-static.jd.com/ddimgp",
+        "img30.360buyimg.com/imgzone"
+    );
+
+    println!("[JD] 上传成功（原始URL: {}）", raw_url);
+    println!("[JD] 转换后URL: {}", image_url);
 
     // ✅ 修复: 删除此处的100%事件发送
     // 前端会在收到Ok结果时自动设置100%
