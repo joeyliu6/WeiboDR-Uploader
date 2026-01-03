@@ -209,6 +209,10 @@ const checkJdAvailable = async () => {
 
 
 
+
+// 上次检测时间
+const lastCheckTime = ref(0);
+
 // 5 分钟冷却
 const CHECK_COOLDOWN = 5 * 60 * 1000;
 
