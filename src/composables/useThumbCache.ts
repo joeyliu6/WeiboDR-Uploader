@@ -82,6 +82,60 @@ export function generateThumbnailUrl(
   return thumbUrl;
 }
 
+/**
+ * 根据图床类型生成中等尺寸缩略图 URL（~400-800px）
+ * 用于悬浮预览和时间线视图
+ */
+export function generateMediumThumbnailUrl(
+  serviceId: string,
+  url: string,
+  fileKey?: string,
+  config?: any
+): string {
+  switch (serviceId) {
+    case 'weibo':
+      // 微博：mw690 约 690px 宽
+      if (fileKey) {
+        let thumbUrl = `https://tvax1.sinaimg.cn/mw690/${fileKey}.jpg`;
+        if (config) {
+          const activePrefix = getActivePrefix(config);
+          if (activePrefix) {
+            thumbUrl = `${activePrefix}${thumbUrl}`;
+          }
+        }
+        return thumbUrl;
+      }
+      return url;
+
+    case 'r2':
+      // R2：wsrv.nl 代理，宽度 800px
+      return `https://wsrv.nl/?url=${encodeURIComponent(url)}&w=800&q=80&output=webp`;
+
+    case 'jd':
+      // 京东：s500x0 约 500px 宽
+      return url.replace('/jfs/', '/s500x0_jfs/');
+
+    case 'zhihu':
+      // 知乎：_qhd 后缀（高清缩略图）
+      return url.replace(/\.(\w+)$/, '_qhd.$1');
+
+    case 'qiyu':
+      // 七鱼：thumbnail=400x0
+      return `${url}?imageView&thumbnail=400x0`;
+
+    case 'nami':
+      // 纳米：l_500 宽度 500px
+      return `${url}?x-tos-process=image/resize,l_500/quality,q_80/format,jpg`;
+
+    case 'nowcoder':
+      // 牛客：w_400
+      return `${url}?x-oss-process=image%2Fresize%2Cw_400%2Cm_mfit%2Fformat%2Cpng`;
+
+    default:
+      return url;
+  }
+}
+
 // 缩略图候选列表缓存
 const thumbnailCandidatesCache = new Map<string, string[]>();
 
@@ -220,30 +274,24 @@ function getThumbUrl(item: HistoryItem, config: ReturnType<typeof useConfigManag
 }
 
 /**
- * 获取中等尺寸图 URL（用于悬浮预览）
- * 微博使用 bmiddle 约 440px
+ * 获取中等尺寸缩略图 URL（用于悬浮预览和时间线视图）
+ * 所有图床都使用中等尺寸缩略图（~400-800px）
  */
 function getMediumImageUrl(item: HistoryItem, config: ReturnType<typeof useConfigManager>['config']['value']): string {
+  // 优先使用主力图床
   const result = item.results.find(r =>
     r.serviceId === item.primaryService && r.status === 'success'
-  );
+  ) || item.results.find(r => r.status === 'success');
 
   if (!result?.result?.url) return '';
 
-  // 微博图床：使用 bmiddle 尺寸
-  if (result.serviceId === 'weibo' && result.result.fileKey) {
-    let mediumUrl = `https://tvax1.sinaimg.cn/bmiddle/${result.result.fileKey}.jpg`;
-
-    const activePrefix = getActivePrefix(config);
-    if (activePrefix) {
-      mediumUrl = `${activePrefix}${mediumUrl}`;
-    }
-
-    return mediumUrl;
-  }
-
-  // 非微博图床：使用原始 URL
-  return result.result.url;
+  // 使用中等尺寸缩略图生成函数
+  return generateMediumThumbnailUrl(
+    result.serviceId,
+    result.result.url,
+    result.result.fileKey,
+    config
+  );
 }
 
 /**

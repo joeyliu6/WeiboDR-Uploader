@@ -562,8 +562,8 @@ watch(
 
             <!-- 图片 - 快速滚动时不加载新图片，但已加载的始终显示 -->
             <img
-              v-if="thumbCache.getThumbUrl(visible.item) && (isImageLoaded(visible.item.id) || displayMode !== 'fast')"
-              :src="thumbCache.getThumbUrl(visible.item)"
+              v-if="thumbCache.getMediumImageUrl(visible.item) && (isImageLoaded(visible.item.id) || displayMode !== 'fast')"
+              :src="thumbCache.getMediumImageUrl(visible.item)"
               class="photo-img"
               :class="{ loaded: isImageLoaded(visible.item.id) }"
               @load="onImageLoad(visible.item.id)"
