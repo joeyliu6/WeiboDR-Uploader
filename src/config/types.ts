@@ -51,7 +51,7 @@ export interface AnalyticsConfig {
 /**
  * 支持的图床服务类型
  */
-export type ServiceType = 'weibo' | 'r2' | 'jd' | 'nowcoder' | 'qiyu' | 'zhihu' | 'nami';
+export type ServiceType = 'weibo' | 'r2' | 'jd' | 'nowcoder' | 'qiyu' | 'zhihu' | 'nami' | 'bilibili' | 'chaoxing';
 
 /**
  * 私有图床服务列表
@@ -63,7 +63,7 @@ export const PRIVATE_SERVICES: ServiceType[] = ['r2'];
  * 公共图床服务列表
  * 使用公共平台的存储服务
  */
-export const PUBLIC_SERVICES: ServiceType[] = ['weibo', 'zhihu', 'nami', 'qiyu', 'jd', 'nowcoder'];
+export const PUBLIC_SERVICES: ServiceType[] = ['weibo', 'zhihu', 'nami', 'qiyu', 'jd', 'nowcoder', 'bilibili', 'chaoxing'];
 
 /**
  * 基础服务配置接口
@@ -150,6 +150,26 @@ export interface NamiServiceConfig extends BaseServiceConfig {
   cookie: string;
   /** Auth-Token（从 Cookie 中提取的 JWT Token） */
   authToken: string;
+}
+
+/**
+ * 哔哩哔哩图床服务配置
+ * 需要 Cookie 认证（包含 SESSDATA 和 bili_jct）
+ * 通过登录窗口自动获取 Cookie
+ */
+export interface BilibiliServiceConfig extends BaseServiceConfig {
+  /** 哔哩哔哩 Cookie（完整的 Cookie 字符串，包含 SESSDATA 和 bili_jct） */
+  cookie: string;
+}
+
+/**
+ * 超星图床服务配置
+ * 需要 Cookie 认证
+ * 通过登录窗口自动获取 Cookie
+ */
+export interface ChaoxingServiceConfig extends BaseServiceConfig {
+  /** 超星 Cookie（完整的 Cookie 字符串） */
+  cookie: string;
 }
 
 /**
@@ -292,6 +312,8 @@ export interface UserConfig {
     qiyu?: QiyuServiceConfig;
     zhihu?: ZhihuServiceConfig;
     nami?: NamiServiceConfig;
+    bilibili?: BilibiliServiceConfig;
+    chaoxing?: ChaoxingServiceConfig;
   };
 
   /** 输出格式 */
@@ -415,7 +437,7 @@ export interface HistoryItem {
  */
 export const DEFAULT_CONFIG: UserConfig = {
   enabledServices: ['jd'],  // 默认启用 JD 图床（开箱即用）
-  availableServices: ['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami'],  // 默认所有图床都可用
+  availableServices: ['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami', 'bilibili', 'chaoxing'],  // 默认所有图床都可用
   services: {
     weibo: {
       enabled: true,
@@ -449,6 +471,14 @@ export const DEFAULT_CONFIG: UserConfig = {
       enabled: false,  // 纳米图床需要 Cookie，默认不启用
       cookie: '',
       authToken: ''
+    },
+    bilibili: {
+      enabled: false,  // 哔哩哔哩图床需要 Cookie，默认不启用
+      cookie: ''
+    },
+    chaoxing: {
+      enabled: false,  // 超星图床需要 Cookie，默认不启用
+      cookie: ''
     }
   },
   outputFormat: 'baidu-proxy',
@@ -511,6 +541,14 @@ export function sanitizeConfig(config: UserConfig): UserConfig {
         ...config.services.nami,
         cookie: sanitizeString(config.services.nami.cookie, 8, 4),
         authToken: sanitizeString(config.services.nami.authToken, 10, 4)
+      } : undefined,
+      bilibili: config.services.bilibili ? {
+        ...config.services.bilibili,
+        cookie: sanitizeString(config.services.bilibili.cookie, 8, 4)
+      } : undefined,
+      chaoxing: config.services.chaoxing ? {
+        ...config.services.chaoxing,
+        cookie: sanitizeString(config.services.chaoxing.cookie, 8, 4)
       } : undefined
     },
     webdav: config.webdav ? {

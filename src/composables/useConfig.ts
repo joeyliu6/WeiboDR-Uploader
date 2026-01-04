@@ -392,8 +392,100 @@ export function useConfigManager() {
   }
 
   /**
+   * 测试哔哩哔哩连接
+   * @param cookie 哔哩哔哩 Cookie
+   */
+  async function testBilibiliConnection(cookie: string): Promise<TestConnectionResult> {
+    try {
+      console.log('[哔哩哔哩Cookie测试] 开始测试哔哩哔哩连接...');
+
+      if (!cookie || cookie.trim().length === 0) {
+        return {
+          success: false,
+          message: 'Cookie 不能为空'
+        };
+      }
+
+      // 验证 Cookie 中是否包含必要字段
+      if (!cookie.includes('SESSDATA=') || !cookie.includes('bili_jct=')) {
+        return {
+          success: false,
+          message: 'Cookie 中缺少 SESSDATA 或 bili_jct 字段'
+        };
+      }
+
+      try {
+        const successMessage = await invoke<string>('test_bilibili_connection', { bilibiliCookie: cookie });
+        console.log('[哔哩哔哩Cookie测试] ✓ 测试成功');
+        return {
+          success: true,
+          message: successMessage
+        };
+      } catch (errorMessage) {
+        return {
+          success: false,
+          message: String(errorMessage)
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[哔哩哔哩Cookie测试] 测试哔哩哔哩连接失败:', error);
+      return {
+        success: false,
+        message: errorMsg
+      };
+    }
+  }
+
+  /**
+   * 测试超星连接
+   * @param cookie 超星 Cookie
+   */
+  async function testChaoxingConnection(cookie: string): Promise<TestConnectionResult> {
+    try {
+      console.log('[超星Cookie测试] 开始测试超星连接...');
+
+      if (!cookie || cookie.trim().length === 0) {
+        return {
+          success: false,
+          message: 'Cookie 不能为空'
+        };
+      }
+
+      // 验证 Cookie 中是否包含 _uid 字段
+      if (!cookie.includes('_uid=')) {
+        return {
+          success: false,
+          message: 'Cookie 中缺少 _uid 字段（请点击"自动获取Cookie"按钮）'
+        };
+      }
+
+      try {
+        const successMessage = await invoke<string>('test_chaoxing_connection', { chaoxingCookie: cookie });
+        console.log('[超星Cookie测试] ✓ 测试成功');
+        return {
+          success: true,
+          message: successMessage
+        };
+      } catch (errorMessage) {
+        return {
+          success: false,
+          message: String(errorMessage)
+        };
+      }
+    } catch (error) {
+      const errorMsg = error instanceof Error ? error.message : String(error);
+      console.error('[超星Cookie测试] 测试超星连接失败:', error);
+      return {
+        success: false,
+        message: errorMsg
+      };
+    }
+  }
+
+  /**
    * 打开 WebView 登录窗口获取 Cookie
-   * @param serviceId 服务标识（weibo/nowcoder/zhihu/nami）
+   * @param serviceId 服务标识（weibo/nowcoder/zhihu/nami/bilibili/chaoxing）
    */
   async function openCookieWebView(serviceId: ServiceType): Promise<void> {
     let errorOccurred = false;
@@ -602,6 +694,8 @@ export function useConfigManager() {
     testNowcoderConnection,
     testZhihuConnection,
     testNamiConnection,
+    testBilibiliConnection,
+    testChaoxingConnection,
 
     // Cookie 自动获取
     openCookieWebView,

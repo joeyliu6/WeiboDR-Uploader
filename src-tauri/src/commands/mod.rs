@@ -8,6 +8,8 @@ pub mod qiyu_token;
 pub mod zhihu;
 pub mod nami;
 pub mod nami_token;
+pub mod bilibili;
+pub mod chaoxing;
 pub mod utils;
 pub mod link_checker;
 pub mod clipboard;

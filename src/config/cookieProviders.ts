@@ -111,6 +111,38 @@ export const COOKIE_PROVIDERS: Record<string, CookieProvider> = {
     },
     description: '登录纳米账号获取 Cookie',
     icon: '☁️'
+  },
+  bilibili: {
+    serviceId: 'bilibili',
+    name: '哔哩哔哩',
+    loginUrl: 'https://www.bilibili.com/',
+    domains: ['www.bilibili.com', 'bilibili.com', '.bilibili.com'],
+    cookieValidation: {
+      requiredFields: ['SESSDATA', 'bili_jct'],  // 哔哩哔哩登录成功必须有 SESSDATA 和 bili_jct
+      anyOfFields: [],
+      monitoringDelay: {
+        initialDelayMs: 3000,      // 3秒初始延迟（等待登录完成）
+        pollingIntervalMs: 1000    // 1秒轮询
+      }
+    },
+    description: '登录哔哩哔哩账号获取 Cookie',
+    icon: '📺'
+  },
+  chaoxing: {
+    serviceId: 'chaoxing',
+    name: '超星/学习通',
+    loginUrl: 'https://passport2.chaoxing.com/',
+    domains: ['chaoxing.com', '.chaoxing.com', 'passport2.chaoxing.com'],
+    cookieValidation: {
+      requiredFields: ['_uid'],  // 超星登录成功必须有 _uid 字段
+      anyOfFields: [],
+      monitoringDelay: {
+        initialDelayMs: 3000,      // 3秒初始延迟（等待登录完成）
+        pollingIntervalMs: 1000    // 1秒轮询
+      }
+    },
+    description: '登录超星/学习通账号获取 Cookie',
+    icon: '📚'
   }
 };
 

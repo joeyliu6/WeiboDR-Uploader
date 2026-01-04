@@ -96,6 +96,10 @@ fn main() {
             commands::nami::upload_to_nami,
             commands::nami::test_nami_connection,
             commands::nami_token::fetch_nami_token,
+            commands::bilibili::upload_to_bilibili,
+            commands::bilibili::test_bilibili_connection,
+            commands::chaoxing::upload_to_chaoxing,
+            commands::chaoxing::test_chaoxing_connection,
             commands::link_checker::check_image_link,
             commands::link_checker::download_image_from_url,
             commands::clipboard::clipboard_has_image,
@@ -459,6 +463,10 @@ fn get_default_validation_rules(service_id: &str) -> (Vec<&'static str>, Vec<&'s
         "zhihu" => (vec!["z_c0"], vec![]),
         "nowcoder" => (vec!["t", "csrfToken"], vec!["acw_tc", "SERVERID", "__snaker__id", "gdxidpyhxdE"]),
         "nami" => (vec!["Auth-Token"], vec!["Q", "T"]),
+        // 哔哩哔哩：需要 SESSDATA 和 bili_jct (csrf)
+        "bilibili" => (vec!["SESSDATA", "bili_jct"], vec![]),
+        // 超星：需要 _uid 字段
+        "chaoxing" => (vec!["_uid"], vec![]),
         _ => (vec![], vec![]),
     }
 }

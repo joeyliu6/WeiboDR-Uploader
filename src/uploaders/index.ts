@@ -10,6 +10,8 @@ import { NowcoderUploader } from './nowcoder/NowcoderUploader';
 import { QiyuUploader } from './qiyu/QiyuUploader';
 import { ZhihuUploader } from './zhihu/ZhihuUploader';
 import { NamiUploader } from './nami/NamiUploader';
+import { BilibiliUploader } from './bilibili/BilibiliUploader';
+import { ChaoxingUploader } from './chaoxing/ChaoxingUploader';
 
 /**
  * 初始化所有上传器
@@ -41,6 +43,12 @@ export function initializeUploaders(): void {
   // 注册纳米上传器
   UploaderFactory.register('nami', () => new NamiUploader());
 
+  // 注册哔哩哔哩上传器
+  UploaderFactory.register('bilibili', () => new BilibiliUploader());
+
+  // 注册超星上传器
+  UploaderFactory.register('chaoxing', () => new ChaoxingUploader());
+
   const registered = UploaderFactory.getAvailableServices();
   console.log('[Uploaders] 已注册的上传器:', registered);
 }
@@ -54,4 +62,6 @@ export { NowcoderUploader } from './nowcoder';
 export { QiyuUploader } from './qiyu';
 export { ZhihuUploader } from './zhihu';
 export { NamiUploader } from './nami';
+export { BilibiliUploader } from './bilibili';
+export { ChaoxingUploader } from './chaoxing';
 export { UploaderFactory } from './base/UploaderFactory';

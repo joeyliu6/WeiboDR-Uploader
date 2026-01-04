@@ -112,6 +112,8 @@ const formData = ref({
   nowcoder: { cookie: '' },
   zhihu: { cookie: '' },
   nami: { cookie: '' },
+  bilibili: { cookie: '' },
+  chaoxing: { cookie: '' },
   webdav: { profiles: [] as Array<{ id: string; name: string; url: string; username: string; password: string; passwordEncrypted?: string; remotePath: string }>, activeId: null as string | null },
   linkPrefixEnabled: true,
   selectedPrefixIndex: 0,
@@ -121,13 +123,13 @@ const formData = ref({
 });
 
 // 服务列表
-const availableServices = ref<ServiceType[]>(['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami']);
+const availableServices = ref<ServiceType[]>(['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami', 'bilibili', 'chaoxing']);
 const serviceNames: Record<ServiceType, string> = {
-  weibo: '微博', r2: 'R2', jd: '京东', nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
+  weibo: '微博', r2: 'R2', jd: '京东', nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米', bilibili: '哔哩哔哩', chaoxing: '超星'
 };
 
 // 测试状态
-const testingConnections = ref<Record<string, boolean>>({ weibo: false, r2: false, nowcoder: false, zhihu: false, nami: false, webdav: false });
+const testingConnections = ref<Record<string, boolean>>({ weibo: false, r2: false, nowcoder: false, zhihu: false, nami: false, bilibili: false, chaoxing: false, webdav: false });
 
 // 七鱼可用性检测（完整检测：实际获取 Token）
 const qiyuAvailable = ref(false);
@@ -252,6 +254,8 @@ const loadSettings = async () => {
     formData.value.nowcoder.cookie = cfg.services?.nowcoder?.cookie || '';
     formData.value.zhihu.cookie = cfg.services?.zhihu?.cookie || '';
     formData.value.nami.cookie = cfg.services?.nami?.cookie || '';
+    formData.value.bilibili.cookie = cfg.services?.bilibili?.cookie || '';
+    formData.value.chaoxing.cookie = cfg.services?.chaoxing?.cookie || '';
     // 加载 WebDAV 配置（新结构）
     if (cfg.webdav) {
       const profiles = cfg.webdav.profiles || [];
@@ -314,7 +318,9 @@ const saveSettings = async (silent = false) => {
         r2: { ...currentConfig.services?.r2, ...formData.value.r2, enabled: currentConfig.services?.r2?.enabled ?? false },
         nowcoder: { enabled: currentConfig.services?.nowcoder?.enabled ?? false, cookie: formData.value.nowcoder.cookie.trim() },
         zhihu: { enabled: currentConfig.services?.zhihu?.enabled ?? false, cookie: formData.value.zhihu.cookie.trim() },
-        nami: { enabled: currentConfig.services?.nami?.enabled ?? false, cookie: formData.value.nami.cookie.trim(), authToken: '' }
+        nami: { enabled: currentConfig.services?.nami?.enabled ?? false, cookie: formData.value.nami.cookie.trim(), authToken: '' },
+        bilibili: { enabled: currentConfig.services?.bilibili?.enabled ?? false, cookie: formData.value.bilibili.cookie.trim() },
+        chaoxing: { enabled: currentConfig.services?.chaoxing?.enabled ?? false, cookie: formData.value.chaoxing.cookie.trim() }
       },
       webdav: webdavConfig,
       linkPrefixConfig: {
@@ -354,6 +360,8 @@ const actions = {
   nowcoder: () => testConn('nowcoder', () => configManager.testNowcoderConnection(formData.value.nowcoder.cookie)),
   zhihu: () => testConn('zhihu', () => configManager.testZhihuConnection(formData.value.zhihu.cookie)),
   nami: () => testConn('nami', () => configManager.testNamiConnection(formData.value.nami.cookie)),
+  bilibili: () => testConn('bilibili', () => configManager.testBilibiliConnection(formData.value.bilibili.cookie)),
+  chaoxing: () => testConn('chaoxing', () => configManager.testChaoxingConnection(formData.value.chaoxing.cookie)),
   webdav: () => testConn('webdav', () => configManager.testWebDAVConnection(formData.value.webdav)),
   login: (svc: ServiceType) => configManager.openCookieWebView(svc)
 };
@@ -1951,7 +1959,7 @@ onMounted(async () => {
   await checkAllAvailabilityWithCooldown();
   cookieUnlisten.value = await configManager.setupCookieListener(async (sid, cookie) => {
     if (sid === 'weibo') formData.value.weiboCookie = cookie;
-    else if (['nowcoder', 'zhihu', 'nami'].includes(sid)) (formData.value as any)[sid].cookie = cookie;
+    else if (['nowcoder', 'zhihu', 'nami', 'bilibili', 'chaoxing'].includes(sid)) (formData.value as any)[sid].cookie = cookie;
     await saveSettings(true); // 静默保存，不显示"保存成功"提示
   });
 
@@ -2261,6 +2269,32 @@ onUnmounted(() => {
             </div>
           </div>
           <Textarea v-model="formData.nami.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="纳米 Cookie..." />
+        </div>
+
+        <Divider />
+
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>哔哩哔哩</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('bilibili')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.bilibili" :loading="testingConnections.bilibili" text size="small"/>
+            </div>
+          </div>
+          <Textarea v-model="formData.bilibili.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="SESSDATA=...; bili_jct=...; (粘贴完整 Cookie)" />
+        </div>
+
+        <Divider />
+
+        <div class="sub-section">
+          <div class="flex justify-between items-center mb-2">
+            <h3>超星图床</h3>
+            <div class="actions-mini">
+              <Button label="获取" icon="pi pi-globe" @click="actions.login('chaoxing')" text size="small"/>
+              <Button label="测试" icon="pi pi-check" @click="actions.chaoxing" :loading="testingConnections.chaoxing" text size="small"/>
+            </div>
+          </div>
+          <Textarea v-model="formData.chaoxing.cookie" @blur="saveSettings" rows="4" class="mono-input w-full" placeholder="超星 Cookie（包含 _uid=...）" />
         </div>
       </div>
 

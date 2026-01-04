@@ -210,7 +210,9 @@ const getServiceName = (serviceId: ServiceType): string => {
     nowcoder: '牛客',
     qiyu: '七鱼',
     zhihu: '知乎',
-    nami: '纳米'
+    nami: '纳米',
+    bilibili: 'B站',
+    chaoxing: '超星'
   };
   return serviceNames[serviceId] || serviceId;
 };

@@ -124,7 +124,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     nowcoder: false,
     qiyu: false,
     zhihu: false,
-    nami: false
+    nami: false,
+    bilibili: false,
+    chaoxing: false
   });
 
   // 当前活跃的链接前缀
@@ -519,7 +521,8 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
               .map(f => {
                 const nameMap: Record<string, string> = {
                   weibo: '微博', r2: 'R2', jd: '京东',
-                  nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
+                  nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米',
+                  bilibili: '哔哩哔哩', chaoxing: '超星'
                 };
                 return nameMap[f.serviceId] || f.serviceId;
               })
@@ -828,6 +831,9 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         console.log(`[历史记录] 追加结果: ${result.serviceId}`);
 
         invalidateCache();
+        // 关键：发出更新事件，通知历史记录列表（如 HistoryTableView）刷新
+        // 传递 historyId
+        await emitHistoryUpdated([historyId]);
         return;
       } catch (error) {
         if (attempt < MAX_ATTEMPTS - 1) {
@@ -941,6 +947,14 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     // 纳米
     const namiConfig = config.services.nami;
     serviceConfigStatus.value.nami = !!namiConfig?.cookie && namiConfig.cookie.trim().length > 0;
+
+    // 哔哩哔哩
+    const bilibiliConfig = config.services.bilibili;
+    serviceConfigStatus.value.bilibili = !!bilibiliConfig?.cookie && bilibiliConfig.cookie.trim().length > 0;
+
+    // 超星
+    const chaoxingConfig = config.services.chaoxing;
+    serviceConfigStatus.value.chaoxing = !!chaoxingConfig?.cookie && chaoxingConfig.cookie.trim().length > 0;
   }
 
   /**

@@ -62,11 +62,13 @@ const serviceLabels: Record<ServiceType, string> = {
   nowcoder: '牛客',
   qiyu: '七鱼',
   zhihu: '知乎',
-  nami: '纳米'
+  nami: '纳米',
+  bilibili: '哔哩哔哩',
+  chaoxing: '超星'
 };
 
 // 所有服务列表
-const allServices: ServiceType[] = ['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami'];
+const allServices: ServiceType[] = ['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami', 'bilibili', 'chaoxing'];
 
 // 可见的服务（在可用服务列表中的）
 const visibleServices = computed(() => {
