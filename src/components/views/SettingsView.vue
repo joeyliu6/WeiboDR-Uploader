@@ -27,6 +27,7 @@ import { emitHistoryUpdated } from '../../events/cacheEvents';
 import { useAnalytics } from '../../composables/useAnalytics';
 import { useAutoSync, createDefaultAutoSyncConfig, type AutoSyncConfig } from '../../composables/useAutoSync';
 import SyncConflictDialog from '../dialogs/SyncConflictDialog.vue';
+import S3SettingsPanel from '../settings/S3SettingsPanel.vue';
 import { Store } from '../../store';
 import { WebDAVClient } from '../../utils/webdav';
 import { historyDB } from '../../services/HistoryDatabase';
@@ -72,18 +73,14 @@ const appVersion = ref<string>('');
 const isClearingCache = ref(false);
 
 // --- 导航状态管理 ---
-type SettingsTab = 'general' | 'r2' | 'builtin' | 'cookie_auth' | 'links' | 'md_repair' | 'backup';
+type SettingsTab = 'general' | 's3' | 'builtin' | 'cookie_auth' | 'token_auth' | 'links' | 'md_repair' | 'backup';
 const activeTab = ref<SettingsTab>('general');
 
 const tabs = [
   { id: 'general', label: '常规设置', icon: 'pi pi-cog' },
   { type: 'separator' },
   { type: 'label', label: '私有云存储' },
-  { id: 'r2', label: 'Cloudflare R2', icon: 'pi pi-cloud' },
-  { id: 'cos', label: '腾讯云 COS', icon: 'pi pi-cloud' },
-  { id: 'oss', label: '阿里云 OSS', icon: 'pi pi-cloud' },
-  { id: 'qiniu', label: '七牛云', icon: 'pi pi-cloud' },
-  { id: 'upyun', label: '又拍云', icon: 'pi pi-cloud' },
+  { id: 's3', label: 'S3 兼容存储', icon: 'pi pi-cloud' },
   { type: 'separator' },
   { type: 'label', label: '公共图床' },
   { id: 'builtin', label: '开箱即用', icon: 'pi pi-box' },
@@ -552,6 +549,14 @@ const handleAnalyticsToggle = async () => {
     await analytics.enable();
   } else {
     await analytics.disable();
+  }
+};
+
+// S3 兼容存储测试连接处理
+const handleS3Test = (providerId: string) => {
+  const testFn = actions[providerId as keyof typeof actions];
+  if (typeof testFn === 'function') {
+    testFn();
   }
 };
 
@@ -2316,195 +2321,14 @@ onUnmounted(() => {
         </div>
       </div>
 
-      <div v-if="activeTab === 'r2'" class="settings-section">
-        <div class="section-header">
-          <h2>Cloudflare R2</h2>
-          <p class="section-desc">配置 S3 兼容的高速存储，用于数据备份与分发。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item">
-                <label>Account ID</label>
-                <InputText v-model="formData.r2.accountId" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Bucket Name</label>
-                <InputText v-model="formData.r2.bucketName" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Access Key ID</label>
-                <Password v-model="formData.r2.accessKeyId" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Secret Access Key</label>
-                <Password v-model="formData.r2.secretAccessKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>自定义路径 (Optional)</label>
-                <InputText v-model="formData.r2.path" @blur="saveSettings" placeholder="e.g. blog/images/" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>公开访问域名 (Public Domain)</label>
-                <InputText v-model="formData.r2.publicDomain" @blur="saveSettings" placeholder="https://images.example.com" class="w-full" />
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试 R2 连接" icon="pi pi-check" @click="actions.r2" :loading="testingConnections.r2" severity="secondary" outlined size="small" />
-        </div>
-      </div>
-
-      <!-- 腾讯云 COS -->
-      <div v-if="activeTab === 'cos'" class="settings-section">
-        <div class="section-header">
-          <h2>腾讯云 COS</h2>
-          <p class="section-desc">腾讯云对象存储，支持数据万象处理。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item">
-                <label>Secret ID</label>
-                <Password v-model="formData.cos.secretId" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Secret Key</label>
-                <Password v-model="formData.cos.secretKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>地域 (Region)</label>
-                <InputText v-model="formData.cos.region" @blur="saveSettings" placeholder="ap-guangzhou" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>存储桶 (Bucket)</label>
-                <InputText v-model="formData.cos.bucket" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>自定义路径 (Optional)</label>
-                <InputText v-model="formData.cos.path" @blur="saveSettings" placeholder="e.g. blog/images/" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>公开访问域名 (Public Domain)</label>
-                <InputText v-model="formData.cos.publicDomain" @blur="saveSettings" placeholder="https://images.example.com" class="w-full" />
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试 COS 连接" icon="pi pi-check" @click="actions.cos" :loading="testingConnections.cos" severity="secondary" outlined size="small" />
-        </div>
-      </div>
-
-      <!-- 阿里云 OSS -->
-      <div v-if="activeTab === 'oss'" class="settings-section">
-        <div class="section-header">
-          <h2>阿里云 OSS</h2>
-          <p class="section-desc">阿里云对象存储，支持图片处理服务。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item">
-                <label>Access Key ID</label>
-                <Password v-model="formData.oss.accessKeyId" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Access Key Secret</label>
-                <Password v-model="formData.oss.accessKeySecret" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>地域 (Region)</label>
-                <InputText v-model="formData.oss.region" @blur="saveSettings" placeholder="oss-cn-hangzhou" class="w-full" />
-            </div>
-            <div class="form-item">
-                <label>存储桶 (Bucket)</label>
-                <InputText v-model="formData.oss.bucket" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>自定义路径 (Optional)</label>
-                <InputText v-model="formData.oss.path" @blur="saveSettings" placeholder="e.g. blog/images/" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>公开访问域名 (Public Domain)</label>
-                <InputText v-model="formData.oss.publicDomain" @blur="saveSettings" placeholder="https://images.example.com" class="w-full" />
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试 OSS 连接" icon="pi pi-check" @click="actions.oss" :loading="testingConnections.oss" severity="secondary" outlined size="small" />
-        </div>
-      </div>
-
-      <!-- 七牛云 -->
-      <div v-if="activeTab === 'qiniu'" class="settings-section">
-        <div class="section-header">
-          <h2>七牛云存储</h2>
-          <p class="section-desc">七牛云对象存储，支持 CDN 加速。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item">
-                <label>Access Key (AK)</label>
-                <Password v-model="formData.qiniu.accessKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Secret Key (SK)</label>
-                <Password v-model="formData.qiniu.secretKey" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>地域 (Region)</label>
-                <InputText v-model="formData.qiniu.region" @blur="saveSettings" placeholder="cn-east-1" class="w-full" />
-                <small class="text-gray-500 mt-1">七牛云区域代码，如 cn-east-1、cn-south-1 等</small>
-            </div>
-            <div class="form-item">
-                <label>存储桶 (Bucket)</label>
-                <InputText v-model="formData.qiniu.bucket" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>绑定域名 (Domain)</label>
-                <InputText v-model="formData.qiniu.domain" @blur="saveSettings" placeholder="https://images.example.com" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>自定义路径 (Optional)</label>
-                <InputText v-model="formData.qiniu.path" @blur="saveSettings" placeholder="e.g. blog/images/" class="w-full" />
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试七牛云连接" icon="pi pi-check" @click="actions.qiniu" :loading="testingConnections.qiniu" severity="secondary" outlined size="small" />
-        </div>
-      </div>
-
-      <!-- 又拍云 -->
-      <div v-if="activeTab === 'upyun'" class="settings-section">
-        <div class="section-header">
-          <h2>又拍云存储</h2>
-          <p class="section-desc">又拍云对象存储，支持图片处理。</p>
-        </div>
-
-        <div class="form-grid">
-            <div class="form-item">
-                <label>Operator</label>
-                <Password v-model="formData.upyun.operator" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item">
-                <label>Password</label>
-                <Password v-model="formData.upyun.password" @blur="saveSettings" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>存储桶 (Bucket)</label>
-                <InputText v-model="formData.upyun.bucket" @blur="saveSettings" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>绑定域名 (Domain)</label>
-                <InputText v-model="formData.upyun.domain" @blur="saveSettings" placeholder="https://images.example.com" class="w-full" />
-            </div>
-            <div class="form-item span-full">
-                <label>自定义路径 (Optional)</label>
-                <InputText v-model="formData.upyun.path" @blur="saveSettings" placeholder="e.g. blog/images/" class="w-full" />
-            </div>
-        </div>
-
-        <div class="actions-row mt-4">
-            <Button label="测试又拍云连接" icon="pi pi-check" @click="actions.upyun" :loading="testingConnections.upyun" severity="secondary" outlined size="small" />
-        </div>
+      <!-- S3 兼容存储统一设置面板 -->
+      <div v-if="activeTab === 's3'" class="settings-section">
+        <S3SettingsPanel
+          :form-data="formData"
+          :testing-connections="testingConnections"
+          @save="saveSettings"
+          @test="handleS3Test"
+        />
       </div>
 
       <!-- 开箱即用 -->

@@ -222,7 +222,10 @@ export class RetryService {
           .map(f => {
             const nameMap: Record<string, string> = {
               weibo: '微博', r2: 'R2', jd: '京东',
-              nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米'
+              nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米',
+              bilibili: '哔哩哔哩', chaoxing: '超星',
+              smms: 'SM.MS', github: 'GitHub', imgur: 'Imgur',
+              cos: '腾讯云 COS', oss: '阿里云 OSS', qiniu: '七牛云', upyun: '又拍云'
             };
             return nameMap[f.serviceId] || f.serviceId;
           })

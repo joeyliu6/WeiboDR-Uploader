@@ -21,8 +21,6 @@ pub struct ImgurUploadResult {
 struct ImgurResponse {
     success: bool,
     data: Option<ImgurData>,
-    #[serde(skip)]
-    status: i32,
 }
 
 /// Imgur 返回的数据
@@ -131,7 +129,23 @@ pub async fn upload_to_imgur(
         .await
         .into_network_err_with("上传请求失败")?;
 
-    // 6. 解析响应
+    // 6. 检查 HTTP 状态码
+    let status = response.status();
+    if !status.is_success() {
+        let response_text = response.text().await.unwrap_or_default();
+        println!("[Imgur] API 错误响应: {}", response_text);
+        return match status {
+            reqwest::StatusCode::UNAUTHORIZED =>
+                Err(AppError::auth("Imgur Client ID 无效")),
+            reqwest::StatusCode::TOO_MANY_REQUESTS =>
+                Err(AppError::upload("Imgur", "API 调用频率超限 (1250次/天)")),
+            reqwest::StatusCode::FORBIDDEN =>
+                Err(AppError::auth("Imgur API 访问被拒绝")),
+            _ => Err(AppError::upload("Imgur", format!("上传失败 (HTTP {}): {}", status, response_text)))
+        };
+    }
+
+    // 7. 解析响应
     let response_text = response.text().await
         .into_network_err_with("无法读取响应")?;
 
@@ -140,7 +154,7 @@ pub async fn upload_to_imgur(
     let imgur_response: ImgurResponse = serde_json::from_str(&response_text)
         .map_err(|e| AppError::upload("Imgur", format!("JSON 解析失败: {}", e)))?;
 
-    // 7. 检查上传结果
+    // 8. 检查上传结果
     if !imgur_response.success {
         return Err(AppError::upload("Imgur", "上传失败，请检查 Client ID 是否正确"));
     }

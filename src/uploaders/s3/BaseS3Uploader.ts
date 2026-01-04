@@ -70,8 +70,10 @@ export abstract class BaseS3Uploader extends BaseUploader {
 
     const config = options.config;
     const fileName = filePath.split(/[/\\]/).pop() || '';
-    const path = this.getPath(config) || '';
-    const key = path + fileName;
+    const path = this.getPath(config);
+    // 确保 path 以 / 结尾（如果非空）
+    const normalizedPath = path ? (path.endsWith('/') ? path : path + '/') : '';
+    const key = normalizedPath + fileName;
 
     const rustResult = await this.uploadViaRust(
       filePath,

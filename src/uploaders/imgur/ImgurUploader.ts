@@ -58,18 +58,16 @@ export class ImgurUploader extends BaseUploader {
   }
 
   getThumbnailUrl(result: UploadResult, size: 'small' | 'medium' | 'large' = 'medium'): string {
-    const hash = result.metadata?.deleteHash;
-    if (!hash) {
-      return result.url;
+    const url = result.url;
+    const suffixes = { small: 's', medium: 'm', large: 'l' };
+
+    // Imgur URL 格式: https://i.imgur.com/{id}.{ext}
+    // 缩略图格式: https://i.imgur.com/{id}{suffix}.{ext}
+    const match = url.match(/^(https?:\/\/i\.imgur\.com\/)([^.]+)(\.\w+)$/);
+    if (match) {
+      return `${match[1]}${match[2]}${suffixes[size]}${match[3]}`;
     }
-
-    const suffixes = {
-      small: 's',
-      medium: 'm',
-      large: 'l'
-    };
-
-    return result.url.replace(/\.\w+$/, `${suffixes[size]}.jpg`);
+    return url;
   }
 
   async testConnection(config: any): Promise<import('../base/types').ConnectionTestResult> {

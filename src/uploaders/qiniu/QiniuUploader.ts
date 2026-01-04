@@ -27,7 +27,8 @@ export class QiniuUploader extends BaseS3Uploader {
   }
 
   protected getPath(config: any): string {
-    return (config.path || 'images/').replace(/\/$/, '/') || '';
+    const path = config.path || 'images/';
+    return path.endsWith('/') ? path : path + '/';
   }
 
   protected getPublicDomain(config: any): string {

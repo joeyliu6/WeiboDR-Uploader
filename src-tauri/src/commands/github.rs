@@ -100,9 +100,16 @@ pub async fn upload_to_github(
     // 5. 构建远程路径
     let remote_path = format!("{}/{}", path.trim_end_matches('/'), file_name);
 
+    // 对每个路径段分别编码，避免将 / 编码为 %2F
+    let encoded_path = remote_path
+        .split('/')
+        .map(|segment| urlencoding::encode(segment))
+        .collect::<Vec<_>>()
+        .join("/");
+
     let url = format!(
         "https://api.github.com/repos/{}/{}/contents/{}",
-        owner, repo, urlencoding::encode(&remote_path)
+        owner, repo, encoded_path
     );
 
     let request_body = GithubUploadRequest {

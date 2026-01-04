@@ -1,162 +1,120 @@
 // src/uploaders/r2/R2Uploader.ts
 // Cloudflare R2 上传器实现
+// 基于 S3 兼容协议，继承 BaseS3Uploader
 
-import { BaseUploader } from '../base/BaseUploader';
-import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
+import { BaseS3Uploader } from '../s3/BaseS3Uploader';
+import { UploadResult, ValidationResult } from '../base/types';
 import { R2ServiceConfig } from '../../config/types';
-import { convertToR2Error } from './R2Error';
-import { basename } from '@tauri-apps/api/path';
-
-/**
- * Rust 返回的 R2 上传结果
- */
-interface R2RustResult {
-  e_tag?: string;
-  size: number;
-}
 
 /**
  * Cloudflare R2 上传器
- * 实现 R2 对象存储上传功能
+ * 基于 S3 兼容协议实现，复用 BaseS3Uploader 的上传逻辑
  */
-export class R2Uploader extends BaseUploader {
+export class R2Uploader extends BaseS3Uploader {
   readonly serviceId = 'r2';
   readonly serviceName = 'Cloudflare R2';
 
   /**
-   * 返回对应的 Rust 命令名
+   * 获取 R2 端点
+   * 格式: https://{accountId}.r2.cloudflarestorage.com
    */
-  protected getRustCommand(): string {
-    return 'upload_to_r2'; // 新的 Rust 命令
+  protected getEndpoint(config: R2ServiceConfig): string {
+    return `https://${config.accountId}.r2.cloudflarestorage.com`;
+  }
+
+  /**
+   * 获取访问密钥 ID
+   */
+  protected getAccessKey(config: R2ServiceConfig): string {
+    return config.accessKeyId;
+  }
+
+  /**
+   * 获取访问密钥
+   */
+  protected getSecretKey(config: R2ServiceConfig): string {
+    return config.secretAccessKey;
+  }
+
+  /**
+   * 获取地域
+   * R2 固定使用 'auto'
+   */
+  protected getRegion(_config: R2ServiceConfig): string {
+    return 'auto';
+  }
+
+  /**
+   * 获取存储桶名称
+   */
+  protected getBucket(config: R2ServiceConfig): string {
+    return config.bucketName;
+  }
+
+  /**
+   * 获取存储路径前缀
+   */
+  protected getPath(config: R2ServiceConfig): string {
+    const path = config.path || '';
+    return path;
+  }
+
+  /**
+   * 获取公开访问域名
+   */
+  protected getPublicDomain(config: R2ServiceConfig): string {
+    return config.publicDomain || '';
   }
 
   /**
    * 验证 R2 配置
+   * 覆盖基类方法，提供更友好的中文错误提示
    */
   async validateConfig(config: any): Promise<ValidationResult> {
     const r2Config = config as R2ServiceConfig;
     const missingFields: string[] = [];
+    const errors: string[] = [];
 
     if (this.isEmpty(r2Config.accountId)) {
-      missingFields.push('账户 ID (Account ID)');
+      missingFields.push('accountId');
+      errors.push('账户 ID (Account ID) 不能为空');
     }
     if (this.isEmpty(r2Config.accessKeyId)) {
-      missingFields.push('访问密钥 ID (Access Key ID)');
+      missingFields.push('accessKeyId');
+      errors.push('访问密钥 ID (Access Key ID) 不能为空');
     }
     if (this.isEmpty(r2Config.secretAccessKey)) {
-      missingFields.push('访问密钥 (Secret Access Key)');
+      missingFields.push('secretAccessKey');
+      errors.push('访问密钥 (Secret Access Key) 不能为空');
     }
     if (this.isEmpty(r2Config.bucketName)) {
-      missingFields.push('存储桶名称 (Bucket Name)');
+      missingFields.push('bucketName');
+      errors.push('存储桶名称 (Bucket Name) 不能为空');
     }
     if (this.isEmpty(r2Config.publicDomain)) {
-      missingFields.push('公开访问域名 (Public Domain)');
+      missingFields.push('publicDomain');
+      errors.push('公开访问域名 (Public Domain) 不能为空');
     }
 
-    if (missingFields.length > 0) {
-      return {
-        valid: false,
-        missingFields,
-        errors: [`缺少必填字段: ${missingFields.join(', ')}`]
-      };
+    if (errors.length > 0) {
+      return { valid: false, missingFields, errors };
     }
 
     return { valid: true };
   }
 
   /**
-   * 上传文件到 R2
-   */
-  async upload(
-    filePath: string,
-    options: UploadOptions,
-    onProgress?: ProgressCallback
-  ): Promise<UploadResult> {
-    const config = options.config as R2ServiceConfig;
-
-    this.log('info', '开始上传到 R2', { filePath });
-
-    try {
-      // 生成 R2 存储的 Key
-      const fileName = await basename(filePath);
-      const key = this.buildKey(config.path, fileName);
-
-      this.log('info', 'R2 存储路径', { key });
-
-      // 调用 Rust 上传
-      const rustResult = await this.uploadViaRust(
-        filePath,
-        {
-          accountId: config.accountId,
-          accessKeyId: config.accessKeyId,
-          secretAccessKey: config.secretAccessKey,
-          bucketName: config.bucketName,
-          key: key
-        },
-        onProgress
-      ) as R2RustResult;
-
-      // 生成公开访问 URL
-      const url = this.buildPublicUrl(config.publicDomain, key);
-
-      this.log('info', 'R2 上传成功', { key, url });
-
-      return {
-        serviceId: 'r2',
-        fileKey: key,
-        url: url,
-        size: rustResult.size,
-        metadata: {
-          eTag: rustResult.e_tag,
-          bucket: config.bucketName
-        }
-      };
-    } catch (error) {
-      this.log('error', 'R2 上传失败', error);
-      throw convertToR2Error(error);
-    }
-  }
-
-  /**
-   * 生成 R2 公开访问 URL
-   */
-  getPublicUrl(result: UploadResult): string {
-    return result.url;
-  }
-
-  /**
    * 生成 R2 缩略图 URL
    * 使用 wsrv.nl 图片代理服务生成缩略图
+   * 覆盖基类方法，R2 没有原生缩略图 API
    */
-  getThumbnailUrl(result: UploadResult): string {
+  getThumbnailUrl(result: UploadResult, size: 'small' | 'medium' | 'large' = 'medium'): string {
+    const sizeMap = {
+      small: 200,
+      medium: 500,
+      large: 1000
+    };
     const encodedUrl = encodeURIComponent(result.url);
-    return `https://wsrv.nl/?url=${encodedUrl}&w=75&h=75&fit=cover&a=center&q=75&output=webp`;
-  }
-
-  /**
-   * 构建 R2 存储 Key
-   */
-  private buildKey(path: string, fileName: string): string {
-    // 清理路径，移除多余的斜杠
-    const cleanPath = path.replace(/^\/+|\/+$/g, ''); // 移除首尾斜杠
-    const cleanFileName = fileName.replace(/^\/+/, ''); // 移除文件名开头的斜杠
-
-    if (cleanPath) {
-      return `${cleanPath}/${cleanFileName}`;
-    }
-
-    return cleanFileName;
-  }
-
-  /**
-   * 构建公开访问 URL
-   */
-  private buildPublicUrl(publicDomain: string, key: string): string {
-    // 移除域名末尾的斜杠
-    const domain = publicDomain.replace(/\/+$/, '');
-    // 确保 key 不以斜杠开头
-    const cleanKey = key.replace(/^\/+/, '');
-
-    return `${domain}/${cleanKey}`;
+    return `https://wsrv.nl/?url=${encodedUrl}&w=${sizeMap[size]}&h=${sizeMap[size]}&fit=cover&a=center&q=75&output=webp`;
   }
 }

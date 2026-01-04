@@ -116,35 +116,6 @@ pub async fn upload_to_s3_compatible(
     })
 }
 
-/// AWS URI 编码（用于签名规范化）
-/// 根据 AWS 规范：A-Z a-z 0-9 - . _ ~ 不编码，其他使用 %XX 编码
-fn aws_uri_encode_path(path: &str) -> String {
-    path.split('/')
-        .map(|segment| aws_uri_encode(segment, false))
-        .collect::<Vec<_>>()
-        .join("/")
-}
-
-fn aws_uri_encode(input: &str, encode_slash: bool) -> String {
-    let mut encoded = String::with_capacity(input.len() * 3);
-
-    for byte in input.bytes() {
-        match byte {
-            b'A'..=b'Z' | b'a'..=b'z' | b'0'..=b'9' | b'-' | b'.' | b'_' | b'~' => {
-                encoded.push(byte as char);
-            }
-            b'/' if !encode_slash => {
-                encoded.push('/');
-            }
-            _ => {
-                encoded.push_str(&format!("%{:02X}", byte));
-            }
-        }
-    }
-
-    encoded
-}
-
 /// 列出 S3 兼容存储的对象
 #[tauri::command]
 pub async fn list_s3_objects(

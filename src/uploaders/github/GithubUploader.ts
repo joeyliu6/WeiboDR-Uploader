@@ -76,9 +76,7 @@ export class GithubUploader extends BaseUploader {
   }
 
   getPublicUrl(result: UploadResult): string {
-    if (result.metadata?.remotePath) {
-      return `https://raw.githubusercontent.com/${result.metadata.owner}/${result.metadata.repo}/${result.metadata.branch}/${result.metadata.remotePath}`;
-    }
+    // Rust 后端已返回完整的 download_url，直接使用
     return result.url;
   }
 
