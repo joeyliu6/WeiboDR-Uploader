@@ -2,8 +2,10 @@
 /**
  * Timeline Sidebar (Immich 风格点状时间轴)
  * 用点表示有图片的时间段，支持拖拽快速导航
+ * 支持完整时间轴显示（基于时间段统计数据）
  */
 import { ref, computed, onUnmounted, watch } from 'vue';
+import type { TimePeriodStats } from '../../../composables/useHistory';
 
 export interface TimeGroup {
   id: string;
@@ -15,6 +17,18 @@ export interface TimeGroup {
   count: number;
 }
 
+/** 月份点数据结构 */
+interface MonthDot {
+  id: string;
+  year: number;
+  month: number;
+  position: number;
+  label: string;
+  count: number;
+  /** 该月份的数据是否已加载 */
+  isLoaded: boolean;
+}
+
 const props = defineProps<{
   groups: TimeGroup[];
   scrollProgress: number;
@@ -24,10 +38,13 @@ const props = defineProps<{
   groupHeights?: Map<string, number>;
   /** 总布局高度 */
   totalLayoutHeight?: number;
+  /** 完整的时间段统计（用于显示所有月份） */
+  allTimePeriods?: TimePeriodStats[];
 }>();
 
 const emit = defineEmits<{
   (e: 'drag-scroll', progress: number): void;
+  (e: 'jump-to-period', year: number, month: number): void;
 }>();
 
 // 侧边栏容器引用
@@ -56,8 +73,62 @@ const useLayoutHeight = computed(() => {
   return props.groupHeights && props.totalLayoutHeight && props.totalLayoutHeight > 0;
 });
 
+// 已加载的月份集合（用于判断某月份是否已加载）
+const loadedMonthsSet = computed(() => {
+  const set = new Set<string>();
+  for (const group of props.groups) {
+    set.add(`${group.year}-${group.month}`);
+  }
+  return set;
+});
+
 // 计算每个月份的点位置
-const monthDots = computed(() => {
+// 优先使用完整时间段统计数据，确保时间轴显示所有月份
+const monthDots = computed<MonthDot[]>(() => {
+  // 优先使用完整时间段统计（显示所有月份）
+  if (props.allTimePeriods && props.allTimePeriods.length > 0) {
+    return computeDotsFromFullStats(props.allTimePeriods);
+  }
+
+  // 降级：使用已加载的 groups 数据
+  return computeDotsFromGroups();
+});
+
+/**
+ * 从完整时间段统计生成点位置（完整时间轴）
+ */
+function computeDotsFromFullStats(periods: TimePeriodStats[]): MonthDot[] {
+  if (periods.length === 0) return [];
+
+  // 计算总数用于位置计算
+  const totalWeight = periods.reduce((sum, p) => sum + p.count, 0);
+  if (totalWeight === 0) return [];
+
+  let cumulativeCount = 0;
+  const dots: MonthDot[] = [];
+
+  // periods 已按时间降序排列
+  for (const period of periods) {
+    const monthKey = `${period.year}-${period.month}`;
+    dots.push({
+      id: monthKey,
+      year: period.year,
+      month: period.month,
+      position: cumulativeCount / totalWeight,
+      label: `${period.year}年${period.month + 1}月`,
+      count: period.count,
+      isLoaded: loadedMonthsSet.value.has(monthKey),
+    });
+    cumulativeCount += period.count;
+  }
+
+  return dots;
+}
+
+/**
+ * 从已加载的 groups 数据生成点位置（降级方案）
+ */
+function computeDotsFromGroups(): MonthDot[] {
   if (props.groups.length === 0) return [];
 
   // 按月份聚合分组
@@ -97,13 +168,7 @@ const monthDots = computed(() => {
   if (totalWeight === 0) return [];
 
   // 生成点位置
-  const dots: Array<{
-    id: string;
-    year: number;
-    month: number;
-    position: number;
-    label: string;
-  }> = [];
+  const dots: MonthDot[] = [];
 
   for (const [key, data] of monthsMap) {
     dots.push({
@@ -112,11 +177,13 @@ const monthDots = computed(() => {
       month: data.month,
       position: data.cumulativeHeight / totalWeight,
       label: `${data.year}年${data.month + 1}月`,
+      count: data.count,
+      isLoaded: true, // groups 中的数据都是已加载的
     });
   }
 
   return dots;
-});
+}
 
 // 当前显示的月份标签
 const currentLabel = computed(() => {
@@ -183,9 +250,40 @@ const handleMouseLeave = () => {
   }
 };
 
+/**
+ * 找到最接近指定进度的月份点
+ */
+function findClosestDot(progress: number): MonthDot | null {
+  const dots = monthDots.value;
+  if (dots.length === 0) return null;
+
+  let closest = dots[0];
+  let minDistance = Math.abs(progress - closest.position);
+
+  for (const dot of dots) {
+    const distance = Math.abs(progress - dot.position);
+    if (distance < minDistance) {
+      minDistance = distance;
+      closest = dot;
+    }
+  }
+
+  return closest;
+}
+
 // 点击跳转
 const handleClick = () => {
-  if (hoverProgress.value !== null) {
+  if (hoverProgress.value === null) return;
+
+  // 找到最接近的月份点
+  const closestDot = findClosestDot(hoverProgress.value);
+
+  if (closestDot && !closestDot.isLoaded) {
+    // 如果该月份未加载，触发跳转加载事件
+    console.log(`[TimelineSidebar] 跳转到未加载月份: ${closestDot.year}年${closestDot.month + 1}月`);
+    emit('jump-to-period', closestDot.year, closestDot.month);
+  } else {
+    // 已加载，直接滚动
     emit('drag-scroll', hoverProgress.value);
   }
 };
@@ -245,8 +343,9 @@ onUnmounted(() => {
         v-for="dot in monthDots"
         :key="dot.id"
         class="month-dot"
+        :class="{ loaded: dot.isLoaded, unloaded: !dot.isLoaded }"
         :style="{ top: `${dot.position * 100}%` }"
-        :title="dot.label"
+        :title="`${dot.label} (${dot.count}张${dot.isLoaded ? '' : ' - 点击加载'})`"
       />
     </div>
 
@@ -297,20 +396,37 @@ onUnmounted(() => {
   align-items: center;
 }
 
-/* 月份点 */
+/* 月份点 - 基础样式 */
 .month-dot {
   position: absolute;
   width: 4px;
   height: 4px;
   border-radius: 50%;
-  background: var(--text-secondary);
-  opacity: 0.3;
   transform: translateY(-50%);
-  transition: opacity 0.2s, transform 0.2s;
+  transition: opacity 0.2s, transform 0.2s, background 0.2s;
 }
 
-.timeline-sidebar:hover .month-dot {
+/* 已加载的月份点 - 实心 */
+.month-dot.loaded {
+  background: var(--primary);
   opacity: 0.5;
+}
+
+/* 未加载的月份点 - 空心 */
+.month-dot.unloaded {
+  background: transparent;
+  border: 1.5px solid var(--text-secondary);
+  opacity: 0.35;
+  box-sizing: border-box;
+}
+
+.timeline-sidebar:hover .month-dot.loaded {
+  opacity: 0.7;
+}
+
+.timeline-sidebar:hover .month-dot.unloaded {
+  opacity: 0.5;
+  border-color: var(--primary);
 }
 
 /* 位置指示器 */

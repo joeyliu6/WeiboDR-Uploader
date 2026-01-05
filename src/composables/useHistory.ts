@@ -9,7 +9,7 @@ import { writeTextFile } from '@tauri-apps/plugin-fs';
 import { writeText } from '@tauri-apps/plugin-clipboard-manager';
 import type { HistoryItem, ServiceType } from '../config/types';
 import { getActivePrefix } from '../config/types';
-import { historyDB, type PageResult, type SearchResult, type SearchOptions } from '../services/HistoryDatabase';
+import { historyDB, type PageResult, type SearchResult, type SearchOptions, type TimePeriodStats } from '../services/HistoryDatabase';
 import { useToast } from './useToast';
 import { useConfirm } from './useConfirm';
 import { useConfigManager } from './useConfig';
@@ -60,6 +60,10 @@ const totalCount = ref(0);
 const hasMore = ref(true);
 const isLoadingMore = ref(false);
 
+// 时间段统计（用于时间轴完整显示）
+const sharedTimePeriodStats: Ref<TimePeriodStats[]> = shallowRef([]);
+const isTimePeriodStatsLoaded = ref(false);
+
 /**
  * 模块级别的数据重新加载函数（用于事件处理）
  * 直接更新 sharedAllHistoryItems，供时间轴视图使用
@@ -71,16 +75,19 @@ async function reloadSharedData(): Promise<void> {
 
     currentPage.value = 1;
 
-    const { items, total, hasMore: more } = await historyDB.getPage({
-      page: 1,
-      pageSize: PAGE_SIZE,
-    });
+    // 并行加载分页数据和时间段统计
+    const [pageResult, timePeriodStats] = await Promise.all([
+      historyDB.getPage({ page: 1, pageSize: PAGE_SIZE }),
+      historyDB.getTimePeriodStats(),
+    ]);
 
-    sharedAllHistoryItems.value = items;
-    totalCount.value = total;
-    hasMore.value = more;
+    sharedAllHistoryItems.value = pageResult.items;
+    totalCount.value = pageResult.total;
+    hasMore.value = pageResult.hasMore;
+    sharedTimePeriodStats.value = timePeriodStats;
+    isTimePeriodStatsLoaded.value = true;
 
-    console.log(`[历史记录] 事件触发重新加载: ${items.length}/${total} 条`);
+    console.log(`[历史记录] 事件触发重新加载: ${pageResult.items.length}/${pageResult.total} 条, ${timePeriodStats.length} 个月份`);
 
     isDataLoaded.value = true;
     lastLoadTime.value = Date.now();
@@ -513,6 +520,77 @@ export function useHistoryManager() {
     return result;
   }
 
+  /**
+   * 加载时间段统计信息（轻量级，用于时间轴完整显示）
+   * 只在首次加载或数据变化时调用
+   */
+  async function loadTimePeriodStats(): Promise<TimePeriodStats[]> {
+    // 如果已加载，直接返回缓存
+    if (isTimePeriodStatsLoaded.value && sharedTimePeriodStats.value.length > 0) {
+      return sharedTimePeriodStats.value;
+    }
+
+    await initDatabase();
+    const stats = await historyDB.getTimePeriodStats();
+    sharedTimePeriodStats.value = stats;
+    isTimePeriodStatsLoaded.value = true;
+    console.log(`[历史记录] 加载时间段统计: ${stats.length} 个月份`);
+    return stats;
+  }
+
+  /**
+   * 跳转到指定月份并重新加载数据
+   * 从该月份的最新时间戳开始加载数据
+   *
+   * @param year 年份
+   * @param month 月份 (0-11)
+   * @returns 是否成功跳转
+   */
+  async function jumpToMonth(year: number, month: number): Promise<boolean> {
+    try {
+      isLoading.value = true;
+      await initDatabase();
+
+      // 从时间段统计中找到目标月份的时间戳
+      const targetPeriod = sharedTimePeriodStats.value.find(
+        p => p.year === year && p.month === month
+      );
+
+      if (!targetPeriod) {
+        console.warn(`[历史记录] 未找到目标月份: ${year}年${month + 1}月`);
+        return false;
+      }
+
+      // 从该月份的最大时间戳开始加载
+      const { items, total, hasMore: more } = await historyDB.getPageFromTimestamp(
+        targetPeriod.maxTimestamp,
+        PAGE_SIZE
+      );
+
+      if (items.length === 0) {
+        console.warn(`[历史记录] 目标月份无数据: ${year}年${month + 1}月`);
+        return false;
+      }
+
+      // 重置分页状态，替换数据
+      currentPage.value = 1;
+      allHistoryItems.value = items;
+      totalCount.value = total;
+      hasMore.value = more;
+      dataVersion.value++;
+
+      console.log(`[历史记录] 跳转到 ${year}年${month + 1}月: 加载 ${items.length} 条`);
+      return true;
+
+    } catch (error) {
+      console.error(`[历史记录] 跳转失败:`, error);
+      toast.error('跳转失败', String(error));
+      return false;
+    } finally {
+      isLoading.value = false;
+    }
+  }
+
   return {
     // 状态
     allHistoryItems,
@@ -523,6 +601,9 @@ export function useHistoryManager() {
     totalCount,
     hasMore,
     isLoadingMore,
+
+    // 时间段统计
+    timePeriodStats: sharedTimePeriodStats,
 
     // 方法
     loadHistory,
@@ -537,5 +618,12 @@ export function useHistoryManager() {
     bulkCopyLinks,
     bulkExportJSON,
     bulkDeleteRecords,
+
+    // 时间轴相关
+    loadTimePeriodStats,
+    jumpToMonth,
   };
 }
+
+// 导出类型
+export type { TimePeriodStats };

@@ -42,6 +42,15 @@ export interface SearchResult {
   hasMore: boolean;
 }
 
+/** 时间段统计信息（用于时间轴显示） */
+export interface TimePeriodStats {
+  year: number;
+  month: number;  // 0-11
+  count: number;
+  minTimestamp: number;
+  maxTimestamp: number;
+}
+
 /** 数据库行类型（与 SQL 表结构对应） */
 interface HistoryItemRow {
   id: string;
@@ -491,6 +500,89 @@ class HistoryDatabase {
 
     const result = await db.select<{ count: number }[]>(query, params);
     return result[0]?.count || 0;
+  }
+
+  /**
+   * 获取所有时间段的统计信息（轻量级查询）
+   * 只返回每个月份的记录数，不返回完整记录数据
+   * 用于时间轴侧边栏显示完整的时间范围
+   *
+   * @returns 按时间降序排列的月份统计列表
+   */
+  async getTimePeriodStats(): Promise<TimePeriodStats[]> {
+    const db = await this.ensureInitialized();
+
+    // 使用 SQL 聚合查询，按年月分组统计
+    // SQLite 的 strftime 从 timestamp（毫秒）提取年月
+    const rows = await db.select<{
+      year: number;
+      month: number;
+      count: number;
+      min_timestamp: number;
+      max_timestamp: number;
+    }[]>(`
+      SELECT
+        CAST(strftime('%Y', timestamp / 1000, 'unixepoch') AS INTEGER) as year,
+        CAST(strftime('%m', timestamp / 1000, 'unixepoch') AS INTEGER) - 1 as month,
+        COUNT(*) as count,
+        MIN(timestamp) as min_timestamp,
+        MAX(timestamp) as max_timestamp
+      FROM history_items
+      GROUP BY year, strftime('%m', timestamp / 1000, 'unixepoch')
+      ORDER BY year DESC, month DESC
+    `);
+
+    console.log(`[HistoryDB] 时间段统计: ${rows.length} 个月份`);
+
+    return rows.map(row => ({
+      year: row.year,
+      month: row.month,
+      count: row.count,
+      minTimestamp: row.min_timestamp,
+      maxTimestamp: row.max_timestamp,
+    }));
+  }
+
+  /**
+   * 从指定时间戳开始分页加载数据
+   * 用于时间轴跳转功能，从目标月份开始加载
+   *
+   * @param fromTimestamp 起始时间戳（加载该时间戳之前的数据）
+   * @param pageSize 每页数量
+   * @returns 分页结果
+   */
+  async getPageFromTimestamp(fromTimestamp: number, pageSize: number = PAGE_SIZE): Promise<PageResult> {
+    const db = await this.ensureInitialized();
+
+    // 获取该时间戳之前（含）的总数
+    const countResult = await db.select<{ count: number }[]>(
+      'SELECT COUNT(*) as count FROM history_items WHERE timestamp <= $1',
+      [fromTimestamp]
+    );
+    const countBefore = countResult[0]?.count || 0;
+
+    // 获取全部总数
+    const totalResult = await db.select<{ count: number }[]>(
+      'SELECT COUNT(*) as count FROM history_items'
+    );
+    const total = totalResult[0]?.count || 0;
+
+    // 从该时间戳开始，按时间降序获取数据
+    const rows = await db.select<HistoryItemRow[]>(
+      `SELECT * FROM history_items
+       WHERE timestamp <= $1
+       ORDER BY timestamp DESC
+       LIMIT $2`,
+      [fromTimestamp, pageSize]
+    );
+
+    const items = rows.map(row => this.rowToItem(row));
+    // 该时间戳之前的数据是否已全部加载
+    const hasMore = items.length < countBefore;
+
+    console.log(`[HistoryDB] 从时间戳 ${fromTimestamp} 加载: ${items.length} 条，剩余 ${countBefore - items.length} 条`);
+
+    return { items, total, hasMore };
   }
 
   /**

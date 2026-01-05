@@ -6,6 +6,7 @@
  */
 import { ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } from 'vue';
 import { useHistoryViewState, type LinkFormat } from '../../composables/useHistoryViewState';
+import { useHistoryManager } from '../../composables/useHistory';
 import { useVirtualTimeline, type PhotoGroup } from '../../composables/useVirtualTimeline';
 import { useThumbCache } from '../../composables/useThumbCache';
 import { useImageMetadataFixer } from '../../composables/useImageMetadataFixer';
@@ -32,6 +33,7 @@ const emit = defineEmits<{
 
 const toast = useToast();
 const viewState = useHistoryViewState();
+const historyManager = useHistoryManager();
 const thumbCache = useThumbCache();
 const metadataFixer = useImageMetadataFixer();
 
@@ -400,6 +402,26 @@ const handleDragScroll = (progress: number) => {
   scrollToProgress(progress, true);
 };
 
+/**
+ * 处理时间轴跳转到未加载的月份
+ */
+const handleJumpToPeriod = async (year: number, month: number) => {
+  console.log(`[TimelineView] 跳转到 ${year}年${month + 1}月`);
+
+  const success = await historyManager.jumpToMonth(year, month);
+
+  if (success) {
+    // 跳转成功，滚动到顶部显示该月份的数据
+    await nextTick();
+    if (scrollContainer.value) {
+      scrollContainer.value.scrollTop = 0;
+    }
+    // 强制更新可见区域
+    forceUpdateVisibleArea();
+    toast.success('已跳转', `${year}年${month + 1}月`);
+  }
+};
+
 // ==================== Lightbox ====================
 
 const openLightbox = (item: HistoryItem) => {
@@ -440,7 +462,11 @@ onMounted(async () => {
   // 启动延迟清理定时器
   startCleanupTimer();
 
-  await viewState.loadHistory();
+  // 并行加载历史记录和时间段统计
+  await Promise.all([
+    viewState.loadHistory(),
+    historyManager.loadTimePeriodStats(),
+  ]);
 
   // 初始加载后，检查并修复缺失元数据
   nextTick(() => {
@@ -623,7 +649,9 @@ watch(
         :current-month-label="currentMonthLabel"
         :group-heights="groupHeightMap"
         :total-layout-height="totalHeight"
+        :all-time-periods="historyManager.timePeriodStats.value"
         @drag-scroll="handleDragScroll"
+        @jump-to-period="handleJumpToPeriod"
       />
     </div>
 
