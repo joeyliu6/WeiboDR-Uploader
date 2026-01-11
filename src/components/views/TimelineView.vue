@@ -730,7 +730,6 @@ watch(
         :visible-ratio="visibleRatio"
         :total-height="totalHeight"
         :loaded-months="loadedMonthsSet"
-        :show-density="true"
         :month-layout-positions="monthLayoutPositions"
         @drag-scroll="handleDragScroll"
         @jump-to-period="handleJumpToPeriod"
@@ -1067,7 +1066,7 @@ watch(
 /* 平板设备 (≤1024px) */
 @media (max-width: 1024px) {
   .timeline-scroll-area {
-    padding: 0 50px 0 16px; /* 减少左侧内边距 */
+    padding: 0 50px 0 16px;
   }
 
   .group-title {
@@ -1082,7 +1081,7 @@ watch(
 /* 手机设备 (≤768px) */
 @media (max-width: 768px) {
   .timeline-scroll-area {
-    padding: 0 40px 0 12px; /* 进一步减少内边距 */
+    padding: 0 40px 0 12px;
   }
 
   .group-header {

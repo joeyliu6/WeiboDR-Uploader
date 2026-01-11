@@ -2,10 +2,16 @@
 /**
  * Timeline Sidebar (Immich 风格点状时间轴)
  * 用点表示有图片的时间段，支持拖拽快速导航
- * 支持完整时间轴显示（基于时间段统计数据）
+ *
+ * 智能过滤策略（参考 Google 相册）：
+ * 1. 层级降级：根据时间跨度自动调整显示粒度
+ * 2. 最小间距过滤：贪心选点，保证点不重叠
+ * 3. 优先级选点：重要时间点优先显示
+ * 4. 低密度过滤：数量过少的月份点隐藏
  */
-import { ref, computed, onUnmounted, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue';
 import type { TimePeriodStats } from '../../../composables/useHistory';
+import { filterMonthPoints, type FilteredPoint } from '../../../utils/timelineFilter';
 
 export interface TimeGroup {
   id: string;
@@ -17,17 +23,7 @@ export interface TimeGroup {
   count: number;
 }
 
-/** 月份点数据结构 */
-interface MonthDot {
-  id: string;
-  year: number;
-  month: number;
-  position: number;
-  label: string;
-  count: number;
-  /** 该月份的数据是否已加载 */
-  isLoaded: boolean;
-}
+// MonthDot 类型现在使用 FilteredPoint（来自 timelineFilter.ts）
 
 const props = defineProps<{
   groups: TimeGroup[];
@@ -50,6 +46,12 @@ const emit = defineEmits<{
 // 侧边栏容器引用
 const sidebarRef = ref<HTMLElement | null>(null);
 
+// 容器高度（用于智能过滤计算）
+const containerHeight = ref(0);
+
+// ResizeObserver 实例
+let resizeObserver: ResizeObserver | null = null;
+
 // 鼠标悬停位置（0-1），null 表示不在区域内
 const hoverProgress = ref<number | null>(null);
 
@@ -63,16 +65,6 @@ watch(() => props.scrollProgress, () => {
   }
 });
 
-// 计算总照片数
-const totalCount = computed(() => {
-  return props.groups.reduce((sum, g) => sum + g.count, 0);
-});
-
-// 是否使用布局高度（更精确）
-const useLayoutHeight = computed(() => {
-  return props.groupHeights && props.totalLayoutHeight && props.totalLayoutHeight > 0;
-});
-
 // 已加载的月份集合（用于判断某月份是否已加载）
 const loadedMonthsSet = computed(() => {
   const set = new Set<string>();
@@ -82,108 +74,27 @@ const loadedMonthsSet = computed(() => {
   return set;
 });
 
-// 计算每个月份的点位置
-// 优先使用完整时间段统计数据，确保时间轴显示所有月份
-const monthDots = computed<MonthDot[]>(() => {
-  // 优先使用完整时间段统计（显示所有月份）
-  if (props.allTimePeriods && props.allTimePeriods.length > 0) {
-    return computeDotsFromFullStats(props.allTimePeriods);
+/**
+ * 计算月份点（使用智能过滤算法）
+ *
+ * 处理流程：
+ * 1. 低密度过滤 → 去掉照片数 < 平均值 10% 的月份
+ * 2. 层级降级 → 根据时间跨度决定粒度
+ * 3. 最小间距过滤 → 贪心算法，保证点间距足够
+ * 4. 边界保护 → 确保第一个和最后一个月份始终显示
+ */
+const monthDots = computed<FilteredPoint[]>(() => {
+  // 必须有完整的时间段统计数据和有效的容器高度
+  if (!props.allTimePeriods?.length || containerHeight.value <= 0) {
+    return [];
   }
 
-  // 降级：使用已加载的 groups 数据
-  return computeDotsFromGroups();
+  return filterMonthPoints(
+    props.allTimePeriods,
+    loadedMonthsSet.value,
+    containerHeight.value
+  );
 });
-
-/**
- * 从完整时间段统计生成点位置（完整时间轴）
- */
-function computeDotsFromFullStats(periods: TimePeriodStats[]): MonthDot[] {
-  if (periods.length === 0) return [];
-
-  // 计算总数用于位置计算
-  const totalWeight = periods.reduce((sum, p) => sum + p.count, 0);
-  if (totalWeight === 0) return [];
-
-  let cumulativeCount = 0;
-  const dots: MonthDot[] = [];
-
-  // periods 已按时间降序排列
-  for (const period of periods) {
-    const monthKey = `${period.year}-${period.month}`;
-    dots.push({
-      id: monthKey,
-      year: period.year,
-      month: period.month,
-      position: cumulativeCount / totalWeight,
-      label: `${period.year}年${period.month + 1}月`,
-      count: period.count,
-      isLoaded: loadedMonthsSet.value.has(monthKey),
-    });
-    cumulativeCount += period.count;
-  }
-
-  return dots;
-}
-
-/**
- * 从已加载的 groups 数据生成点位置（降级方案）
- */
-function computeDotsFromGroups(): MonthDot[] {
-  if (props.groups.length === 0) return [];
-
-  // 按月份聚合分组
-  const monthsMap = new Map<string, {
-    year: number;
-    month: number;
-    count: number;
-    cumulativeHeight: number;
-  }>();
-
-  let cumulativeHeight = 0;
-  let cumulativeCount = 0;
-
-  // 分组已按日期降序排列
-  for (const group of props.groups) {
-    const monthKey = `${group.year}-${group.month}`;
-    const height = props.groupHeights?.get(group.id) || 0;
-
-    if (!monthsMap.has(monthKey)) {
-      monthsMap.set(monthKey, {
-        year: group.year,
-        month: group.month,
-        count: 0,
-        cumulativeHeight: useLayoutHeight.value ? cumulativeHeight : cumulativeCount,
-      });
-    }
-
-    const monthData = monthsMap.get(monthKey)!;
-    monthData.count += group.count;
-
-    cumulativeHeight += height;
-    cumulativeCount += group.count;
-  }
-
-  // 计算总权重
-  const totalWeight = useLayoutHeight.value ? props.totalLayoutHeight! : totalCount.value;
-  if (totalWeight === 0) return [];
-
-  // 生成点位置
-  const dots: MonthDot[] = [];
-
-  for (const [key, data] of monthsMap) {
-    dots.push({
-      id: key,
-      year: data.year,
-      month: data.month,
-      position: data.cumulativeHeight / totalWeight,
-      label: `${data.year}年${data.month + 1}月`,
-      count: data.count,
-      isLoaded: true, // groups 中的数据都是已加载的
-    });
-  }
-
-  return dots;
-}
 
 // 当前显示的月份标签
 const currentLabel = computed(() => {
@@ -221,10 +132,6 @@ const indicatorStyle = computed(() => {
   };
 });
 
-// 标签位置（跟随指示器）
-const labelPosition = computed(() => {
-  return hoverProgress.value ?? props.scrollProgress;
-});
 
 // 鼠标移动
 const handleMouseMove = (e: MouseEvent) => {
@@ -253,7 +160,7 @@ const handleMouseLeave = () => {
 /**
  * 找到最接近指定进度的月份点
  */
-function findClosestDot(progress: number): MonthDot | null {
+function findClosestDot(progress: number): FilteredPoint | null {
   const dots = monthDots.value;
   if (dots.length === 0) return null;
 
@@ -321,7 +228,37 @@ const stopDrag = () => {
   document.removeEventListener('mouseup', stopDrag);
 };
 
+// ==================== 生命周期 ====================
+
+onMounted(() => {
+  // 初始化容器高度
+  updateContainerHeight();
+
+  // 监听容器大小变化
+  if (sidebarRef.value) {
+    resizeObserver = new ResizeObserver(() => {
+      updateContainerHeight();
+    });
+    resizeObserver.observe(sidebarRef.value);
+  }
+});
+
+/** 更新容器可用高度 */
+function updateContainerHeight() {
+  if (sidebarRef.value) {
+    // 轨道区域高度 = 容器高度 - 上下 padding (20px * 2)
+    const rect = sidebarRef.value.getBoundingClientRect();
+    containerHeight.value = rect.height - 40;
+  }
+}
+
 onUnmounted(() => {
+  // 清理 ResizeObserver
+  if (resizeObserver) {
+    resizeObserver.disconnect();
+    resizeObserver = null;
+  }
+
   document.removeEventListener('mousemove', onDrag);
   document.removeEventListener('mouseup', stopDrag);
 });

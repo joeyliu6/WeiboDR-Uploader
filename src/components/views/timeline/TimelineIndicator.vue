@@ -5,6 +5,7 @@
  */
 import { ref, computed, onMounted, onUnmounted } from 'vue';
 import type { TimePeriodStats } from '../../../composables/useHistory';
+import { filterMonthPoints, type FilteredPoint } from '../../../utils/timelineFilter';
 
 // ==================== 类型定义 ====================
 
@@ -30,7 +31,7 @@ interface MonthSegment {
 
 // ==================== Props & Emits ====================
 
-const props = withDefaults(defineProps<{
+const props = defineProps<{
   /** 时间段统计数据 */
   periods: TimePeriodStats[];
   /** 当前滚动进度 (0-1) */
@@ -41,13 +42,9 @@ const props = withDefaults(defineProps<{
   totalHeight: number;
   /** 已加载的月份集合 */
   loadedMonths?: Set<string>;
-  /** 是否显示密度指示 */
-  showDensity?: boolean;
   /** 基于布局高度的月份位置映射（用于精确定位） */
   monthLayoutPositions?: Map<string, { start: number; end: number }>;
-}>(), {
-  showDensity: true,
-});
+}>();
 
 const emit = defineEmits<{
   (e: 'drag-scroll', progress: number): void;
@@ -75,14 +72,6 @@ let resizeObserver: ResizeObserver | null = null;
 // ==================== Computed ====================
 
 /**
- * 计算最大月份照片数（用于密度标准化）
- */
-const maxMonthCount = computed(() => {
-  if (props.periods.length === 0) return 1;
-  return Math.max(...props.periods.map(p => p.count), 1);
-});
-
-/**
  * 计算总照片数
  */
 const totalCount = computed(() => {
@@ -90,7 +79,7 @@ const totalCount = computed(() => {
 });
 
 /**
- * 生成月份区段数据
+ * 生成月份区段数据（用于年份区段计算）
  * 优先使用布局高度位置，fallback 到数量位置
  */
 const monthSegments = computed<MonthSegment[]>(() => {
@@ -101,7 +90,6 @@ const monthSegments = computed<MonthSegment[]>(() => {
 
   for (const period of props.periods) {
     const monthKey = `${period.year}-${period.month}`;
-    const density = Math.ceil((period.count / maxMonthCount.value) * 5);
 
     // 优先使用布局位置（精确），fallback 到数量位置（估算）
     let position: number;
@@ -117,7 +105,7 @@ const monthSegments = computed<MonthSegment[]>(() => {
       year: period.year,
       month: period.month,
       position,
-      density: Math.max(1, Math.min(5, density)),
+      density: 1, // 不再使用，保留以兼容类型
       count: period.count,
       isLoaded: props.loadedMonths?.has(monthKey) ?? true,
     });
@@ -126,6 +114,18 @@ const monthSegments = computed<MonthSegment[]>(() => {
   }
 
   return segments;
+});
+
+/**
+ * 过滤后的月份点（Google Photos 风格：智能过滤 + 动态间距）
+ */
+const filteredDots = computed<FilteredPoint[]>(() => {
+  if (props.periods.length === 0 || containerHeight.value <= 0) return [];
+  return filterMonthPoints(
+    props.periods,
+    props.loadedMonths ?? new Set(),
+    containerHeight.value
+  );
 });
 
 /**
@@ -296,21 +296,6 @@ const scrubberStyle = computed(() => {
 // ==================== Methods ====================
 
 /**
- * 获取密度对应的宽度
- */
-function getDensityWidth(density: number): string {
-  const widths = ['2px', '3px', '4px', '5px', '6px'];
-  return widths[Math.min(density - 1, 4)];
-}
-
-/**
- * 获取密度对应的透明度
- */
-function getDensityOpacity(density: number): number {
-  return 0.3 + (density / 5) * 0.5;
-}
-
-/**
  * 格式化月份
  */
 function formatMonth(month: number): string {
@@ -472,21 +457,13 @@ onUnmounted(() => {
       <!-- 轨道背景 -->
       <div class="track-background"></div>
 
-      <!-- 密度指示条 -->
+      <!-- 月份点（Google Photos 风格：统一灰色圆点，智能过滤） -->
       <div
-        v-for="segment in monthSegments"
-        :key="segment.id"
-        class="density-segment"
-        :class="{
-          loaded: segment.isLoaded,
-          unloaded: !segment.isLoaded
-        }"
-        :style="{
-          top: `${segment.position * 100}%`,
-          width: showDensity ? getDensityWidth(segment.density) : '3px',
-          opacity: getDensityOpacity(segment.density),
-        }"
-        :title="`${segment.year}年${segment.month + 1}月 (${segment.count}张)`"
+        v-for="dot in filteredDots"
+        :key="dot.id"
+        class="month-dot"
+        :style="{ top: `${dot.position * 100}%` }"
+        :title="`${dot.label} (${dot.count}张)`"
       />
 
       <!-- 年份分隔线 -->
@@ -605,24 +582,21 @@ onUnmounted(() => {
   opacity: 0.3;
 }
 
-/* 密度区段 */
-.density-segment {
+/* 月份点（Google Photos 风格：统一灰色圆点） */
+.month-dot {
   position: absolute;
-  height: 3px;
-  border-radius: 2px;
-  background: var(--primary);
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-secondary);
+  opacity: 0.4;
   transform: translateY(-50%);
-  transition: width 0.2s, opacity 0.2s;
+  transition: opacity 0.2s;
+  pointer-events: none;
 }
 
-.density-segment.unloaded {
-  background: transparent;
-  border: 1px solid var(--text-secondary);
-  opacity: 0.3 !important;
-}
-
-.timeline-indicator:hover .density-segment {
-  opacity: 0.8 !important;
+.timeline-indicator:hover .month-dot {
+  opacity: 0.6;
 }
 
 /* 年份分隔线 */
@@ -724,21 +698,10 @@ onUnmounted(() => {
   transform: translateX(12px) scale(0.9);
 }
 
-/* ==================== 可见区域指示器 ==================== */
+/* ==================== 可见区域指示器（已隐藏） ==================== */
 
 .visible-indicator {
-  position: absolute;
-  right: 14px;
-  width: 4px;
-  background: var(--primary);
-  border-radius: 2px;
-  opacity: 0.15;
-  pointer-events: none;
-  min-height: 20px;
-}
-
-.timeline-indicator:hover .visible-indicator {
-  opacity: 0.25;
+  display: none;
 }
 
 /* ==================== 响应式 ==================== */
