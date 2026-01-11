@@ -582,21 +582,21 @@ onUnmounted(() => {
   opacity: 0.3;
 }
 
-/* 月份点（Google Photos 风格：统一灰色圆点） */
+/* 月份点（Google Photos 风格：统一灰色圆点，更小更密集） */
 .month-dot {
   position: absolute;
-  width: 6px;
-  height: 6px;
+  width: 4px;
+  height: 4px;
   border-radius: 50%;
   background: var(--text-secondary);
-  opacity: 0.4;
+  opacity: 0.25;
   transform: translateY(-50%);
   transition: opacity 0.2s;
   pointer-events: none;
 }
 
 .timeline-indicator:hover .month-dot {
-  opacity: 0.6;
+  opacity: 0.4;
 }
 
 /* 年份分隔线 */

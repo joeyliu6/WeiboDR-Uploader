@@ -37,11 +37,11 @@ const PRIORITY = {
   otherMonth: 10,      // 其他月份 - 基础分
 };
 
-/** 默认最小间距（像素） */
-const DEFAULT_MIN_GAP_PX = 40;
+/** 默认最小间距（像素）- 更密集显示 */
+const DEFAULT_MIN_GAP_PX = 18;
 
-/** 低密度阈值：低于平均值的 10% */
-const LOW_DENSITY_THRESHOLD = 0.1;
+/** 低密度阈值：低于平均值的 2%（更宽松以保留更多月份点） */
+const LOW_DENSITY_THRESHOLD = 0.02;
 
 // ==================== 核心函数 ====================
 
@@ -57,15 +57,15 @@ export function getLabelGranularity(timeSpanMonths: number, availableHeight: num
   // 密度 = 每像素代表多少个月
   const density = timeSpanMonths / availableHeight;
 
-  // 阈值设计：
-  // density < 0.05 → 每 20px 一个月 → 空间充足，显示所有月份
-  // density < 0.2  → 每 5px 一个月  → 中等，显示季度
-  // density < 1    → 每 1px 一个月  → 紧凑，只显示年份
-  // density >= 1   → 超密集         → 显示年代
+  // 阈值设计（放宽以显示更多月份点）：
+  // density < 0.1  → 空间充足，显示所有月份
+  // density < 0.5  → 中等，显示季度
+  // density < 2    → 紧凑，只显示年份
+  // density >= 2   → 超密集，显示年代
 
-  if (density < 0.05) return 'month';
-  if (density < 0.2) return 'quarter';
-  if (density < 1) return 'year';
+  if (density < 0.1) return 'month';
+  if (density < 0.5) return 'quarter';
+  if (density < 2) return 'year';
   return 'decade';
 }
 
@@ -317,8 +317,8 @@ export function filterMonthPoints(
   const candidates = generateCandidatePoints(filteredPeriods, loadedMonths, granularity);
 
   // 5. 最小间距过滤
-  // 根据容器高度调整最小间距
-  const adaptiveMinGap = containerHeight < 400 ? 30 : containerHeight < 600 ? 35 : DEFAULT_MIN_GAP_PX;
+  // 根据容器高度调整最小间距（更密集显示）
+  const adaptiveMinGap = containerHeight < 400 ? 14 : containerHeight < 600 ? 16 : DEFAULT_MIN_GAP_PX;
   const filtered = filterByMinGap(candidates, containerHeight, adaptiveMinGap);
 
   // 6. 确保边界点保留
