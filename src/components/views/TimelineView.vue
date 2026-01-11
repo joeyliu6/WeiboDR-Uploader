@@ -10,6 +10,8 @@ import { useHistoryManager } from '../../composables/useHistory';
 import { useVirtualTimeline, type PhotoGroup } from '../../composables/useVirtualTimeline';
 import { useThumbCache } from '../../composables/useThumbCache';
 import { useImageMetadataFixer } from '../../composables/useImageMetadataFixer';
+import { useImageLoadManager } from '../../composables/useImageLoadManager';
+import { useTimelineSidebarControl } from '../../composables/useTimelineSidebarControl';
 import { useToast } from '../../composables/useToast';
 import type { HistoryItem, ServiceType } from '../../config/types';
 import TimelineSidebar, { type TimeGroup } from './timeline/TimelineSidebar.vue';
@@ -46,14 +48,18 @@ const scrollContainer = ref<HTMLElement | null>(null);
 const lightboxVisible = ref(false);
 const lightboxItem = ref<HistoryItem | null>(null);
 
-// Sidebar visibility
-const isSidebarVisible = ref(false);
-let scrollTimeout: number | undefined;
-const isHoveringSidebar = ref(false);
-
-// 触发来源
-type ShowSource = 'scroll' | 'hover';
-let lastShowSource: ShowSource = 'scroll';
+// Sidebar Control
+const {
+  isSidebarVisible,
+  isHoveringSidebar,
+  onScroll: onSidebarScroll,
+  onSidebarEnter: handleSidebarEnter,
+  onSidebarLeave: handleSidebarLeave,
+  cleanup: cleanupSidebarControl,
+} = useTimelineSidebarControl({
+  scrollHideDelay: 1000,
+  hoverHideDelay: 300,
+});
 
 // 拖动状态
 let isDragging = false;
@@ -105,6 +111,7 @@ const {
 
   // 三阶段渲染状态（仅用于控制图片加载行为）
   displayMode,
+  scrollDirection,
 
   // 可见数据
   visibleItems,
@@ -129,145 +136,17 @@ const {
 
 // ==================== 图片加载状态管理 ====================
 
-/** 已加载图片的 ID 集合 */
-const loadedImages = shallowRef(new Set<string>());
-
-/** 图片最后可见时间戳（用于延迟销毁） */
-const lastVisibleTime = new Map<string, number>();
-
-/** 图片加载重试次数 */
-const imageRetryCount = new Map<string, number>();
-
-/** 最大缓存加载状态的图片数量 */
-const MAX_LOADED_CACHE = 500;
-
-/** 延迟销毁时间（毫秒） */
-const DESTROY_DELAY = 2500;
-
-/** 最大重试次数 */
-const MAX_RETRY = 1;
-
-/** 清理定时器 */
-let cleanupTimer: number | undefined;
-
-/**
- * 标记图片已加载
- */
-function onImageLoad(id: string) {
-  const newSet = new Set(loadedImages.value);
-  newSet.add(id);
-
-  // 更新最后可见时间
-  lastVisibleTime.set(id, Date.now());
-
-  // 防止内存无限增长：使用 LRU 淘汰
-  if (newSet.size > MAX_LOADED_CACHE) {
-    // 找到最早加载且不在可见区域的图片移除
-    const visibleIds = new Set(visibleItems.value.map((v) => v.item.id));
-    let removed = false;
-
-    for (const existingId of newSet) {
-      if (!visibleIds.has(existingId) && existingId !== id) {
-        newSet.delete(existingId);
-        lastVisibleTime.delete(existingId);
-        removed = true;
-        break;
-      }
-    }
-
-    // 如果所有图片都可见，移除最旧的一个（非当前）
-    if (!removed) {
-      for (const existingId of newSet) {
-        if (existingId !== id) {
-          newSet.delete(existingId);
-          lastVisibleTime.delete(existingId);
-          break;
-        }
-      }
-    }
-  }
-
-  loadedImages.value = newSet;
-}
-
-/**
- * 图片加载失败处理（带重试）
- */
-function onImageError(event: Event, id: string) {
-  const img = event.target as HTMLImageElement;
-  const currentRetry = imageRetryCount.get(id) || 0;
-
-  if (currentRetry < MAX_RETRY) {
-    imageRetryCount.set(id, currentRetry + 1);
-    // 延迟 500ms 后重试
-    setTimeout(() => {
-      if (img && img.src) {
-        const originalSrc = img.src;
-        img.src = '';
-        img.src = originalSrc;
-      }
-    }, 500);
-  } else {
-    // 达到重试上限，隐藏图片
-    img.style.display = 'none';
-  }
-}
-
-/**
- * 检查图片是否已加载
- */
-function isImageLoaded(id: string): boolean {
-  return loadedImages.value.has(id);
-}
-
-/**
- * 延迟清理过期的图片状态（不在可见区域超过 DESTROY_DELAY 的图片）
- */
-function cleanupExpiredImages() {
-  const now = Date.now();
-  const visibleIds = new Set(visibleItems.value.map((v) => v.item.id));
-  let hasChanges = false;
-
-  // 更新当前可见图片的时间戳
-  for (const id of visibleIds) {
-    lastVisibleTime.set(id, now);
-  }
-
-  // 检查是否有需要清理的图片
-  const newSet = new Set(loadedImages.value);
-  for (const id of newSet) {
-    const lastTime = lastVisibleTime.get(id);
-    // 不在可见区域且超过延迟时间
-    if (!visibleIds.has(id) && lastTime && now - lastTime > DESTROY_DELAY) {
-      newSet.delete(id);
-      lastVisibleTime.delete(id);
-      imageRetryCount.delete(id);
-      hasChanges = true;
-    }
-  }
-
-  if (hasChanges) {
-    loadedImages.value = newSet;
-  }
-}
-
-/**
- * 启动延迟清理定时器
- */
-function startCleanupTimer() {
-  if (cleanupTimer) return;
-  cleanupTimer = window.setInterval(cleanupExpiredImages, 1000);
-}
-
-/**
- * 停止延迟清理定时器
- */
-function stopCleanupTimer() {
-  if (cleanupTimer) {
-    clearInterval(cleanupTimer);
-    cleanupTimer = undefined;
-  }
-}
+const {
+  loadedImages,
+  onImageLoad,
+  onImageError,
+  isImageLoaded,
+  clearAll: clearImageLoadState,
+} = useImageLoadManager(visibleItems, {
+  maxCache: 500,
+  destroyDelay: 2500,
+  maxRetry: 1,
+});
 
 // ==================== Sidebar Data ====================
 
@@ -316,22 +195,6 @@ const visibleRatio = computed(() => {
   return viewportHeight.value / totalHeight.value;
 });
 
-// ==================== Sidebar Visibility ====================
-
-const showSidebar = () => {
-  isSidebarVisible.value = true;
-};
-
-const hideSidebarDebounced = () => {
-  if (scrollTimeout) clearTimeout(scrollTimeout);
-  const delay = lastShowSource === 'hover' ? 300 : 1000;
-  scrollTimeout = window.setTimeout(() => {
-    if (!isHoveringSidebar.value) {
-      isSidebarVisible.value = false;
-    }
-  }, delay);
-};
-
 // ==================== Scroll Handling ====================
 
 // 无限滚动阈值
@@ -359,9 +222,7 @@ const handleScroll = () => {
 
   // 侧边栏显示逻辑（拖动期间跳过）
   if (!isDragging) {
-    lastShowSource = 'scroll';
-    showSidebar();
-    hideSidebarDebounced();
+    onSidebarScroll();
   }
 
   // 无限滚动检测
@@ -369,18 +230,6 @@ const handleScroll = () => {
 };
 
 // ==================== Sidebar Interactions ====================
-
-const handleSidebarEnter = () => {
-  lastShowSource = 'hover';
-  isHoveringSidebar.value = true;
-  showSidebar();
-  if (scrollTimeout) clearTimeout(scrollTimeout);
-};
-
-const handleSidebarLeave = () => {
-  isHoveringSidebar.value = false;
-  hideSidebarDebounced();
-};
 
 const handleSidebarWheel = (e: WheelEvent) => {
   if (scrollContainer.value) {
@@ -396,7 +245,7 @@ const handleDragScroll = (progress: number) => {
     isDragging = false;
     // 拖拽结束后强制更新可见区域，触发图片加载
     forceUpdateVisibleArea();
-  }, 150);
+  }, 50); // 从 150ms 减少到 50ms，提升响应速度
 
   // 传递拖拽状态，让 scrollToProgress 强制使用 fast 模式
   scrollToProgress(progress, true);
@@ -454,6 +303,126 @@ const handleBulkCopy = (fmt: LinkFormat) => viewState.bulkCopyFormatted(fmt);
 const handleBulkExport = () => viewState.bulkExport();
 const handleBulkDelete = () => viewState.bulkDelete();
 
+// ==================== 悬停信息辅助函数 ====================
+
+/**
+ * 格式化文件大小
+ */
+function formatFileSize(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+
+/**
+ * 格式化上传时间
+ */
+function formatUploadTime(timestamp: number): string {
+  const date = new Date(timestamp);
+  const month = date.getMonth() + 1;
+  const day = date.getDate();
+  const hours = date.getHours();
+  const minutes = date.getMinutes().toString().padStart(2, '0');
+  return `${month}/${day} ${hours}:${minutes}`;
+}
+
+/**
+ * 获取成功上传的服务列表
+ */
+function getSuccessfulServices(item: HistoryItem): string[] {
+  return item.results
+    .filter(r => r.status === 'success')
+    .map(r => r.serviceId);
+}
+
+/**
+ * 获取服务显示名称
+ */
+function getServiceName(serviceId: string): string {
+  const names: Record<string, string> = {
+    weibo: '微博',
+    r2: 'R2',
+    jd: '京东',
+    nowcoder: '牛客',
+    qiyu: '七鱼',
+    zhihu: '知乎',
+    nami: '纳米',
+    bilibili: 'B站',
+    chaoxing: '超星',
+    smms: 'SM.MS',
+    github: 'GitHub',
+    imgur: 'Imgur',
+    tencent: '腾讯云',
+    aliyun: '阿里云',
+    qiniu: '七牛云',
+    upyun: '又拍云',
+  };
+  return names[serviceId] || serviceId;
+}
+
+// ==================== 图片预加载 ====================
+
+/** 预加载定时器 */
+let preloadTimer: number | undefined;
+
+/**
+ * 预加载下一屏图片（根据滚动方向）
+ */
+const preloadNextScreen = () => {
+  // 快速滚动时不预加载
+  if (displayMode.value === 'fast') return;
+
+  const direction = scrollDirection?.value;
+  if (!direction) return;
+
+  const currentVisibleIds = new Set(visibleItems.value.map(v => v.item.id));
+  const allItems = viewState.filteredItems.value;
+
+  // 找到当前可见区域的边界索引
+  const visibleItemIds = visibleItems.value.map(v => v.item.id);
+  const firstVisibleIndex = allItems.findIndex(item => item.id === visibleItemIds[0]);
+  const lastVisibleIndex = allItems.findIndex(item => item.id === visibleItemIds[visibleItemIds.length - 1]);
+
+  if (firstVisibleIndex === -1 || lastVisibleIndex === -1) return;
+
+  // 预加载数量（约 1 屏）
+  const preloadCount = Math.min(20, visibleItems.value.length);
+
+  // 根据滚动方向确定预加载范围
+  const preloadStart = direction === 'down'
+    ? lastVisibleIndex + 1
+    : Math.max(0, firstVisibleIndex - preloadCount);
+  const preloadEnd = direction === 'down'
+    ? Math.min(allItems.length, lastVisibleIndex + preloadCount + 1)
+    : firstVisibleIndex;
+
+  // 预加载图片
+  for (let i = preloadStart; i < preloadEnd; i++) {
+    const item = allItems[i];
+    if (!item || currentVisibleIds.has(item.id) || isImageLoaded(item.id)) continue;
+
+    const url = thumbCache.getMediumImageUrl(item);
+    if (!url) continue;
+
+    // 后台预加载
+    const img = new Image();
+    img.src = url;
+    img.onload = () => onImageLoad(item.id);
+    img.onerror = (e) => onImageError(e, item.id);
+  }
+};
+
+// 在滚动停止后触发预加载（使用防抖）
+watch(displayMode, (mode) => {
+  if (mode === 'normal') {
+    // 切换到 normal 模式后，延迟 300ms 执行预加载
+    if (preloadTimer) clearTimeout(preloadTimer);
+    preloadTimer = window.setTimeout(() => {
+      preloadNextScreen();
+    }, 300);
+  }
+});
+
 // ==================== Lifecycle ====================
 
 onMounted(async () => {
@@ -480,13 +449,11 @@ onMounted(async () => {
 });
 
 onUnmounted(() => {
-  // 停止延迟清理定时器
-  stopCleanupTimer();
+  // 清理图片加载状态（由 useImageLoadManager 自动处理）
+  clearImageLoadState();
 
-  // 清理图片状态
-  loadedImages.value = new Set();
-  lastVisibleTime.clear();
-  imageRetryCount.clear();
+  // 清理侧边栏控制（由 useTimelineSidebarControl 提供）
+  cleanupSidebarControl();
 
   viewState.reset();
   thumbCache.clearThumbCache();
@@ -494,8 +461,8 @@ onUnmounted(() => {
   // 刷新待更新的元数据
   metadataFixer.flushNow();
 
-  if (scrollTimeout) clearTimeout(scrollTimeout);
   if (dragEndTimer) clearTimeout(dragEndTimer);
+  if (preloadTimer) clearTimeout(preloadTimer);
 });
 
 // ==================== Watchers ====================
@@ -606,6 +573,35 @@ watch(
               @click.stop="viewState.toggleSelection(visible.item.id)"
             >
               <i v-if="viewState.isSelected(visible.item.id)" class="pi pi-check"></i>
+            </div>
+
+            <!-- 悬停信息层 -->
+            <div class="hover-info">
+              <div class="hover-info-top">
+                <span class="file-name" :title="visible.item.localFileName">
+                  {{ visible.item.localFileName }}
+                </span>
+              </div>
+              <div class="hover-info-bottom">
+                <div class="info-row">
+                  <i class="pi pi-file"></i>
+                  <span class="file-size">{{ formatFileSize(visible.item.fileSize) }}</span>
+                </div>
+                <div class="info-row">
+                  <i class="pi pi-clock"></i>
+                  <span class="upload-time">{{ formatUploadTime(visible.item.timestamp) }}</span>
+                </div>
+                <div class="service-badges" v-if="getSuccessfulServices(visible.item).length > 0">
+                  <span
+                    v-for="service in getSuccessfulServices(visible.item)"
+                    :key="service"
+                    class="service-badge"
+                    :title="`已上传到 ${getServiceName(service)}`"
+                  >
+                    {{ getServiceName(service) }}
+                  </span>
+                </div>
+              </div>
             </div>
           </div>
         </div>
@@ -827,6 +823,78 @@ watch(
   font-weight: bold;
 }
 
+/* 悬停信息层 */
+.hover-info {
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(to bottom, transparent 30%, rgba(0, 0, 0, 0.85) 100%);
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  padding: 10px;
+  pointer-events: none;
+  color: white;
+  border-radius: 8px;
+}
+
+.photo-wrapper:hover .hover-info {
+  opacity: 1;
+}
+
+.hover-info-top {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+}
+
+.file-name {
+  flex: 1;
+  font-size: 13px;
+  font-weight: 500;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+}
+
+.hover-info-bottom {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.info-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  opacity: 0.95;
+}
+
+.info-row i {
+  font-size: 10px;
+  opacity: 0.8;
+}
+
+.service-badges {
+  display: flex;
+  gap: 4px;
+  flex-wrap: wrap;
+  margin-top: 2px;
+}
+
+.service-badge {
+  padding: 3px 7px;
+  background: rgba(59, 130, 246, 0.85);
+  border-radius: 4px;
+  font-size: 10px;
+  font-weight: 500;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  backdrop-filter: blur(4px);
+}
+
 /* Sidebar */
 .sidebar-wrapper {
   position: absolute;
@@ -905,5 +973,107 @@ watch(
 .layout-indicator i {
   font-size: 18px;
   color: var(--primary);
+}
+
+/* ========== 响应式适配 ========== */
+
+/* 平板设备 (≤1024px) */
+@media (max-width: 1024px) {
+  .timeline-scroll-area {
+    padding: 0 50px 0 16px; /* 减少左侧内边距 */
+  }
+
+  .group-title {
+    font-size: 16px; /* 缩小标题字体 */
+  }
+
+  .group-subtitle {
+    font-size: 11px;
+  }
+}
+
+/* 手机设备 (≤768px) */
+@media (max-width: 768px) {
+  .timeline-scroll-area {
+    padding: 0 40px 0 12px; /* 进一步减少内边距 */
+  }
+
+  .group-header {
+    padding: 12px 0; /* 减少头部内边距 */
+  }
+
+  .group-title {
+    font-size: 15px;
+  }
+
+  .group-subtitle {
+    font-size: 10px;
+  }
+
+  /* 侧边栏在手机上缩小 */
+  .sidebar-wrapper {
+    width: 40px;
+  }
+
+  /* 悬停信息字体缩小 */
+  .hover-info {
+    padding: 8px;
+  }
+
+  .file-name {
+    font-size: 12px;
+  }
+
+  .info-row {
+    font-size: 10px;
+  }
+
+  .service-badge {
+    font-size: 9px;
+    padding: 2px 5px;
+  }
+}
+
+/* 小屏手机 (≤480px) */
+@media (max-width: 480px) {
+  .timeline-scroll-area {
+    padding: 0 8px;
+  }
+
+  .group-title {
+    font-size: 14px;
+  }
+
+  .group-subtitle {
+    display: none; /* 隐藏副标题节省空间 */
+  }
+
+  /* 完全隐藏侧边栏，使用底部导航 */
+  .sidebar-wrapper {
+    display: none;
+  }
+
+  /* 悬停信息简化 */
+  .hover-info-bottom {
+    gap: 4px;
+  }
+
+  .service-badges {
+    display: none; /* 隐藏图床标识，节省空间 */
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) {
+  /* 悬停信息在触摸设备上不显示（点击才显示） */
+  .hover-info {
+    display: none;
+  }
+
+  /* 增大选择框点击区域 */
+  .checkbox {
+    width: 32px;
+    height: 32px;
+  }
 }
 </style>

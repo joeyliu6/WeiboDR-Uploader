@@ -491,4 +491,65 @@ onUnmounted(() => {
   opacity: 0;
   transform: translateX(8px);
 }
+
+/* ========== 响应式适配 ========== */
+
+/* 平板设备 (≤1024px) */
+@media (max-width: 1024px) {
+  .timeline-sidebar {
+    width: 40px; /* 缩小侧边栏宽度 */
+  }
+
+  .indicator-label {
+    display: none; /* 隐藏悬停标签，避免遮挡 */
+  }
+}
+
+/* 手机设备 (≤768px) */
+@media (max-width: 768px) {
+  .timeline-sidebar {
+    width: 32px;
+    padding-right: 6px;
+  }
+
+  .timeline-track {
+    right: 12px;
+  }
+
+  .indicator-dot {
+    width: 10px;
+    height: 10px;
+  }
+}
+
+/* 触摸设备优化 */
+@media (hover: none) {
+  /* 增大月份点的点击区域 */
+  .month-dot {
+    width: 6px;
+    height: 6px;
+  }
+
+  .month-dot.unloaded {
+    border-width: 2px;
+  }
+
+  /* 增大指示器点击区域 */
+  .indicator-dot {
+    width: 14px;
+    height: 14px;
+    box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.25);
+  }
+
+  .position-indicator {
+    cursor: default; /* 触摸设备不显示 grab 光标 */
+  }
+
+  /* 触摸设备始终显示标签（代替悬停） */
+  .indicator-label {
+    display: block;
+    opacity: 0.9;
+    font-size: 12px;
+  }
+}
 </style>

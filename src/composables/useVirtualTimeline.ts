@@ -153,6 +153,12 @@ export function useVirtualTimeline(
   /** 模式恢复定时器 */
   let modeRecoveryTimer: number | null = null;
 
+  /** 滚动方向 */
+  const scrollDirection = ref<'up' | 'down' | null>(null);
+
+  /** 上次滚动位置（用于方向判断） */
+  let lastScrollTopForDirection = 0;
+
   // ==================== 布局计算 ====================
 
   /**
@@ -450,6 +456,14 @@ export function useVirtualTimeline(
     const deltaTime = now - lastScrollTime;
     const deltaScroll = Math.abs(scrollTop.value - lastScrollTopForVelocity);
 
+    // 检测滚动方向
+    if (scrollTop.value > lastScrollTopForDirection + 5) {
+      scrollDirection.value = 'down';
+    } else if (scrollTop.value < lastScrollTopForDirection - 5) {
+      scrollDirection.value = 'up';
+    }
+    lastScrollTopForDirection = scrollTop.value;
+
     // 计算速度（像素/毫秒）
     scrollVelocity.value = deltaTime > 0 ? deltaScroll / deltaTime : 0;
 
@@ -728,6 +742,7 @@ export function useVirtualTimeline(
     // 三阶段渲染状态
     displayMode,
     scrollVelocity,
+    scrollDirection,
 
     // 可见数据
     visibleItems,
