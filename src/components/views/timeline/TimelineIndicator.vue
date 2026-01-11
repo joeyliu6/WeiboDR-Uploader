@@ -296,15 +296,6 @@ const scrubberStyle = computed(() => {
 // ==================== Methods ====================
 
 /**
- * 格式化月份
- */
-function formatMonth(month: number): string {
-  const months = ['1月', '2月', '3月', '4月', '5月', '6月',
-                  '7月', '8月', '9月', '10月', '11月', '12月'];
-  return months[month] || '';
-}
-
-/**
  * 计算位置到进度
  */
 function positionToProgress(clientY: number): number {
@@ -482,16 +473,14 @@ onUnmounted(() => {
       :style="scrubberStyle"
       @mousedown="startDrag"
     >
-      <!-- 滑块把手 -->
-      <div class="scrubber-handle">
-        <div class="handle-line"></div>
-      </div>
+      <!-- 默认小圆点（非悬停时显示） -->
+      <div v-if="!showBubble" class="scrubber-dot"></div>
 
-      <!-- 日期气泡 -->
+      <!-- 日期气泡（底部蓝边样式：悬停/拖拽时显示） -->
       <Transition name="bubble-fade">
         <div v-if="showBubble" class="scrubber-bubble">
-          <span class="bubble-year">{{ currentDateInfo.year }}</span>
-          <span class="bubble-month">{{ formatMonth(currentDateInfo.month) }}</span>
+          <span class="bubble-date">{{ currentDateInfo.year }}年{{ currentDateInfo.month + 1 }}月</span>
+          <div class="bubble-indicator"></div>
         </div>
       </Transition>
     </div>
@@ -615,13 +604,14 @@ onUnmounted(() => {
   position: absolute;
   right: 8px;
   transform: translateY(-50%);
-  display: flex;
-  align-items: center;
-  flex-direction: row-reverse;
-  gap: 8px;
   z-index: 10;
   cursor: grab;
-  transition: transform 0.1s ease-out;
+  transition: transform 0.15s ease;
+}
+
+/* 激活状态：底边对齐鼠标位置 */
+.scrubber.active {
+  transform: translateY(-100%);
 }
 
 .scrubber:active,
@@ -629,61 +619,41 @@ onUnmounted(() => {
   cursor: grabbing;
 }
 
-/* 滑块把手 */
-.scrubber-handle {
-  width: 20px;
-  height: 20px;
+/* 默认小圆点（非悬停时显示） */
+.scrubber-dot {
+  width: 12px;
+  height: 12px;
   border-radius: 50%;
   background: var(--primary);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
-  transition: transform 0.2s, box-shadow 0.2s;
+  box-shadow: 0 1px 4px rgba(59, 130, 246, 0.3);
 }
 
-.handle-line {
-  width: 8px;
-  height: 2px;
-  background: white;
-  border-radius: 1px;
-}
-
-.scrubber.active .scrubber-handle,
-.scrubber:hover .scrubber-handle {
-  transform: scale(1.15);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-}
-
-.timeline-indicator.is-dragging .scrubber-handle {
-  transform: scale(1.25);
-  box-shadow: 0 6px 16px rgba(59, 130, 246, 0.5);
-}
-
-/* 日期气泡 */
+/* 日期气泡（底部蓝边样式） */
 .scrubber-bubble {
   display: flex;
   flex-direction: column;
-  align-items: flex-end;
-  padding: 10px 14px;
-  background: var(--bg-elevated);
-  border-radius: 12px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
-  min-width: 72px;
+  align-items: stretch;
+  background: white;
+  border-radius: 8px;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  overflow: hidden;
+  white-space: nowrap;
 }
 
-.bubble-year {
-  font-size: 18px;
-  font-weight: 700;
-  color: var(--text-primary);
-  line-height: 1.2;
+/* 底部蓝色指示条 */
+.bubble-indicator {
+  width: 100%;
+  height: 3px;
+  background: var(--primary);
+  flex-shrink: 0;
 }
 
-.bubble-month {
-  font-size: 14px;
+.bubble-date {
+  padding: 4px 8px;
+  font-size: 13px;
   font-weight: 500;
-  color: var(--text-secondary);
-  margin-top: 2px;
+  color: #202124;
+  letter-spacing: 0.1px;
 }
 
 /* 气泡动画 */
@@ -766,7 +736,12 @@ onUnmounted(() => {
 :root.dark-theme .scrubber-bubble,
 .dark-theme .scrubber-bubble {
   background: var(--bg-surface);
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.4);
+}
+
+:root.dark-theme .bubble-date,
+.dark-theme .bubble-date {
+  color: var(--text-primary);
 }
 
 :root.dark-theme .year-separator,
