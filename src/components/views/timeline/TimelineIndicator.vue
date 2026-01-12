@@ -150,7 +150,7 @@ const yearSections = computed<YearSection[]>(() => {
           startPosition: sectionStart,
           endPosition: segment.position,
           totalCount: sectionCount,
-          labelPosition: sectionStart,
+          labelPosition: segment.position,  // 年份标签放在该年底部
         });
       }
 
@@ -170,7 +170,7 @@ const yearSections = computed<YearSection[]>(() => {
       startPosition: sectionStart,
       endPosition: 1,
       totalCount: sectionCount,
-      labelPosition: sectionStart,
+      labelPosition: 1,  // 年份标签放在该年底部（时间轴末端）
     });
   }
 
@@ -524,7 +524,7 @@ onUnmounted(() => {
 .year-label {
   position: absolute;
   right: 4px;
-  transform: translateY(-50%);
+  transform: translateY(-100%);  /* 标签位于年份底部边界上方 */
   font-size: 11px;
   font-weight: 600;
   color: var(--text-secondary);
