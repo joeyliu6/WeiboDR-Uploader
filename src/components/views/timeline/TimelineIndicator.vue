@@ -466,23 +466,25 @@ onUnmounted(() => {
       />
     </div>
 
-    <!-- 滑块/指示器 -->
-    <div
-      class="scrubber"
-      :class="{ active: showBubble }"
-      :style="scrubberStyle"
-      @mousedown="startDrag"
-    >
-      <!-- 默认小圆点（非悬停时显示） -->
-      <div v-if="!showBubble" class="scrubber-dot"></div>
+    <!-- 滑块容器（与轨道对齐） -->
+    <div class="scrubber-container">
+      <div
+        class="scrubber"
+        :class="{ active: showBubble }"
+        :style="scrubberStyle"
+        @mousedown="startDrag"
+      >
+        <!-- 默认小圆点（非悬停时显示） -->
+        <div v-if="!showBubble" class="scrubber-dot"></div>
 
-      <!-- 日期气泡（底部蓝边样式：悬停/拖拽时显示） -->
-      <Transition name="bubble-fade">
-        <div v-if="showBubble" class="scrubber-bubble">
-          <span class="bubble-date">{{ currentDateInfo.year }}年{{ currentDateInfo.month + 1 }}月</span>
-          <div class="bubble-indicator"></div>
-        </div>
-      </Transition>
+        <!-- 日期气泡（底部蓝边样式：悬停/拖拽时显示） -->
+        <Transition name="bubble-fade">
+          <div v-if="showBubble" class="scrubber-bubble">
+            <span class="bubble-date">{{ currentDateInfo.year }}年{{ currentDateInfo.month + 1 }}月</span>
+            <div class="bubble-indicator"></div>
+          </div>
+        </Transition>
+      </div>
     </div>
 
     <!-- 可见区域指示器 -->
@@ -507,7 +509,7 @@ onUnmounted(() => {
   padding: 24px 8px;
   box-sizing: border-box;
   user-select: none;
-  cursor: pointer;
+  cursor: row-resize;
 }
 
 /* ==================== 年份标签 ==================== */
@@ -600,23 +602,28 @@ onUnmounted(() => {
 
 /* ==================== 滑块/指示器 ==================== */
 
-.scrubber {
+/* 滑块定位容器（与轨道对齐） */
+.scrubber-container {
   position: absolute;
   right: 8px;
+  top: 24px;
+  bottom: 24px;
+  pointer-events: none;
+}
+
+.scrubber {
+  position: absolute;
+  right: 0;
+  pointer-events: auto;
   transform: translateY(-50%);
   z-index: 10;
-  cursor: grab;
+  cursor: row-resize;
   transition: transform 0.15s ease;
 }
 
-/* 激活状态：底边对齐鼠标位置 */
+/* 激活状态：蓝色底边对齐鼠标位置 */
 .scrubber.active {
-  transform: translateY(-100%);
-}
-
-.scrubber:active,
-.timeline-indicator.is-dragging .scrubber {
-  cursor: grabbing;
+  transform: translateY(calc(-100% + 3px));
 }
 
 /* 默认小圆点（非悬停时显示） */
@@ -687,10 +694,6 @@ onUnmounted(() => {
 
   .year-label {
     font-size: 10px;
-  }
-
-  .scrubber-bubble {
-    display: none;
   }
 }
 
