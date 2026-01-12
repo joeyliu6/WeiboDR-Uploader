@@ -39,15 +39,27 @@ const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
 <template>
   <div class="file-grid-wrapper" :class="{ dragging: isDragging }">
     <!-- 拖拽提示 -->
-    <div v-if="isDragging" class="drag-overlay">
-      <i class="pi pi-cloud-upload drag-icon"></i>
-      <p>放开以上传文件</p>
-    </div>
+    <Transition name="fade">
+      <div v-if="isDragging" class="drag-overlay">
+        <div class="drag-content">
+          <div class="drag-icon-wrapper">
+            <i class="pi pi-cloud-upload drag-icon"></i>
+          </div>
+          <p class="drag-title">放开以上传文件</p>
+          <p class="drag-hint">支持批量上传图片</p>
+        </div>
+      </div>
+    </Transition>
 
-    <!-- 加载状态 -->
-    <div v-if="loading && items.length === 0" class="loading-state">
-      <ProgressSpinner />
-      <p>加载中...</p>
+    <!-- 骨架屏加载状态 -->
+    <div v-if="loading && items.length === 0" class="skeleton-grid">
+      <div v-for="i in 8" :key="i" class="skeleton-card">
+        <div class="skeleton-thumbnail"></div>
+        <div class="skeleton-info">
+          <div class="skeleton-name"></div>
+          <div class="skeleton-size"></div>
+        </div>
+      </div>
     </div>
 
     <!-- 错误状态 -->
@@ -71,7 +83,7 @@ const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
       v-else
       :items="items"
       :item-width="180"
-      :item-height="200"
+      :item-height="220"
       :gap="16"
       @scroll-end="emit('loadMore')"
     >
@@ -90,7 +102,7 @@ const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
 
     <!-- 加载更多指示器 -->
     <div v-if="loading && items.length > 0" class="loading-more">
-      <ProgressSpinner style="width: 24px; height: 24px" />
+      <ProgressSpinner style="width: 20px; height: 20px" />
       <span>加载更多...</span>
     </div>
   </div>
@@ -113,40 +125,103 @@ const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
 .drag-overlay {
   position: absolute;
   inset: 0;
-  background: rgba(59, 130, 246, 0.1);
+  background: rgba(59, 130, 246, 0.08);
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
   z-index: 100;
-  backdrop-filter: blur(4px);
+  backdrop-filter: blur(8px);
+}
+
+.drag-content {
+  text-align: center;
+}
+
+.drag-icon-wrapper {
+  width: 80px;
+  height: 80px;
+  border-radius: 50%;
+  background: rgba(59, 130, 246, 0.15);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin: 0 auto 20px;
 }
 
 .drag-icon {
-  font-size: 4rem;
-  color: var(--primary);
-  margin-bottom: 16px;
-}
-
-.drag-overlay p {
-  font-size: 1.1rem;
-  font-weight: 500;
+  font-size: 2.5rem;
   color: var(--primary);
 }
 
-/* 加载状态 */
-.loading-state {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  padding: 60px 20px;
-  gap: 16px;
+.drag-title {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--primary);
+  margin: 0 0 8px;
 }
 
-.loading-state p {
+.drag-hint {
+  font-size: 14px;
   color: var(--text-secondary);
   margin: 0;
+}
+
+/* 骨架屏 */
+.skeleton-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 16px;
+  padding: 16px;
+}
+
+.skeleton-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.skeleton-thumbnail {
+  aspect-ratio: 1;
+  background: linear-gradient(
+    90deg,
+    var(--bg-app) 25%,
+    var(--bg-secondary) 50%,
+    var(--bg-app) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-info {
+  padding: 12px;
+  border-top: 1px solid var(--border-subtle);
+}
+
+.skeleton-name {
+  height: 14px;
+  width: 80%;
+  background: var(--bg-app);
+  border-radius: 4px;
+  margin-bottom: 8px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-size {
+  height: 10px;
+  width: 40%;
+  background: var(--bg-app);
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
 }
 
 /* 加载更多 */
@@ -154,9 +229,20 @@ const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 12px;
+  gap: 10px;
   padding: 16px;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 13px;
+}
+
+/* 淡入淡出动画 */
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

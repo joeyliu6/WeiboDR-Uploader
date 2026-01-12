@@ -223,10 +223,10 @@ watch(currentPath, () => {
 </script>
 
 <template>
-  <div ref="dropZoneRef" class="cloud-storage-view">
-    <!-- 顶部：服务标签页 -->
-    <div class="view-header">
-      <div class="header-title">
+  <div ref="dropZoneRef" class="cloud-storage-layout">
+    <!-- 左侧：服务侧边栏 -->
+    <aside class="sidebar-area">
+      <div class="sidebar-header">
         <i class="pi pi-cloud"></i>
         <span>云存储</span>
       </div>
@@ -235,54 +235,59 @@ watch(currentPath, () => {
         :active-service="activeService"
         @change="handleServiceChange"
       />
-    </div>
+    </aside>
 
-    <!-- 工具栏 -->
-    <StorageToolbar
-      :current-path="currentPath"
-      :bucket-name="bucketName"
-      :stats="stats"
-      :loading="isLoading"
-      :is-all-selected="isAllSelected"
-      :is-indeterminate="isIndeterminate"
-      :selected-count="selectedItems.length"
-      :search-query="searchQuery"
-      @navigate="handleNavigate"
-      @refresh="refresh"
-      @upload="uploadFiles"
-      @search="search"
-      @toggle-select-all="toggleSelectAll"
-    />
+    <!-- 右侧：主内容区 -->
+    <main class="main-area">
+      <!-- 顶部工具栏 -->
+      <header class="toolbar-header">
+        <StorageToolbar
+          :current-path="currentPath"
+          :bucket-name="bucketName"
+          :stats="stats"
+          :loading="isLoading"
+          :is-all-selected="isAllSelected"
+          :is-indeterminate="isIndeterminate"
+          :selected-count="selectedItems.length"
+          :search-query="searchQuery"
+          @navigate="handleNavigate"
+          @refresh="refresh"
+          @upload="uploadFiles"
+          @search="search"
+          @toggle-select-all="toggleSelectAll"
+        />
+      </header>
 
-    <!-- 内容区域 -->
-    <div class="view-content">
-      <FileGrid
-        :items="objects"
-        :selected-keys="selectedKeys"
-        :loading="isLoading"
-        :error="error"
-        :has-more="hasMore"
-        :is-dragging="isDragging || isOver"
-        @select="handleSelect"
-        @preview="handlePreview"
-        @copy-link="(item) => handleCopyLink(item, 'url')"
-        @delete="(item) => deleteFiles([item])"
-        @open="handleOpenFolder"
-        @load-more="loadMore"
-        @upload="uploadFiles"
-        @contextmenu.prevent="(e: MouseEvent) => {}"
+      <!-- 内容区域 -->
+      <div class="content-body">
+        <FileGrid
+          :items="objects"
+          :selected-keys="selectedKeys"
+          :loading="isLoading"
+          :error="error"
+          :has-more="hasMore"
+          :is-dragging="isDragging || isOver"
+          @select="handleSelect"
+          @preview="handlePreview"
+          @copy-link="(item) => handleCopyLink(item, 'url')"
+          @delete="(item) => deleteFiles([item])"
+          @open="handleOpenFolder"
+          @load-more="loadMore"
+          @upload="uploadFiles"
+          @contextmenu.prevent="(e: MouseEvent) => {}"
+        />
+      </div>
+
+      <!-- 浮动操作栏 -->
+      <FloatingActionBar
+        :selected-items="selectedItems"
+        :visible="selectedItems.length > 0"
+        @delete="handleBatchDelete"
+        @copy-link="handleBatchCopyLink"
+        @download="handleBatchDownload"
+        @close="clearSelection"
       />
-    </div>
-
-    <!-- 浮动操作栏 -->
-    <FloatingActionBar
-      :selected-items="selectedItems"
-      :visible="selectedItems.length > 0"
-      @delete="handleBatchDelete"
-      @copy-link="handleBatchCopyLink"
-      @download="handleBatchDownload"
-      @close="clearSelection"
-    />
+    </main>
 
     <!-- 预览对话框 -->
     <PreviewDialog
@@ -304,43 +309,59 @@ watch(currentPath, () => {
 </template>
 
 <style scoped>
-.cloud-storage-view {
+.cloud-storage-layout {
   display: flex;
-  flex-direction: column;
   height: 100%;
   overflow: hidden;
   background: var(--bg-app);
 }
 
-/* 顶部区域 */
-.view-header {
+/* 左侧侧边栏 */
+.sidebar-area {
   flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
+  width: 200px;
   background: var(--bg-card);
-  border-bottom: 1px solid var(--border-subtle);
-  gap: 20px;
-  flex-wrap: wrap;
+  border-right: 1px solid var(--border-subtle);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
 }
 
-.header-title {
+.sidebar-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  font-size: 1.25rem;
+  padding: 20px 16px 16px;
+  font-size: 1.1rem;
   font-weight: 600;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
-.header-title i {
-  font-size: 1.5rem;
+.sidebar-header i {
+  font-size: 1.25rem;
   color: var(--primary);
 }
 
+/* 右侧主内容区 */
+.main-area {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  position: relative;
+  min-width: 0;
+}
+
+/* 工具栏头部 */
+.toolbar-header {
+  flex-shrink: 0;
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
+}
+
 /* 内容区域 */
-.view-content {
+.content-body {
   flex: 1;
   overflow: hidden;
   padding: 20px;

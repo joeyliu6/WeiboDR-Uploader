@@ -65,100 +65,139 @@ const getServiceIcon = (serviceId: string): string => {
 </script>
 
 <template>
-  <div class="service-tabs">
-    <button
-      v-for="service in services"
-      :key="service.serviceId"
-      class="service-tab"
-      :class="{
-        active: service.serviceId === activeService,
-        [getStatusClass(service.status)]: true,
-      }"
-      @click="emit('change', service.serviceId)"
-      :title="service.error || service.serviceName"
-    >
-      <i :class="`pi ${getServiceIcon(service.serviceId)}`" class="service-icon"></i>
-      <span class="service-name">{{ service.serviceName }}</span>
-      <i :class="`pi ${getStatusIcon(service.status)}`" class="status-icon"></i>
-    </button>
-  </div>
+  <nav class="service-nav">
+    <div class="nav-section-title">存储服务</div>
+    <div class="service-list">
+      <button
+        v-for="service in services"
+        :key="service.serviceId"
+        class="service-item"
+        :class="{
+          active: service.serviceId === activeService,
+          [getStatusClass(service.status)]: true,
+        }"
+        @click="emit('change', service.serviceId)"
+        :title="service.error || service.serviceName"
+      >
+        <i :class="`pi ${getServiceIcon(service.serviceId)}`" class="service-icon"></i>
+        <span class="service-name">{{ service.serviceName }}</span>
+        <i :class="`pi ${getStatusIcon(service.status)}`" class="status-indicator"></i>
+      </button>
+    </div>
+  </nav>
 </template>
 
 <style scoped>
-.service-tabs {
+/* 侧边栏导航 */
+.service-nav {
   display: flex;
-  gap: 8px;
-  padding: 0 4px;
-  overflow-x: auto;
-  scrollbar-width: none;
+  flex-direction: column;
+  flex: 1;
+  overflow-y: auto;
+  padding: 0 8px 16px;
 }
 
-.service-tabs::-webkit-scrollbar {
-  display: none;
+.nav-section-title {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--text-muted);
+  padding: 8px 12px 12px;
 }
 
-.service-tab {
+.service-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.service-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border: 1px solid var(--border-subtle);
+  gap: 10px;
+  padding: 10px 12px;
+  border: none;
   border-radius: 8px;
-  background: var(--bg-input);
+  background: transparent;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 13px;
   cursor: pointer;
-  transition: all 0.2s;
-  white-space: nowrap;
-  flex-shrink: 0;
+  transition: all 0.15s ease;
+  text-align: left;
+  width: 100%;
 }
 
-.service-tab:hover {
-  background: var(--bg-app);
+.service-item:hover {
+  background: var(--hover-overlay);
   color: var(--text-primary);
 }
 
-.service-tab.active {
-  background: var(--primary);
-  border-color: var(--primary);
-  color: white;
+.service-item.active {
+  background: var(--selected-bg);
+  color: var(--primary);
 }
 
 .service-icon {
-  font-size: 1rem;
+  font-size: 16px;
+  width: 20px;
+  text-align: center;
+  flex-shrink: 0;
+}
+
+.service-item.active .service-icon {
+  color: var(--primary);
 }
 
 .service-name {
+  flex: 1;
   font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.status-icon {
-  font-size: 0.75rem;
-  margin-left: 4px;
+.status-indicator {
+  font-size: 10px;
+  flex-shrink: 0;
 }
 
 /* 状态颜色 */
-.service-tab.status-connected .status-icon {
+.service-item.status-connected .status-indicator {
   color: var(--success);
 }
 
-.service-tab.active.status-connected .status-icon {
-  color: rgba(255, 255, 255, 0.9);
-}
-
-.service-tab.status-connecting .status-icon {
+.service-item.status-connecting .status-indicator {
   color: var(--warning);
 }
 
-.service-tab.status-error .status-icon {
+.service-item.status-error .status-indicator {
   color: var(--error);
 }
 
-.service-tab.status-unconfigured .status-icon {
+.service-item.status-unconfigured .status-indicator {
   color: var(--text-muted);
 }
 
-.service-tab.status-disconnected .status-icon {
+.service-item.status-disconnected .status-indicator {
   color: var(--text-muted);
+}
+
+/* 滚动条样式 */
+.service-nav::-webkit-scrollbar {
+  width: 4px;
+}
+
+.service-nav::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.service-nav::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 2px;
+}
+
+.service-nav::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 </style>

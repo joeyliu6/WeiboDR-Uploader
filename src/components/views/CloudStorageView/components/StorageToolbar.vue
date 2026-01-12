@@ -96,6 +96,9 @@ const formatSize = (bytes: number): string => {
         />
       </div>
 
+      <!-- 分隔线 -->
+      <div class="toolbar-divider"></div>
+
       <!-- 全选 -->
       <div class="select-all">
         <Checkbox
@@ -110,27 +113,35 @@ const formatSize = (bytes: number): string => {
 
       <!-- 统计信息 -->
       <div v-if="stats" class="stats-info">
-        <span>{{ stats.objectCount }} 个文件</span>
-        <span class="stats-separator">·</span>
-        <span>{{ formatSize(stats.totalSize) }}</span>
+        <span class="stats-count">{{ stats.objectCount }} 个文件</span>
+        <span class="stats-separator"></span>
+        <span class="stats-size">{{ formatSize(stats.totalSize) }}</span>
       </div>
 
-      <!-- 操作按钮 -->
-      <Button
-        label="上传"
-        icon="pi pi-upload"
-        @click="emit('upload')"
-        size="small"
-      />
+      <!-- 分隔线 -->
+      <div class="toolbar-divider"></div>
 
-      <Button
-        icon="pi pi-refresh"
-        @click="emit('refresh')"
-        :loading="loading"
-        outlined
-        size="small"
-        v-tooltip.top="'刷新'"
-      />
+      <!-- 操作按钮组 -->
+      <div class="action-buttons">
+        <Button
+          label="上传"
+          icon="pi pi-upload"
+          @click="emit('upload')"
+          size="small"
+          class="upload-btn"
+        />
+
+        <Button
+          icon="pi pi-refresh"
+          @click="emit('refresh')"
+          :loading="loading"
+          text
+          rounded
+          size="small"
+          v-tooltip.top="'刷新'"
+          class="refresh-btn"
+        />
+      </div>
     </div>
   </div>
 </template>
@@ -141,10 +152,8 @@ const formatSize = (bytes: number): string => {
   justify-content: space-between;
   align-items: center;
   gap: 16px;
-  padding: 12px 20px;
-  background: var(--bg-card);
-  border-bottom: 1px solid var(--border-subtle);
-  flex-wrap: wrap;
+  padding: 16px 24px;
+  min-height: 60px;
 }
 
 .toolbar-left {
@@ -158,8 +167,15 @@ const formatSize = (bytes: number): string => {
 .toolbar-right {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
+}
+
+/* 分隔线 */
+.toolbar-divider {
+  width: 1px;
+  height: 24px;
+  background: var(--border-subtle);
 }
 
 /* 搜索框 */
@@ -173,14 +189,24 @@ const formatSize = (bytes: number): string => {
   position: absolute;
   left: 12px;
   color: var(--text-muted);
-  font-size: 0.9rem;
+  font-size: 14px;
   pointer-events: none;
 }
 
 .search-input {
   padding-left: 36px;
   padding-right: 32px;
-  width: 200px;
+  width: 220px;
+  border-radius: 8px;
+  background: var(--bg-app);
+  border: 1px solid var(--border-subtle);
+  transition: all 0.2s;
+}
+
+.search-input:focus {
+  background: var(--bg-card);
+  border-color: var(--primary);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 .search-clear {
@@ -199,20 +225,54 @@ const formatSize = (bytes: number): string => {
   cursor: pointer;
   user-select: none;
   color: var(--text-secondary);
-  font-size: 0.9rem;
+  font-size: 13px;
+  font-weight: 500;
 }
 
 /* 统计信息 */
 .stats-info {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 8px;
   color: var(--text-secondary);
-  font-size: 0.85rem;
-  padding: 0 8px;
+  font-size: 13px;
+  padding: 6px 12px;
+  background: var(--bg-app);
+  border-radius: 6px;
+}
+
+.stats-count {
+  font-weight: 500;
 }
 
 .stats-separator {
+  width: 4px;
+  height: 4px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+
+.stats-size {
   color: var(--text-muted);
+}
+
+/* 操作按钮组 */
+.action-buttons {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.upload-btn {
+  font-weight: 500;
+}
+
+.refresh-btn {
+  color: var(--text-secondary);
+}
+
+.refresh-btn:hover {
+  color: var(--primary);
+  background: var(--hover-overlay);
 }
 </style>

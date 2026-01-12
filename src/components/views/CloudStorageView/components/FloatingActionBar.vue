@@ -98,41 +98,57 @@ const fileCount = () => props.selectedItems.filter((i) => i.type === 'file').len
   transform: translateX(-50%);
   display: flex;
   align-items: center;
-  gap: 20px;
-  padding: 12px 20px;
+  gap: 16px;
+  padding: 12px 16px 12px 20px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
-  box-shadow: var(--shadow-float);
+  border-radius: 50px;
+  box-shadow: var(--shadow-modal);
   z-index: 100;
+  backdrop-filter: blur(12px);
 }
 
 .selection-info {
-  color: var(--text-secondary);
-  font-size: 0.9rem;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text-primary);
+  font-size: 14px;
+  font-weight: 500;
   white-space: nowrap;
+  padding-right: 8px;
+  border-right: 1px solid var(--border-subtle);
 }
 
 .file-hint {
   color: var(--text-muted);
-  font-size: 0.8rem;
-  margin-left: 4px;
+  font-size: 12px;
+  font-weight: 400;
 }
 
 .action-buttons {
   display: flex;
-  gap: 8px;
+  gap: 6px;
+  align-items: center;
+}
+
+.action-buttons :deep(.p-button) {
+  border-radius: 20px;
+}
+
+.action-buttons :deep(.p-button-outlined) {
+  border-width: 1px;
 }
 
 /* 动画 */
 .slide-up-enter-active,
 .slide-up-leave-active {
-  transition: all 0.3s ease;
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .slide-up-enter-from,
 .slide-up-leave-to {
-  transform: translateX(-50%) translateY(20px);
+  transform: translateX(-50%) translateY(24px);
   opacity: 0;
 }
 </style>

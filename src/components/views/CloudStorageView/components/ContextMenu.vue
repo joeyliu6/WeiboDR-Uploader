@@ -86,32 +86,35 @@ onUnmounted(() => {
 <style scoped>
 .context-menu {
   position: fixed;
-  min-width: 160px;
-  padding: 6px 0;
+  min-width: 180px;
+  padding: 8px;
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  box-shadow: var(--shadow-float);
+  border-radius: 12px;
+  box-shadow: var(--shadow-modal);
   z-index: 1000;
+  backdrop-filter: blur(12px);
 }
 
 .menu-item {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
   width: 100%;
-  padding: 8px 16px;
+  padding: 10px 12px;
   border: none;
   background: none;
   color: var(--text-primary);
-  font-size: 0.9rem;
+  font-size: 13px;
   cursor: pointer;
-  transition: background 0.15s;
+  transition: all 0.15s;
   text-align: left;
+  border-radius: 8px;
 }
 
 .menu-item:hover {
-  background: rgba(59, 130, 246, 0.1);
+  background: var(--selected-bg);
+  color: var(--primary);
 }
 
 .menu-item.disabled {
@@ -121,6 +124,7 @@ onUnmounted(() => {
 
 .menu-item.disabled:hover {
   background: none;
+  color: var(--text-primary);
 }
 
 .menu-item.danger {
@@ -128,33 +132,41 @@ onUnmounted(() => {
 }
 
 .menu-item.danger:hover {
-  background: rgba(239, 68, 68, 0.1);
+  background: var(--state-error-bg);
+  color: var(--error);
 }
 
 .menu-icon {
-  font-size: 0.9rem;
-  width: 16px;
+  font-size: 14px;
+  width: 18px;
+  text-align: center;
+  opacity: 0.8;
+}
+
+.menu-item:hover .menu-icon {
+  opacity: 1;
 }
 
 .menu-label {
   flex: 1;
+  font-weight: 500;
 }
 
 .menu-separator {
   height: 1px;
-  margin: 6px 12px;
+  margin: 6px 4px;
   background: var(--border-subtle);
 }
 
 /* 动画 */
 .fade-enter-active,
 .fade-leave-active {
-  transition: opacity 0.15s, transform 0.15s;
+  transition: opacity 0.15s, transform 0.15s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
 .fade-enter-from,
 .fade-leave-to {
   opacity: 0;
-  transform: scale(0.95);
+  transform: scale(0.92);
 }
 </style>
