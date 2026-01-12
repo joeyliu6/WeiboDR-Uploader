@@ -1,41 +1,11 @@
 // src/services/storage/IStorageManager.ts
 // 通用云存储管理器接口定义
 
-/**
- * 存储对象元数据
- */
-export interface StorageObject {
-  /** 文件/对象唯一标识符（路径或Key） */
-  key: string;
-  /** 文件名 */
-  name: string;
-  /** 文件大小（字节） */
-  size: number;
-  /** 最后修改时间 */
-  lastModified: Date;
-  /** 是否为目录 */
-  isDirectory: boolean;
-  /** 公开访问 URL（如果可用） */
-  url?: string;
-  /** ETag（对象哈希） */
-  etag?: string;
-}
+import { StorageObject, ListResult } from '../../components/views/CloudStorageView/types';
+import { ConnectionTestResult } from '../../uploaders/base/types';
 
-/**
- * 列表结果
- */
-export interface ListResult {
-  /** 对象列表 */
-  objects: StorageObject[];
-  /** 子目录前缀列表 */
-  prefixes: string[];
-  /** 是否有更多数据 */
-  isTruncated: boolean;
-  /** 分页续传 Token */
-  continuationToken?: string;
-  /** 总数量（如果支持） */
-  totalCount?: number;
-}
+// 重新导出类型，方便其他模块使用
+export type { StorageObject, ListResult, ConnectionTestResult };
 
 /**
  * 列表选项
@@ -49,18 +19,6 @@ export interface ListOptions {
   maxKeys?: number;
   /** 分页续传 Token */
   continuationToken?: string;
-}
-
-/**
- * 连接测试结果
- */
-export interface ConnectionTestResult {
-  /** 测试是否成功 */
-  success: boolean;
-  /** 响应延迟（毫秒） */
-  latency?: number;
-  /** 错误信息 */
-  error?: string;
 }
 
 /**

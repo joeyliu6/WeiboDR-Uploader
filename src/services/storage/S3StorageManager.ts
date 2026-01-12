@@ -50,6 +50,7 @@ export abstract class BaseS3StorageManager implements IStorageManager {
       size: obj.size,
       lastModified: new Date(obj.last_modified),
       isDirectory: false,
+      type: 'file' as const,
       url: this.buildPublicUrl(obj.key),
       etag: obj.etag
     }));
