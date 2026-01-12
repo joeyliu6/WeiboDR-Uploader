@@ -2,11 +2,12 @@
 /**
  * Cookie 认证图床统一设置面板
  * 整合 Weibo、Zhihu、Nowcoder、Nami、Bilibili、Chaoxing 的配置界面
- * 使用标签页切换，带配置状态指示器
+ * 使用标签页切换，带配置状态指示器和测试功能
  */
 import { ref, computed } from 'vue';
 import Textarea from 'primevue/textarea';
 import InputText from 'primevue/inputtext';
+import Button from 'primevue/button';
 
 // Props 定义
 interface CookieFormData {
@@ -20,10 +21,12 @@ interface CookieFormData {
 
 const props = defineProps<{
   formData: CookieFormData;
+  testingConnections: Record<string, boolean>;
 }>();
 
 const emit = defineEmits<{
   save: [];
+  test: [providerId: string];
 }>();
 
 // 服务商类型定义
@@ -59,9 +62,24 @@ const isProviderConfigured = (providerId: ProviderId): boolean => {
   return !!(formData[providerId]?.cookie && formData[providerId].cookie.trim().length > 0);
 };
 
+// 当前服务商是否已配置
+const isCurrentConfigured = computed(() => {
+  return isProviderConfigured(selectedProvider.value);
+});
+
+// 当前服务商是否正在测试
+const isTesting = computed(() => {
+  return props.testingConnections[selectedProvider.value] || false;
+});
+
 // 保存设置
 const handleSave = () => {
   emit('save');
+};
+
+// 测试连接
+const handleTest = () => {
+  emit('test', selectedProvider.value);
 };
 
 // 从 Cookie 中提取 Auth-Token（仅用于 Nami）
@@ -132,6 +150,20 @@ const extractAuthToken = computed(() => {
             此 Token 已从 Cookie 中自动提取，无需手动输入
           </small>
         </div>
+      </div>
+
+      <!-- 测试连接按钮 -->
+      <div class="actions-row">
+        <Button
+          label="测试连接"
+          icon="pi pi-check"
+          @click="handleTest"
+          :loading="isTesting"
+          :disabled="!isCurrentConfigured"
+          severity="secondary"
+          outlined
+          size="small"
+        />
       </div>
     </div>
   </div>
@@ -249,6 +281,14 @@ const extractAuthToken = computed(() => {
   color: var(--text-muted);
   line-height: 1.5;
   margin-top: 4px;
+}
+
+/* 操作按钮行 */
+.actions-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 8px;
 }
 
 /* 响应式 */

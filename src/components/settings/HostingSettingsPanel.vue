@@ -4,7 +4,7 @@
  * 使用折叠面板（Accordion）形式整合所有图床配置
  * 分类：私有图床、开箱即用、Cookie认证、Token认证
  */
-import { ref, computed } from 'vue';
+import { ref } from 'vue';
 import Accordion from 'primevue/accordion';
 import AccordionPanel from 'primevue/accordionpanel';
 import AccordionHeader from 'primevue/accordionheader';
@@ -43,12 +43,19 @@ const props = defineProps<{
   cookieFormData: CookieFormData;
   tokenFormData: TokenFormData;
   testingConnections: Record<string, boolean>;
+  // 开箱即用检测状态
+  jdAvailable: boolean;
+  qiyuAvailable: boolean;
+  isCheckingJd: boolean;
+  isCheckingQiyu: boolean;
 }>();
 
 const emit = defineEmits<{
   save: [];
   testPrivate: [providerId: string];
   testToken: [providerId: string];
+  testCookie: [providerId: string];
+  checkBuiltin: [providerId: string];
 }>();
 
 // 默认展开的面板（可以同时展开多个）
@@ -69,38 +76,15 @@ const handleTestToken = (providerId: string) => {
   emit('testToken', providerId);
 };
 
-// 检查各分类是否已配置（用于显示状态指示器）
-const isPrivateConfigured = computed(() => {
-  const data = props.privateFormData;
-  return !!(
-    (data.r2.accountId && data.r2.bucketName) ||
-    (data.cos.secretId && data.cos.bucket) ||
-    (data.oss.accessKeyId && data.oss.bucket) ||
-    (data.qiniu.accessKey && data.qiniu.bucket) ||
-    (data.upyun.operator && data.upyun.bucket)
-  );
-});
+// 处理 Cookie 图床测试
+const handleTestCookie = (providerId: string) => {
+  emit('testCookie', providerId);
+};
 
-const isCookieConfigured = computed(() => {
-  const data = props.cookieFormData;
-  return !!(
-    data.weibo.cookie ||
-    data.zhihu.cookie ||
-    data.nowcoder.cookie ||
-    data.nami.cookie ||
-    data.bilibili.cookie ||
-    data.chaoxing.cookie
-  );
-});
-
-const isTokenConfigured = computed(() => {
-  const data = props.tokenFormData;
-  return !!(
-    data.smms.token ||
-    (data.github.token && data.github.owner && data.github.repo) ||
-    data.imgur.clientId
-  );
-});
+// 处理开箱即用检测
+const handleCheckBuiltin = (providerId: string) => {
+  emit('checkBuiltin', providerId);
+};
 </script>
 
 <template>
@@ -117,16 +101,12 @@ const isTokenConfigured = computed(() => {
       <AccordionPanel value="0">
         <AccordionHeader>
           <div class="accordion-title">
-            <span class="category-indicator" :class="{ configured: isPrivateConfigured }"></span>
             <i class="pi pi-server"></i>
             <span>私有图床</span>
-            <span class="category-count">5 个服务</span>
+            <span class="category-count">5</span>
           </div>
         </AccordionHeader>
         <AccordionContent>
-          <div class="accordion-desc">
-            私有云存储服务，使用 API 密钥认证，支持自定义域名和路径配置
-          </div>
           <PrivateHostingPanel
             :formData="privateFormData"
             :testingConnections="testingConnections"
@@ -140,17 +120,19 @@ const isTokenConfigured = computed(() => {
       <AccordionPanel value="1">
         <AccordionHeader>
           <div class="accordion-title">
-            <span class="category-indicator configured"></span>
             <i class="pi pi-box"></i>
             <span>开箱即用</span>
-            <span class="category-count">2 个服务</span>
+            <span class="category-count">2</span>
           </div>
         </AccordionHeader>
         <AccordionContent>
-          <div class="accordion-desc">
-            无需配置的图床服务，开箱即用，自动获取认证信息
-          </div>
-          <BuiltinHostingPanel />
+          <BuiltinHostingPanel
+            :jdAvailable="jdAvailable"
+            :qiyuAvailable="qiyuAvailable"
+            :isCheckingJd="isCheckingJd"
+            :isCheckingQiyu="isCheckingQiyu"
+            @check="handleCheckBuiltin"
+          />
         </AccordionContent>
       </AccordionPanel>
 
@@ -158,19 +140,17 @@ const isTokenConfigured = computed(() => {
       <AccordionPanel value="2">
         <AccordionHeader>
           <div class="accordion-title">
-            <span class="category-indicator" :class="{ configured: isCookieConfigured }"></span>
             <i class="pi pi-key"></i>
             <span>Cookie 认证</span>
-            <span class="category-count">6 个服务</span>
+            <span class="category-count">6</span>
           </div>
         </AccordionHeader>
         <AccordionContent>
-          <div class="accordion-desc">
-            使用浏览器 Cookie 认证的图床服务，需要从浏览器开发者工具中获取
-          </div>
           <CookieAuthHostingPanel
             :formData="cookieFormData"
+            :testingConnections="testingConnections"
             @save="handleSave"
+            @test="handleTestCookie"
           />
         </AccordionContent>
       </AccordionPanel>
@@ -179,16 +159,12 @@ const isTokenConfigured = computed(() => {
       <AccordionPanel value="3">
         <AccordionHeader>
           <div class="accordion-title">
-            <span class="category-indicator" :class="{ configured: isTokenConfigured }"></span>
             <i class="pi pi-shield"></i>
             <span>Token 认证</span>
-            <span class="category-count">3 个服务</span>
+            <span class="category-count">3</span>
           </div>
         </AccordionHeader>
         <AccordionContent>
-          <div class="accordion-desc">
-            使用 API Token 或 Access Token 认证的图床服务
-          </div>
           <TokenAuthHostingPanel
             :formData="tokenFormData"
             :testingConnections="testingConnections"
@@ -257,37 +233,13 @@ const isTokenConfigured = computed(() => {
 .category-count {
   margin-left: auto;
   font-size: 0.8125rem;
-  font-weight: 400;
+  font-weight: 500;
   color: var(--text-muted);
   background: var(--bg-secondary);
   padding: 4px 10px;
   border-radius: 12px;
-}
-
-/* 配置状态指示器 */
-.category-indicator {
-  width: 10px;
-  height: 10px;
-  border-radius: 50%;
-  background: var(--text-muted);
-  transition: background 0.2s ease;
-  flex-shrink: 0;
-}
-
-.category-indicator.configured {
-  background: var(--success);
-  box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
-}
-
-/* Accordion 内容描述 */
-.accordion-desc {
-  font-size: 0.875rem;
-  color: var(--text-secondary);
-  margin-bottom: 20px;
-  padding: 12px 16px;
-  background: var(--bg-secondary);
-  border-radius: 8px;
-  border-left: 3px solid var(--primary-color);
+  min-width: 28px;
+  text-align: center;
 }
 
 /* 响应式 */

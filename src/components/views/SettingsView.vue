@@ -562,6 +562,23 @@ const handleTokenTest = (providerId: string) => {
   }
 };
 
+// Cookie 认证测试连接处理
+const handleCookieTest = (providerId: string) => {
+  const testFn = actions[providerId as keyof typeof actions];
+  if (typeof testFn === 'function') {
+    testFn();
+  }
+};
+
+// 开箱即用图床可用性检测处理
+const handleBuiltinCheck = (providerId: string) => {
+  if (providerId === 'jd') {
+    checkJdAvailable();
+  } else if (providerId === 'qiyu') {
+    checkQiyuAvailability(true); // 强制检测
+  }
+};
+
 // 前缀管理
 const addPrefix = () => { formData.value.linkPrefixList.push(''); formData.value.selectedPrefixIndex = formData.value.linkPrefixList.length - 1; };
 const removePrefix = (idx: number) => {
@@ -2348,9 +2365,15 @@ onUnmounted(() => {
             imgur: formData.imgur
           }"
           :testing-connections="testingConnections"
+          :jd-available="jdAvailable"
+          :qiyu-available="qiyuAvailable"
+          :is-checking-jd="isCheckingJd"
+          :is-checking-qiyu="isCheckingQiyu"
           @save="saveSettings"
           @test-private="handleS3Test"
           @test-token="handleTokenTest"
+          @test-cookie="handleCookieTest"
+          @check-builtin="handleBuiltinCheck"
         />
       </div>
 

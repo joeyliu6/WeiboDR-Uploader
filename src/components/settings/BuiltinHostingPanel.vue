@@ -2,9 +2,22 @@
 /**
  * 开箱即用图床统一设置面板
  * 整合 JD、Qiyu 的配置界面
- * 使用标签页切换，带配置状态指示器
+ * 使用标签页切换，带可用性检测功能
  */
 import { ref, computed } from 'vue';
+import Button from 'primevue/button';
+import Tag from 'primevue/tag';
+
+const props = defineProps<{
+  jdAvailable: boolean;
+  qiyuAvailable: boolean;
+  isCheckingJd: boolean;
+  isCheckingQiyu: boolean;
+}>();
+
+const emit = defineEmits<{
+  check: [providerId: string];
+}>();
 
 // 服务商类型定义
 type ProviderId = 'jd' | 'qiyu';
@@ -13,13 +26,12 @@ interface Provider {
   id: ProviderId;
   name: string;
   description: string;
-  needsConfig: boolean;
 }
 
 // 服务商定义
 const PROVIDERS: Provider[] = [
-  { id: 'jd', name: '京东', description: '京东云存储，开箱即用，无需配置', needsConfig: false },
-  { id: 'qiyu', name: '七鱼', description: '网易七鱼客服系统 NOS 对象存储，Token 自动获取', needsConfig: false },
+  { id: 'jd', name: '京东', description: '京东云存储，开箱即用，无需配置' },
+  { id: 'qiyu', name: '七鱼', description: '网易七鱼客服系统 NOS 对象存储，Token 自动获取' },
 ];
 
 // 当前选择的服务商
@@ -30,10 +42,24 @@ const currentProviderInfo = computed(() => {
   return PROVIDERS.find(p => p.id === selectedProvider.value)!;
 });
 
-// 检查服务商配置是否完整（用于状态指示器）
-// 开箱即用的服务始终显示为已配置
-const isProviderConfigured = (providerId: ProviderId): boolean => {
-  return true; // 开箱即用，始终可用
+// 当前服务商是否可用
+const isCurrentAvailable = computed(() => {
+  return selectedProvider.value === 'jd' ? props.jdAvailable : props.qiyuAvailable;
+});
+
+// 当前服务商是否正在检测
+const isCurrentChecking = computed(() => {
+  return selectedProvider.value === 'jd' ? props.isCheckingJd : props.isCheckingQiyu;
+});
+
+// 检测可用性
+const handleCheck = () => {
+  emit('check', selectedProvider.value);
+};
+
+// 获取服务商可用状态
+const getProviderAvailable = (providerId: ProviderId): boolean => {
+  return providerId === 'jd' ? props.jdAvailable : props.qiyuAvailable;
 };
 </script>
 
@@ -50,7 +76,7 @@ const isProviderConfigured = (providerId: ProviderId): boolean => {
       >
         <span
           class="provider-indicator"
-          :class="{ configured: isProviderConfigured(provider.id) }"
+          :class="{ configured: getProviderAvailable(provider.id) }"
         ></span>
         <span>{{ provider.name }}</span>
       </button>
@@ -64,18 +90,48 @@ const isProviderConfigured = (providerId: ProviderId): boolean => {
         <p class="section-desc">{{ currentProviderInfo.description }}</p>
       </div>
 
-      <!-- JD 说明 -->
-      <div v-if="selectedProvider === 'jd'" class="info-card">
-        <i class="pi pi-check-circle"></i>
-        <p>京东图床无需任何配置，开箱即用。</p>
-        <p class="hint">直接在上传界面选择京东图床即可使用。</p>
+      <!-- 可用性状态卡片 -->
+      <div class="status-card" :class="{ available: isCurrentAvailable, unavailable: !isCurrentAvailable }">
+        <div class="status-icon">
+          <i v-if="isCurrentChecking" class="pi pi-spin pi-spinner"></i>
+          <i v-else-if="isCurrentAvailable" class="pi pi-check-circle"></i>
+          <i v-else class="pi pi-times-circle"></i>
+        </div>
+        <div class="status-content">
+          <div class="status-title">
+            <span v-if="isCurrentChecking">正在检测...</span>
+            <span v-else-if="isCurrentAvailable">服务可用</span>
+            <span v-else>服务不可用</span>
+          </div>
+          <div class="status-desc">
+            <template v-if="selectedProvider === 'jd'">
+              <span v-if="isCurrentAvailable">京东图床无需任何配置，可以直接使用</span>
+              <span v-else>京东图床当前不可用，请稍后重试</span>
+            </template>
+            <template v-else>
+              <span v-if="isCurrentAvailable">七鱼图床 Token 已自动获取，可以直接使用</span>
+              <span v-else>七鱼图床需要通过 Chrome/Edge 浏览器自动获取 Token</span>
+            </template>
+          </div>
+        </div>
+        <Tag
+          :value="isCurrentAvailable ? '可用' : '不可用'"
+          :severity="isCurrentAvailable ? 'success' : 'danger'"
+          class="status-tag"
+        />
       </div>
 
-      <!-- 七鱼说明 -->
-      <div v-else-if="selectedProvider === 'qiyu'" class="info-card">
-        <i class="pi pi-info-circle"></i>
-        <p>七鱼图床通过 Chrome/Edge 浏览器自动获取 Token，无需手动配置。</p>
-        <p class="hint">首次使用时应用会自动检测并获取必要的认证信息。</p>
+      <!-- 检测按钮 -->
+      <div class="actions-row">
+        <Button
+          label="检测可用性"
+          icon="pi pi-refresh"
+          @click="handleCheck"
+          :loading="isCurrentChecking"
+          severity="secondary"
+          outlined
+          size="small"
+        />
       </div>
     </div>
   </div>
@@ -165,33 +221,72 @@ const isProviderConfigured = (providerId: ProviderId): boolean => {
   margin: 0;
 }
 
-/* 信息卡片 */
-.info-card {
+/* 状态卡片 */
+.status-card {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 20px 24px;
   background: var(--bg-secondary);
   border: 1px solid var(--border-subtle);
   border-radius: 12px;
-  padding: 32px;
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  align-items: center;
-  text-align: center;
+  transition: all 0.2s ease;
 }
 
-.info-card i {
-  font-size: 3rem;
+.status-card.available {
+  border-color: var(--success);
+  background: rgba(34, 197, 94, 0.05);
+}
+
+.status-card.unavailable {
+  border-color: var(--danger);
+  background: rgba(239, 68, 68, 0.05);
+}
+
+.status-icon {
+  flex-shrink: 0;
+}
+
+.status-icon i {
+  font-size: 2rem;
+}
+
+.status-card.available .status-icon i {
   color: var(--success);
 }
 
-.info-card p {
-  margin: 0;
-  color: var(--text-primary);
-  font-size: 0.9375rem;
-  line-height: 1.6;
+.status-card.unavailable .status-icon i {
+  color: var(--danger);
 }
 
-.info-card .hint {
+.status-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.status-title {
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.status-desc {
   font-size: 0.875rem;
   color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.status-tag {
+  flex-shrink: 0;
+}
+
+/* 操作按钮行 */
+.actions-row {
+  display: flex;
+  justify-content: flex-start;
+  gap: 12px;
+  padding-top: 8px;
 }
 </style>
