@@ -32,3 +32,6 @@ src-tauri/gen/
 
 .claude/
 CLAUDE.md
+
+# Claude Code temp files
+tmpclaude*
