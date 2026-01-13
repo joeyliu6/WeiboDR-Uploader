@@ -51,6 +51,15 @@
 | [时间线优化](./fixes/timeline-fixed.md) | 快速滚动闪烁问题 |
 | [UI 修复](./fixes/ui-fixed.md) | 表格滚动条、骨架屏偏移 |
 
+### 知识沉淀
+
+| 分类 | 描述 |
+|------|------|
+| [踩坑记录](./gotchas/) | 常见陷阱、易错点、API 误用 |
+| [最佳实践](./patterns/) | 设计模式、代码范式、推荐做法 |
+| [性能优化](./performance/) | 性能调优、渲染优化、资源优化 |
+| [调试技巧](./debugging/) | 调试方法、工具使用、排查思路 |
+
 ### 外部参考
 
 | 文档 | 描述 |
@@ -92,10 +101,21 @@ docs/
 │   └── add-new-uploader.md  # 添加新图床
 ├── decisions/                # 技术决策记录
 │   └── template.md          # ADR 模板
+│
+│   # 知识沉淀
 ├── fixes/                    # 问题修复记录
 │   ├── README.md            # 修复记录索引
 │   ├── timeline-fixed.md    # 时间线优化
 │   └── ui-fixed.md          # UI 修复
+├── gotchas/                  # 踩坑记录
+│   └── README.md            # 踩坑记录索引
+├── patterns/                 # 最佳实践
+│   └── README.md            # 最佳实践索引
+├── performance/              # 性能优化
+│   └── README.md            # 性能优化索引
+├── debugging/                # 调试技巧
+│   └── README.md            # 调试技巧索引
+│
 ├── references/               # 外部参考文档
 │   ├── README.md            # 参考文档索引
 │   ├── third-party-apis.md  # 第三方 API
