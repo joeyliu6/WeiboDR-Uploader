@@ -222,6 +222,9 @@ export class UploadQueueManager {
       return;
     }
 
+    // 关键：清除所有待处理的节流更新，防止过时的进度更新覆盖成功状态
+    this.queueState.clearPendingUpdatesForItem(itemId);
+
     // 修复竞态条件：只构建需要更新的服务进度
     // 不再使用 { ...item.serviceProgress } 展开全部，避免覆盖并发更新
     const serviceProgressUpdates: Record<string, any> = {};
@@ -294,6 +297,9 @@ export class UploadQueueManager {
       console.warn(`[UploadQueue] 找不到队列项: ${itemId}`);
       return;
     }
+
+    // 关键：清除所有待处理的节流更新，防止过时的进度更新覆盖失败状态
+    this.queueState.clearPendingUpdatesForItem(itemId);
 
     this.updateItem(itemId, {
       status: 'error',

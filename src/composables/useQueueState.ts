@@ -60,6 +60,14 @@ function flushPendingUpdates() {
     const index = queueItems.value.findIndex(item => item.id === itemId);
     if (index !== -1) {
       const currentItem = queueItems.value[index];
+
+      // 防止竞态条件：如果当前状态已经是 error 或 success，
+      // 完全跳过节流队列中的更新（包括 serviceProgress）
+      // 因为这些更新是过时的进度更新，会覆盖最终状态
+      if (currentItem.status === 'error' || currentItem.status === 'success') {
+        return; // 跳过此 item 的所有待处理更新
+      }
+
       const mergedUpdate = mergeUpdates(updates);
 
       // 合并 serviceProgress
@@ -90,6 +98,14 @@ function scheduleFlush() {
     rafScheduled = true;
     requestAnimationFrame(flushPendingUpdates);
   }
+}
+
+/**
+ * 清除指定 item 的所有待处理节流更新
+ * 在设置最终状态（error/success）时调用，防止过时更新覆盖最终状态
+ */
+function clearPendingUpdatesForItem(itemId: string): void {
+  pendingUpdates.delete(itemId);
 }
 
 /**
@@ -217,6 +233,7 @@ export function useQueueState() {
     removeItem,
     clearQueue,
     clearCompletedItems,
-    hasCompletedItems
+    hasCompletedItems,
+    clearPendingUpdatesForItem
   };
 }

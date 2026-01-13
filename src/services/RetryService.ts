@@ -389,6 +389,27 @@ export class RetryService {
 
     this.options.queueManager.updateItem(itemId, { serviceProgress: updates });
 
+    // 检查是否需要更新整体状态
+    // 如果没有任何服务正在上传或成功，应该将整体状态改回 error
+    const currentItem = this.options.queueManager.getItem(itemId);
+    if (currentItem) {
+      const hasActiveOrSuccessService = currentItem.enabledServices.some(s => {
+        const sp = currentItem.serviceProgress[s];
+        if (!sp) return false;
+        // 正在上传（isRetrying 或进度 > 0 且不是失败）
+        const isActive = sp.isRetrying ||
+          (sp.progress > 0 && !sp.status?.includes('失败') && !sp.status?.includes('✗'));
+        // 已成功
+        const isSuccess = sp.status?.includes('完成') || sp.status?.includes('✓');
+        return isActive || isSuccess;
+      });
+
+      // 如果没有活跃或成功的服务，将整体状态改回 error
+      if (!hasActiveOrSuccessService && currentItem.status === 'uploading') {
+        this.options.queueManager.updateItem(itemId, { status: 'error' });
+      }
+    }
+
     const serviceLabels: Record<ServiceType, string> = {
       weibo: '微博', r2: 'R2', jd: '京东',
       nowcoder: '牛客', qiyu: '七鱼', zhihu: '知乎', nami: '纳米',
