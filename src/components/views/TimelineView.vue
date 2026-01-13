@@ -8,6 +8,7 @@ import { ref, computed, onMounted, onUnmounted, watch, nextTick, shallowRef } fr
 import { useHistoryViewState, type LinkFormat } from '../../composables/useHistoryViewState';
 import { useHistoryManager } from '../../composables/useHistory';
 import { useVirtualTimeline, type PhotoGroup } from '../../composables/useVirtualTimeline';
+import { generateSkeletonLayout } from '../../utils/justifiedLayout';
 import { useThumbCache, generateMediumThumbnailUrl } from '../../composables/useThumbCache';
 import { useConfigManager } from '../../composables/useConfig';
 import { useImageMetadataFixer } from '../../composables/useImageMetadataFixer';
@@ -245,6 +246,29 @@ const currentMonthLabel = computed(() => {
 const visibleRatio = computed(() => {
   if (totalHeight.value <= viewportHeight.value) return 1;
   return viewportHeight.value / totalHeight.value;
+});
+
+// ==================== 骨架屏布局 ====================
+
+/**
+ * 骨架屏布局数据
+ * 使用 Justified Layout 算法确保与实际内容布局一致
+ */
+const skeletonLayout = computed(() => {
+  // 使用视口尺寸计算，如果还未获取则使用窗口尺寸作为降级
+  const width = viewportHeight.value > 0
+    ? (scrollContainer.value?.clientWidth || window.innerWidth - 90)
+    : window.innerWidth - 90;
+  const height = viewportHeight.value > 0 ? viewportHeight.value : window.innerHeight;
+
+  return generateSkeletonLayout({
+    containerWidth: width,
+    viewportHeight: height,
+    targetRowHeight: 200,
+    gap: 4,
+    headerHeight: 48,
+    groupGap: 24,
+  });
 });
 
 // ==================== Scroll Handling ====================
@@ -596,62 +620,31 @@ watch(
   <div class="timeline-view">
     <!-- Main Scroll Area -->
     <div ref="scrollContainer" class="timeline-scroll-area" @scroll="handleScroll">
-      <!-- Loading State - 模拟时间线布局的骨架屏 -->
-      <div v-if="viewState.isLoading.value" class="loading-state">
-        <!-- 模拟分组 1 -->
-        <div class="skeleton-group">
-          <div class="skeleton-header">
-            <Skeleton width="160px" height="24px" />
-            <Skeleton width="70px" height="16px" />
-          </div>
-          <div class="skeleton-grid">
-            <Skeleton
-              v-for="(flex, i) in [1.2, 1.5, 1.3, 1.8]"
-              :key="`s1a-${i}`"
-              class="skeleton-item"
-              :style="{ flex }"
-              height="200px"
-              borderRadius="8px"
-            />
-          </div>
-          <div class="skeleton-grid">
-            <Skeleton
-              v-for="(flex, i) in [1.6, 1.2, 1.4]"
-              :key="`s1b-${i}`"
-              class="skeleton-item"
-              :style="{ flex }"
-              height="200px"
-              borderRadius="8px"
-            />
-          </div>
+      <!-- Loading State - 使用 Justified Layout 算法的骨架屏 -->
+      <div v-if="viewState.isLoading.value" class="skeleton-container" :style="{ height: `${skeletonLayout.totalHeight}px` }">
+        <!-- 分组头部占位 -->
+        <div
+          v-for="group in skeletonLayout.groups"
+          :key="`skeleton-header-${group.id}`"
+          class="skeleton-header"
+          :style="{ transform: `translate3d(0, ${group.headerY}px, 0)` }"
+        >
+          <Skeleton width="140px" height="24px" />
+          <Skeleton width="70px" height="16px" />
         </div>
 
-        <!-- 模拟分组 2 -->
-        <div class="skeleton-group">
-          <div class="skeleton-header">
-            <Skeleton width="160px" height="24px" />
-            <Skeleton width="70px" height="16px" />
-          </div>
-          <div class="skeleton-grid">
-            <Skeleton
-              v-for="(flex, i) in [1.4, 1.7, 1.2, 1.5]"
-              :key="`s2a-${i}`"
-              class="skeleton-item"
-              :style="{ flex }"
-              height="200px"
-              borderRadius="8px"
-            />
-          </div>
-          <div class="skeleton-grid">
-            <Skeleton
-              v-for="(flex, i) in [1.8, 1.3, 1.5]"
-              :key="`s2b-${i}`"
-              class="skeleton-item"
-              :style="{ flex }"
-              height="200px"
-              borderRadius="8px"
-            />
-          </div>
+        <!-- 图片占位 -->
+        <div
+          v-for="(item, index) in skeletonLayout.items"
+          :key="`skeleton-item-${index}`"
+          class="skeleton-photo"
+          :style="{
+            transform: `translate3d(${item.x}px, ${item.y}px, 0)`,
+            width: `${item.width}px`,
+            height: `${item.height}px`,
+          }"
+        >
+          <Skeleton width="100%" height="100%" borderRadius="8px" />
         </div>
       </div>
 
@@ -1073,26 +1066,28 @@ watch(
   color: var(--text-secondary);
 }
 
-/* 骨架屏 - 时间线布局模拟 */
-.skeleton-group {
-  margin-bottom: 24px;
+/* 骨架屏 - Justified Layout 风格 */
+.skeleton-container {
+  position: relative;
+  width: 100%;
 }
 
 .skeleton-header {
+  position: absolute;
+  left: 0;
+  right: 0;
   display: flex;
   align-items: baseline;
   gap: 12px;
   padding: 10px 0;
+  height: 48px;
 }
 
-.skeleton-grid {
-  display: flex;
-  gap: 4px;
-  margin-bottom: 4px;
-}
-
-.skeleton-item {
-  min-width: 0;
+.skeleton-photo {
+  position: absolute;
+  background: var(--bg-secondary);
+  border-radius: 8px;
+  overflow: hidden;
 }
 
 /* Loading More */
