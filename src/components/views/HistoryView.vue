@@ -33,6 +33,9 @@ const localSearchTerm = ref('');
 const totalCount = ref(0);
 const selectedCount = ref(0);
 
+// 激活触发器（用于通知子视图 KeepAlive 激活）
+const activationTrigger = ref(0);
+
 // 视图选项
 const viewOptions = [
   { label: '表格', value: 'table' as ViewMode, icon: 'pi pi-table' },
@@ -80,6 +83,8 @@ onMounted(async () => {
 // KeepAlive 激活时刷新数据（解决上传后切换回来不更新的问题）
 onActivated(async () => {
   console.log('[HistoryView] 视图被激活，检查数据更新');
+  // 通知子视图激活状态变化
+  activationTrigger.value++;
   await historyManager.loadHistory();
 });
 
@@ -202,7 +207,7 @@ const handleSelectedCountUpdate = (count: number) => {
     <div class="history-container" :class="{ 'no-padding': currentViewMode === 'timeline' }">
       <!-- 表格视图 -->
       <HistoryTableView
-        v-if="currentViewMode === 'table'"
+        v-show="currentViewMode === 'table'"
         :filter="currentFilter"
         :search-term="debouncedSearchTerm"
         @update:total-count="handleTotalCountUpdate"
@@ -211,7 +216,9 @@ const handleSelectedCountUpdate = (count: number) => {
 
       <!-- 时间轴视图 -->
       <TimelineView
-        v-else
+        v-show="currentViewMode === 'timeline'"
+        :visible="currentViewMode === 'timeline'"
+        :activation-trigger="activationTrigger"
         :filter="currentFilter"
         :search-term="debouncedSearchTerm"
         @update:total-count="handleTotalCountUpdate"

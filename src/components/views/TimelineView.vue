@@ -30,6 +30,8 @@ import Skeleton from 'primevue/skeleton';
 const props = defineProps<{
   filter?: ServiceType | 'all';
   searchTerm?: string;
+  visible?: boolean;
+  activationTrigger?: number;
 }>();
 
 const emit = defineEmits<{
@@ -54,6 +56,10 @@ const scrollContainer = ref<HTMLElement | null>(null);
 // Lightbox state
 const lightboxVisible = ref(false);
 const lightboxItem = ref<HistoryItem | null>(null);
+
+// 切换时的骨架屏状态
+const showSkeleton = ref(false);
+let skeletonMinDisplayTimeout: number | undefined;
 
 // 悬停详情缓存（用于显示悬停信息）
 const hoverDetailsMap = shallowRef(new Map<string, HistoryItem>());
@@ -447,6 +453,8 @@ const PRELOAD_CONFIG = {
   DELAY_MS: 300,
   /** 拖拽结束延迟（毫秒） */
   DRAG_END_DELAY_MS: 50,
+  /** 骨架屏最小显示时间（毫秒），避免闪烁 */
+  SKELETON_MIN_DISPLAY_MS: 300,
 } as const;
 
 /** 预加载定时器 */
@@ -546,6 +554,7 @@ onUnmounted(() => {
 
   if (dragEndTimer) clearTimeout(dragEndTimer);
   if (preloadTimer) clearTimeout(preloadTimer);
+  if (skeletonMinDisplayTimeout) clearTimeout(skeletonMinDisplayTimeout);
 });
 
 // ==================== Watchers ====================
@@ -578,6 +587,63 @@ watch(
   { immediate: true }
 );
 
+/**
+ * 隐藏骨架屏（带最小显示时间，避免闪烁）
+ */
+function hideSkeleton() {
+  if (skeletonMinDisplayTimeout) {
+    clearTimeout(skeletonMinDisplayTimeout);
+  }
+  if (!showSkeleton.value) return;
+  skeletonMinDisplayTimeout = window.setTimeout(() => {
+    showSkeleton.value = false;
+  }, PRELOAD_CONFIG.SKELETON_MIN_DISPLAY_MS);
+}
+
+/**
+ * 显示骨架屏并检查是否需要立即隐藏
+ */
+function showSkeletonWithCheck() {
+  showSkeleton.value = true;
+  // 如果布局已完成，延迟后隐藏骨架屏
+  nextTick(() => {
+    if (!isCalculating.value) {
+      hideSkeleton();
+    }
+  });
+}
+
+// 监听 visible 变化，切换时显示骨架屏
+watch(
+  () => props.visible,
+  (isVisible, wasVisible) => {
+    if (isVisible && !wasVisible) {
+      showSkeletonWithCheck();
+    }
+  }
+);
+
+// 监听 KeepAlive 激活，从其他页面切换回来时显示骨架屏
+watch(
+  () => props.activationTrigger,
+  (_, oldVal) => {
+    // 只有当前可见且非首次触发时才显示骨架屏
+    if (props.visible && oldVal !== undefined) {
+      showSkeletonWithCheck();
+    }
+  }
+);
+
+// 监听布局计算完成，隐藏骨架屏
+watch(
+  () => isCalculating.value,
+  (calculating) => {
+    if (!calculating && showSkeleton.value) {
+      hideSkeleton();
+    }
+  }
+);
+
 </script>
 
 <template>
@@ -585,7 +651,7 @@ watch(
     <!-- Main Scroll Area -->
     <div ref="scrollContainer" class="timeline-scroll-area" @scroll="handleScroll">
       <!-- Loading State - 使用 Justified Layout 算法的骨架屏 -->
-      <div v-if="viewState.isLoading.value" class="skeleton-container" :style="{ height: `${skeletonLayout.totalHeight}px` }">
+      <div v-if="viewState.isLoading.value || showSkeleton" class="skeleton-container" :style="{ height: `${skeletonLayout.totalHeight}px` }">
         <!-- 分组头部占位 -->
         <div
           v-for="group in skeletonLayout.groups"
