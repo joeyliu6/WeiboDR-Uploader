@@ -1,8 +1,8 @@
 import { BaseS3StorageManager } from './S3StorageManager';
 
-export class OssStorageManager extends BaseS3StorageManager {
-  readonly serviceId = 'oss';
-  readonly serviceName = '阿里云 OSS';
+export class AliyunStorageManager extends BaseS3StorageManager {
+  readonly serviceId = 'aliyun';
+  readonly serviceName = '阿里云';
 
   protected getEndpoint(): string {
     return `https://oss-${this.config.region}.aliyuncs.com`;
