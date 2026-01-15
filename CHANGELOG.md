@@ -9,6 +9,17 @@
 
 ## [Unreleased]
 
+### Added
+- 新增腾讯云 COS 图床支持
+  - 支持 SecretId/SecretKey 认证
+  - 支持自定义地域、存储桶、路径前缀
+  - 支持自定义公开访问域名
+- 新增阿里云 OSS 图床支持
+  - 支持 AccessKey ID/Secret 认证
+  - 支持自定义地域、存储桶、路径前缀
+  - 支持自定义公开访问域名
+- 新增 COS/OSS 存储管理器，支持云存储文件浏览
+
 ### Fixed
 - 修复切换时间线视图时的短暂空白问题
   - 添加 visible 和 activationTrigger props 控制骨架屏显示

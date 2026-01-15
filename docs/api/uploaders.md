@@ -377,4 +377,5 @@ function convertToUserFriendlyError(error: unknown, serviceId: ServiceType): str
 
 | 日期 | 变更 |
 |------|------|
+| 2025-01-15 | 新增腾讯云 COS、阿里云 OSS 上传器 |
 | 2025-01-13 | 初始版本 |
