@@ -1,0 +1,1 @@
+export { TencentUploader } from './TencentUploader';

@@ -1,8 +1,8 @@
 import { BaseS3StorageManager } from './S3StorageManager';
 
-export class CosStorageManager extends BaseS3StorageManager {
-  readonly serviceId = 'cos';
-  readonly serviceName = '腾讯云 COS';
+export class TencentStorageManager extends BaseS3StorageManager {
+  readonly serviceId = 'tencent';
+  readonly serviceName = '腾讯云';
 
   protected getEndpoint(): string {
     return `https://cos.${this.config.region}.myqcloud.com`;
