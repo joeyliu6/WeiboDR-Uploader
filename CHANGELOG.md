@@ -30,6 +30,10 @@
 ### Changed
 - 更新 CLAUDE.md 添加文档维护规范
 - 重构图床设置界面，采用扁平式卡片布局
+- 重构图床图标系统
+  - 将 16 个内联 SVG 字符串提取为独立 SVG 文件 (`src/assets/icons/services/`)
+  - 新增 `serviceIcons.ts` 工具模块，使用 Vite `import.meta.glob` 动态导入
+  - SVG 使用 `currentColor` 支持 CSS 颜色控制
   - 新增 `HostingCard.vue` 通用可展开卡片组件
   - 移除多层嵌套结构（Accordion → Tabs → 表单）
   - 按认证类型分组：云存储、免配置图床、Cookie认证、Token认证
