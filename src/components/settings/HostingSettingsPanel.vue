@@ -126,11 +126,11 @@ const extractNamiAuthToken = computed(() => {
             </div>
             <div class="form-item">
               <label>Access Key ID</label>
-              <Password v-model="privateFormData.r2.accessKeyId" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.r2.accessKeyId" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 Access Key ID" />
             </div>
             <div class="form-item">
               <label>Secret Access Key</label>
-              <Password v-model="privateFormData.r2.secretAccessKey" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.r2.secretAccessKey" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 Secret Access Key" />
             </div>
             <div class="form-item span-full">
               <label>自定义路径 (Optional)</label>
@@ -154,11 +154,11 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Secret ID</label>
-              <Password v-model="privateFormData.tencent.secretId" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.tencent.secretId" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 SecretId" />
             </div>
             <div class="form-item">
               <label>Secret Key</label>
-              <Password v-model="privateFormData.tencent.secretKey" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.tencent.secretKey" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 SecretKey" />
             </div>
             <div class="form-item">
               <label>地域 (Region)</label>
@@ -190,11 +190,11 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Access Key ID</label>
-              <Password v-model="privateFormData.aliyun.accessKeyId" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.aliyun.accessKeyId" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 AccessKey ID" />
             </div>
             <div class="form-item">
               <label>Access Key Secret</label>
-              <Password v-model="privateFormData.aliyun.accessKeySecret" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.aliyun.accessKeySecret" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 AccessKey Secret" />
             </div>
             <div class="form-item">
               <label>地域 (Region)</label>
@@ -226,11 +226,11 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Access Key (AK)</label>
-              <Password v-model="privateFormData.qiniu.accessKey" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.qiniu.accessKey" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 Access Key" />
             </div>
             <div class="form-item">
               <label>Secret Key (SK)</label>
-              <Password v-model="privateFormData.qiniu.secretKey" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.qiniu.secretKey" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="输入 Secret Key" />
             </div>
             <div class="form-item">
               <label>地域 (Region)</label>
@@ -263,11 +263,11 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Operator</label>
-              <Password v-model="privateFormData.upyun.operator" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.upyun.operator" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="操作员账号" />
             </div>
             <div class="form-item">
               <label>Password</label>
-              <Password v-model="privateFormData.upyun.password" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" />
+              <Password v-model="privateFormData.upyun.password" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="操作员密码" />
             </div>
             <div class="form-item span-full">
               <label>存储桶 (Bucket)</label>
@@ -465,7 +465,7 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item span-full">
               <label>API Token</label>
-              <Password v-model="tokenFormData.smms.token" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" placeholder="从 SM.MS 官网获取 API Token" />
+              <Password v-model="tokenFormData.smms.token" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="从 SM.MS 官网获取 API Token" />
               <small class="form-hint">访问 <a href="https://sm.ms/home/apitoken" target="_blank">https://sm.ms/home/apitoken</a> 获取 API Token</small>
             </div>
           </div>
@@ -482,7 +482,7 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Personal Access Token</label>
-              <Password v-model="tokenFormData.github.token" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" placeholder="ghp_xxxxxxxxxxxx" />
+              <Password v-model="tokenFormData.github.token" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="ghp_xxxxxxxxxxxx" />
             </div>
             <div class="form-item">
               <label>Repository Owner</label>
@@ -520,11 +520,11 @@ const extractNamiAuthToken = computed(() => {
           <div class="form-grid">
             <div class="form-item">
               <label>Client ID</label>
-              <Password v-model="tokenFormData.imgur.clientId" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" placeholder="从 Imgur API 获取" />
+              <Password v-model="tokenFormData.imgur.clientId" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="从 Imgur API 获取" />
             </div>
             <div class="form-item">
               <label>Client Secret（可选）</label>
-              <Password v-model="tokenFormData.imgur.clientSecret" @blur="emit('save')" :feedback="false" toggleMask class="w-full" inputClass="w-full" placeholder="可选配置" />
+              <Password v-model="tokenFormData.imgur.clientSecret" @blur="emit('save')" :feedback="false" toggleMask fluid placeholder="可选配置" />
             </div>
             <div class="form-item span-full">
               <small class="form-hint">访问 <a href="https://api.imgur.com/oauth2/addclient" target="_blank">Imgur API</a> 注册应用获取 Client ID</small>

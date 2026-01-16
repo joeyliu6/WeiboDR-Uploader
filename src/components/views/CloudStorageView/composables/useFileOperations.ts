@@ -151,7 +151,7 @@ export function useFileOperations(options: FileOperationsOptions): FileOperation
         const result = await manager.deleteFiles(paths);
 
         if (result.failed.length === 0) {
-          toast.success('删除成功', `已删除 ${result.success.length} 项`);
+          toast.success('已删除', `${result.success.length} 项`);
         } else {
           toast.warn(
             '部分删除失败',

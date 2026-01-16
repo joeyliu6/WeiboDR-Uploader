@@ -6,6 +6,7 @@ import Toast from 'primevue/toast';
 import ConfirmDialog from 'primevue/confirmdialog';
 import { useThemeManager } from './composables/useTheme';
 import { useToast } from './composables/useToast';
+import { TOAST_MESSAGES } from './constants';
 
 const { currentTheme, initializeTheme } = useThemeManager();
 const toast = useToast();
@@ -17,11 +18,11 @@ const rootClass = computed(() => {
 
 // 网络状态监听处理函数
 function handleOffline() {
-  toast.warn('网络已断开', '请检查网络连接');
+  toast.showConfig('warn', TOAST_MESSAGES.network.disconnected);
 }
 
 function handleOnline() {
-  toast.success('网络已恢复', '可以继续上传');
+  toast.showConfig('success', TOAST_MESSAGES.network.restored);
 }
 
 onMounted(async () => {

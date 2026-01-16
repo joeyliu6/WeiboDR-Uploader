@@ -211,7 +211,7 @@ export function useHistoryViewState() {
         html: 'HTML',
         bbcode: 'BBCode'
       };
-      toast.success('复制成功', `已复制 ${formattedLinks.length} 个 ${formatNames[format]} 链接`, 1500);
+      toast.success('已复制', `${formattedLinks.length} 个 ${formatNames[format]} 链接`, 1500);
     } catch (error) {
       console.error('[批量复制] 失败:', error);
       toast.error('复制失败', String(error));

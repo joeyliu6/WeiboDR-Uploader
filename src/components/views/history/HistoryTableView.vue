@@ -295,7 +295,7 @@ async function handleLightboxDelete(item: HistoryItem): Promise<void> {
   try {
     await viewState.deleteHistoryItem(item.id);
     lightboxVisible.value = false;
-    toast.success('删除成功', '已删除 1 条记录');
+    toast.success('已删除', '1 条记录');
   } catch (error) {
     console.error('[历史记录] 删除失败:', error);
     toast.error('删除失败', String(error));

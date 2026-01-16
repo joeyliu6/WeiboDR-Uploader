@@ -331,7 +331,7 @@ const handleJumpToPeriod = async (year: number, month: number) => {
     }
     // 强制更新可见区域
     forceUpdateVisibleArea();
-    toast.success('已跳转', `${year}年${month + 1}月`);
+    // 跳转本身就是视觉反馈，无需 toast 通知
   }
 };
 
@@ -349,7 +349,7 @@ const handleJumpToYear = async (year: number) => {
     const firstGroup = yearGroups[yearGroups.length - 1]; // 最早的月份（降序排列）
     if (firstGroup.items.length > 0) {
       scrollToItem(firstGroup.items[0].id);
-      toast.success('已跳转', `${year}年`);
+      // 跳转本身就是视觉反馈，无需 toast 通知
     }
   } else {
     // 未加载，找到该年份的第一个月份并触发加载
