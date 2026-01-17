@@ -1004,7 +1004,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
     const imgurConfig = config.services.imgur;
     serviceConfigStatus.value.imgur = !!imgurConfig?.clientId && imgurConfig.clientId.trim().length > 0;
 
-    // 鑵捐浜?COS
+    // 腾讯云 COS
     const tencentConfig = config.services.tencent;
     serviceConfigStatus.value.tencent = !!(
       tencentConfig?.secretId &&
@@ -1013,7 +1013,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       tencentConfig.region
     );
 
-    // 闃块噷浜?OSS
+    // 阿里云 OSS
     const aliyunConfig = config.services.aliyun;
     serviceConfigStatus.value.aliyun = !!(
       aliyunConfig?.accessKeyId &&
@@ -1022,7 +1022,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       aliyunConfig.region
     );
 
-    // 涓冪墰浜?
+    // 七牛云
     const qiniuConfig = config.services.qiniu;
     serviceConfigStatus.value.qiniu = !!(
       qiniuConfig?.accessKey &&
@@ -1031,7 +1031,7 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       qiniuConfig.domain
     );
 
-    // 鍙堟媿浜?
+    // 又拍云
     const upyunConfig = config.services.upyun;
     serviceConfigStatus.value.upyun = !!(
       upyunConfig?.operator &&
