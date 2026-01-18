@@ -7,7 +7,6 @@ import { computed } from 'vue';
 import Skeleton from 'primevue/skeleton';
 import type { ImageMeta } from '../../../types/image-meta';
 import type { HistoryItem } from '../../../config/types';
-import { formatFileSize, formatUploadTime } from '../../../utils/formatters';
 import { getServiceDisplayName } from '../../../constants/serviceNames';
 
 const props = defineProps<{
@@ -83,31 +82,16 @@ const successfulServices = computed(() => {
       </div>
 
       <!-- 悬停信息层 -->
-      <div class="hover-info" v-if="hoverDetail">
-        <div class="hover-info-top">
-          <span class="file-name" :title="hoverDetail.localFileName">
-            {{ hoverDetail.localFileName }}
+      <div class="hover-info" v-if="hoverDetail && successfulServices.length > 0">
+        <div class="service-badges">
+          <span
+            v-for="service in successfulServices"
+            :key="service"
+            class="service-badge"
+            :title="`已上传到 ${getServiceDisplayName(service)}`"
+          >
+            {{ getServiceDisplayName(service) }}
           </span>
-        </div>
-        <div class="hover-info-bottom">
-          <div class="info-row">
-            <i class="pi pi-file"></i>
-            <span class="file-size">{{ formatFileSize(hoverDetail.fileSize ?? 0) }}</span>
-          </div>
-          <div class="info-row">
-            <i class="pi pi-clock"></i>
-            <span class="upload-time">{{ formatUploadTime(meta.timestamp) }}</span>
-          </div>
-          <div class="service-badges" v-if="successfulServices.length > 0">
-            <span
-              v-for="service in successfulServices"
-              :key="service"
-              class="service-badge"
-              :title="`已上传到 ${getServiceDisplayName(service)}`"
-            >
-              {{ getServiceDisplayName(service) }}
-            </span>
-          </div>
         </div>
       </div>
     </div>
@@ -213,7 +197,7 @@ const successfulServices = computed(() => {
   transition: opacity 0.2s ease;
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-end;
   padding: 10px;
   pointer-events: none;
   color: white;
@@ -224,51 +208,16 @@ const successfulServices = computed(() => {
   opacity: 1;
 }
 
-.hover-info-top {
-  display: flex;
-  justify-content: space-between;
-  align-items: flex-start;
-}
-
-.file-name {
-  flex: 1;
-  font-size: 13px;
-  font-weight: 500;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
-}
-
-.hover-info-bottom {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.info-row {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 11px;
-  opacity: 0.95;
-}
-
-.info-row i {
-  font-size: 10px;
-  opacity: 0.8;
-}
-
 .service-badges {
   display: flex;
   gap: 4px;
   flex-wrap: wrap;
-  margin-top: 2px;
+  justify-content: flex-end;
 }
 
 .service-badge {
   padding: 3px 7px;
-  background: rgba(59, 130, 246, 0.85);
+  background: rgb(89 92 96 / 50%);
   border-radius: 4px;
   font-size: 10px;
   font-weight: 500;
@@ -282,14 +231,6 @@ const successfulServices = computed(() => {
     padding: 8px;
   }
 
-  .file-name {
-    font-size: 12px;
-  }
-
-  .info-row {
-    font-size: 10px;
-  }
-
   .service-badge {
     font-size: 9px;
     padding: 2px 5px;
@@ -297,10 +238,6 @@ const successfulServices = computed(() => {
 }
 
 @media (max-width: 480px) {
-  .hover-info-bottom {
-    gap: 4px;
-  }
-
   .service-badges {
     display: none;
   }

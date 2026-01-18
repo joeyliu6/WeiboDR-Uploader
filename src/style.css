@@ -2635,7 +2635,6 @@ button:focus-visible {
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
-  gap: 8px;
 }
 
 .lightbox-action-btn:hover {

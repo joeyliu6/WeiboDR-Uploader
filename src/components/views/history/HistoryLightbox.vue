@@ -11,6 +11,7 @@ import type { HistoryItem, ServiceType } from '../../../config/types';
 import { getActivePrefix } from '../../../config/types';
 import { useToast } from '../../../composables/useToast';
 import { useConfigManager } from '../../../composables/useConfig';
+import { formatFileSize } from '../../../utils/formatters';
 
 // Props
 const props = defineProps<{
@@ -188,6 +189,10 @@ const closeLightbox = () => {
               <i class="pi pi-calendar"></i>
               {{ formatTime(item.timestamp) }}
             </span>
+            <span class="lightbox-size">
+              <i class="pi pi-file"></i>
+              {{ formatFileSize(item.fileSize ?? 0) }}
+            </span>
             <span class="lightbox-services" v-if="item">
               <i class="pi pi-cloud-upload"></i>
               {{ getSuccessfulServices(item).map(s => getServiceName(s)).join('、') }}
@@ -258,7 +263,7 @@ const closeLightbox = () => {
   max-width: 100%;
   max-height: 75vh;
   border-radius: 8px;
-  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+  box-shadow: none;
   cursor: default;
 }
 
@@ -304,6 +309,7 @@ const closeLightbox = () => {
 }
 
 .lightbox-time,
+.lightbox-size,
 .lightbox-services {
   font-size: 12px;
   color: rgba(255, 255, 255, 0.75);
@@ -313,6 +319,7 @@ const closeLightbox = () => {
 }
 
 .lightbox-time i,
+.lightbox-size i,
 .lightbox-services i {
   font-size: 12px;
   opacity: 0.8;
@@ -320,6 +327,7 @@ const closeLightbox = () => {
 
 .lightbox-actions {
   display: flex;
+  align-items: center;
   gap: 4px;
   flex-shrink: 0;
 }
