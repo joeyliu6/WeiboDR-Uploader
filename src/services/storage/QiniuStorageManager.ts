@@ -5,7 +5,7 @@ export class QiniuStorageManager extends BaseS3StorageManager {
   readonly serviceName = '七牛云';
 
   protected getEndpoint(): string {
-    return this.config.domain;
+    return this.config.publicDomain;
   }
 
   protected getAccessKey(): string {
@@ -25,6 +25,6 @@ export class QiniuStorageManager extends BaseS3StorageManager {
   }
 
   protected getPublicDomain(): string {
-    return this.config.domain;
+    return this.config.publicDomain;
   }
 }

@@ -96,9 +96,9 @@ export function useCloudStorage(): CloudStorageReturn {
           config.bucket
         );
       case 'qiniu':
-        return !!(config.accessKey && config.secretKey && config.bucket && config.domain);
+        return !!(config.accessKey && config.secretKey && config.bucket && config.publicDomain);
       case 'upyun':
-        return !!(config.operator && config.password && config.bucket && config.domain);
+        return !!(config.operator && config.password && config.bucket && config.publicDomain);
       default:
         return false;
     }

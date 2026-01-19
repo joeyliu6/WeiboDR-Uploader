@@ -211,7 +211,7 @@ export function useServiceSelector(): UseServiceSelectorReturn {
       qiniuConfig?.accessKey &&
       qiniuConfig.secretKey &&
       qiniuConfig.bucket &&
-      qiniuConfig.domain
+      qiniuConfig.publicDomain
     );
 
     // 又拍云
@@ -220,7 +220,7 @@ export function useServiceSelector(): UseServiceSelectorReturn {
       upyunConfig?.operator &&
       upyunConfig.password &&
       upyunConfig.bucket &&
-      upyunConfig.domain
+      upyunConfig.publicDomain
     );
   }
 

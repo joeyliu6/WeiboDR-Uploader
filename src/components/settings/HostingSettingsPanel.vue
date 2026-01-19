@@ -10,8 +10,8 @@ interface PrivateFormData {
   r2: { accountId: string; accessKeyId: string; secretAccessKey: string; bucketName: string; path: string; publicDomain: string };
   tencent: { secretId: string; secretKey: string; region: string; bucket: string; path: string; publicDomain: string };
   aliyun: { accessKeyId: string; accessKeySecret: string; region: string; bucket: string; path: string; publicDomain: string };
-  qiniu: { accessKey: string; secretKey: string; region: string; bucket: string; domain: string; path: string };
-  upyun: { operator: string; password: string; bucket: string; domain: string; path: string };
+  qiniu: { accessKey: string; secretKey: string; region: string; bucket: string; publicDomain: string; path: string };
+  upyun: { operator: string; password: string; bucket: string; publicDomain: string; path: string };
 }
 
 interface CookieFormData {
@@ -63,9 +63,9 @@ function isPrivateConfigured(providerId: PrivateProviderId): boolean {
     case 'aliyun':
       return !!(data.aliyun.accessKeyId && data.aliyun.accessKeySecret && data.aliyun.region && data.aliyun.bucket && data.aliyun.publicDomain);
     case 'qiniu':
-      return !!(data.qiniu.accessKey && data.qiniu.secretKey && data.qiniu.region && data.qiniu.bucket && data.qiniu.domain);
+      return !!(data.qiniu.accessKey && data.qiniu.secretKey && data.qiniu.region && data.qiniu.bucket && data.qiniu.publicDomain);
     case 'upyun':
-      return !!(data.upyun.operator && data.upyun.password && data.upyun.bucket && data.upyun.domain);
+      return !!(data.upyun.operator && data.upyun.password && data.upyun.bucket && data.upyun.publicDomain);
     default:
       return false;
   }
@@ -242,8 +242,8 @@ const extractNamiAuthToken = computed(() => {
               <InputText v-model="privateFormData.qiniu.bucket" @blur="emit('save')" class="w-full" />
             </div>
             <div class="form-item span-full">
-              <label>绑定域名 (Domain)</label>
-              <InputText v-model="privateFormData.qiniu.domain" @blur="emit('save')" placeholder="https://images.example.com" class="w-full" />
+              <label>公开访问域名 (Public Domain)</label>
+              <InputText v-model="privateFormData.qiniu.publicDomain" @blur="emit('save')" placeholder="https://images.example.com" class="w-full" />
             </div>
             <div class="form-item span-full">
               <label>自定义路径 (Optional)</label>
@@ -274,8 +274,8 @@ const extractNamiAuthToken = computed(() => {
               <InputText v-model="privateFormData.upyun.bucket" @blur="emit('save')" class="w-full" />
             </div>
             <div class="form-item span-full">
-              <label>绑定域名 (Domain)</label>
-              <InputText v-model="privateFormData.upyun.domain" @blur="emit('save')" placeholder="https://images.example.com" class="w-full" />
+              <label>公开访问域名 (Public Domain)</label>
+              <InputText v-model="privateFormData.upyun.publicDomain" @blur="emit('save')" placeholder="https://images.example.com" class="w-full" />
             </div>
             <div class="form-item span-full">
               <label>自定义路径 (Optional)</label>

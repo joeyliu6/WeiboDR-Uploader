@@ -5,7 +5,7 @@ export class UpyunStorageManager extends BaseS3StorageManager {
   readonly serviceName = '又拍云';
 
   protected getEndpoint(): string {
-    return this.config.domain || 'https://v0.api.upyun.com';
+    return this.config.publicDomain || 'https://v0.api.upyun.com';
   }
 
   protected getAccessKey(): string {
@@ -25,6 +25,6 @@ export class UpyunStorageManager extends BaseS3StorageManager {
   }
 
   protected getPublicDomain(): string {
-    return this.config.domain;
+    return this.config.publicDomain;
   }
 }
