@@ -324,6 +324,9 @@ export function useCloudStorage(): CloudStorageReturn {
 
   // 初始化时检查所有服务状态
   async function initServiceStatuses() {
+    // 确保配置已加载（解决初次打开时配置未就绪的问题）
+    await configManager.loadConfig();
+
     // 首先标记所有已配置的服务为 connecting
     for (const serviceId of SUPPORTED_SERVICES) {
       if (isServiceConfigured(serviceId)) {

@@ -43,38 +43,49 @@ const emit = defineEmits<{
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 80px 20px;
+  padding: 60px 20px;
   text-align: center;
+  height: 100%;
+  min-height: 400px;
 }
 
 .empty-illustration {
-  width: 200px;
-  height: 160px;
-  margin-bottom: 24px;
-  color: var(--text-primary);
+  width: 180px;
+  height: 140px;
+  margin-bottom: 28px;
+  color: var(--primary);
+  opacity: 0.9;
+  animation: float 3s ease-in-out infinite;
 }
 
-.empty-illustration svg {
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-8px); }
+}
+
+.empty-illustration :deep(svg) {
   width: 100%;
   height: 100%;
 }
 
 .empty-title {
-  margin: 0 0 8px 0;
-  font-size: 1.2rem;
+  margin: 0 0 10px 0;
+  font-size: 1.25rem;
   font-weight: 600;
   color: var(--text-primary);
 }
 
 .empty-description {
-  margin: 0 0 24px 0;
+  margin: 0 0 28px 0;
   font-size: 14px;
-  color: var(--text-secondary);
-  max-width: 320px;
-  line-height: 1.5;
+  color: var(--text-muted);
+  max-width: 300px;
+  line-height: 1.6;
 }
 
 .empty-action {
   font-weight: 500;
+  padding: 10px 24px;
+  border-radius: 10px;
 }
 </style>

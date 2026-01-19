@@ -8,23 +8,17 @@ import { useDragDrop } from './composables/useDragDrop';
 import { useSorting } from './composables/useSorting';
 import ServiceTabs from './components/ServiceTabs.vue';
 import StorageToolbar from './components/StorageToolbar.vue';
-import FileGrid from './components/FileGrid.vue';
-import FileTable from './components/FileTable.vue';
+import FileList from './components/FileList.vue';
 import FileDetailPanel from './components/FileDetailPanel.vue';
 import FloatingActionBar from './components/FloatingActionBar.vue';
 import PreviewDialog from './components/PreviewDialog.vue';
 import ContextMenu from './components/ContextMenu.vue';
-import type { StorageObject, LinkFormat, ContextMenuItem, ViewMode, SortField } from './types';
+import type { StorageObject, LinkFormat, ContextMenuItem, SortField } from './types';
 
 const toast = useToast();
 
-// 视图模式（持久化到 localStorage）
-const STORAGE_KEY = 'cloud-storage-view-mode';
-const viewMode = ref<ViewMode>((localStorage.getItem(STORAGE_KEY) as ViewMode) || 'grid');
-
-watch(viewMode, (newMode) => {
-  localStorage.setItem(STORAGE_KEY, newMode);
-});
+// 侧边栏始终展开
+const sidebarExpanded = true;
 
 // 核心状态
 const {
@@ -259,15 +253,12 @@ watch(currentPath, () => {
 
 <template>
   <div ref="dropZoneRef" class="cloud-storage-layout">
-    <!-- 左侧：服务侧边栏 -->
-    <aside class="sidebar-area">
-      <div class="sidebar-header">
-        <i class="pi pi-cloud"></i>
-        <span>云存储</span>
-      </div>
+    <!-- 左侧：服务侧边栏（始终展开） -->
+    <aside class="sidebar-area expanded">
       <ServiceTabs
         :services="services"
         :active-service="activeService"
+        :expanded="sidebarExpanded"
         @change="handleServiceChange"
       />
     </aside>
@@ -282,46 +273,22 @@ watch(currentPath, () => {
           :stats="stats"
           :loading="isLoading"
           :search-query="searchQuery"
-          :view-mode="viewMode"
           @navigate="handleNavigate"
           @refresh="refresh"
           @upload="uploadFiles"
           @search="search"
-          @update:view-mode="viewMode = $event"
         />
       </header>
 
       <!-- 内容区域 -->
       <div class="content-body">
-        <!-- 表格视图 -->
-        <FileTable
-          v-if="viewMode === 'table'"
-          :items="sortedObjects"
-          :selected-keys="selectedKeys"
-          :loading="isLoading"
-          :error="error"
-          :sort-field="sortField"
-          :sort-direction="sortDirection"
-          @select="handleSelect"
-          @select-all="handleSelectAll"
-          @preview="handleShowDetail"
-          @open="handleOpenFolder"
-          @sort="handleSort"
-          @delete="(item) => deleteFiles([item])"
-          @copy-link="(item) => handleCopyLink(item, 'url')"
-          @upload="uploadFiles"
-        />
-
-        <!-- 网格/列表视图 -->
-        <FileGrid
-          v-else
+        <FileList
           :items="sortedObjects"
           :selected-keys="selectedKeys"
           :loading="isLoading"
           :error="error"
           :has-more="hasMore"
           :is-dragging="isDragging || isOver"
-          :view-mode="viewMode"
           @select="handleSelect"
           @preview="handlePreview"
           @copy-link="(item) => handleCopyLink(item, 'url')"
@@ -329,20 +296,9 @@ watch(currentPath, () => {
           @open="handleOpenFolder"
           @load-more="loadMore"
           @upload="uploadFiles"
-          @marquee-select="handleMarqueeSelect"
-          @contextmenu.prevent="() => {}"
+          @show-detail="handleShowDetail"
         />
       </div>
-
-      <!-- 详情侧边栏 -->
-      <FileDetailPanel
-        :file="detailFile"
-        :visible="detailVisible"
-        @close="handleCloseDetail"
-        @download="downloadFile"
-        @delete="(f) => { deleteFiles([f]); handleCloseDetail(); }"
-        @copy-link="handleCopyLink"
-      />
 
       <!-- 浮动操作栏 -->
       <FloatingActionBar
@@ -353,21 +309,17 @@ watch(currentPath, () => {
         @download="handleBatchDownload"
         @close="clearSelection"
       />
-
-      <!-- 底部状态栏 -->
-      <footer class="status-bar">
-        <div class="status-left">
-          <span class="status-count">{{ objects.length }} 个项目</span>
-          <span v-if="selectedItems.length > 0" class="status-selected">
-            已选择 {{ selectedItems.length }} 个
-          </span>
-        </div>
-        <div class="status-right">
-          <span class="status-indicator" :class="services.find(s => s.serviceId === activeService)?.status"></span>
-          <span class="status-service">{{ services.find(s => s.serviceId === activeService)?.serviceName }}</span>
-        </div>
-      </footer>
     </main>
+
+    <!-- 详情抽屉（浮层） -->
+    <FileDetailPanel
+      :file="detailFile"
+      :visible="detailVisible"
+      @close="handleCloseDetail"
+      @download="downloadFile"
+      @delete="(f) => { deleteFiles([f]); handleCloseDetail(); }"
+      @copy-link="handleCopyLink"
+    />
 
     <!-- 预览对话框 -->
     <PreviewDialog
@@ -396,7 +348,7 @@ watch(currentPath, () => {
   background: var(--bg-app);
 }
 
-/* 左侧侧边栏 */
+/* 左侧侧边栏 - 始终展开 */
 .sidebar-area {
   flex-shrink: 0;
   width: 200px;
@@ -405,22 +357,6 @@ watch(currentPath, () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
-}
-
-.sidebar-header {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 20px 16px 16px;
-  font-size: 1.1rem;
-  font-weight: 600;
-  color: var(--text-primary);
-  flex-shrink: 0;
-}
-
-.sidebar-header i {
-  font-size: 1.25rem;
-  color: var(--primary);
 }
 
 /* 右侧主内容区 */
@@ -444,60 +380,6 @@ watch(currentPath, () => {
 .content-body {
   flex: 1;
   overflow: hidden;
-  padding: 20px;
-}
-
-/* 底部状态栏 */
-.status-bar {
-  flex-shrink: 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 8px 24px;
-  background: var(--bg-card);
-  border-top: 1px solid var(--border-subtle);
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.status-left {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-}
-
-.status-selected {
-  color: var(--primary);
-  font-weight: 500;
-}
-
-.status-right {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.status-indicator {
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.status-indicator.connected {
-  background: var(--success);
-}
-
-.status-indicator.connecting {
-  background: var(--warning);
-}
-
-.status-indicator.error {
-  background: var(--error);
-}
-
-.status-service {
-  font-weight: 500;
-  color: var(--text-secondary);
+  padding: 16px;
 }
 </style>

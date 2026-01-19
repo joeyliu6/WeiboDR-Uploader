@@ -20,16 +20,38 @@ export abstract class BaseS3StorageManager implements IStorageManager {
   async testConnection(): Promise<ConnectionTestResult> {
     const startTime = Date.now();
     try {
-      await this.listObjects({ maxKeys: 1 });
+      console.log('[S3Manager] 测试连接:', {
+        endpoint: this.getEndpoint(),
+        region: this.getRegion(),
+        bucket: this.getBucket(),
+      });
+
+      // 使用后端的测试连接命令（与设置页面一致）
+      // 后端期望: serviceId + config 对象
+      const result = await invoke('test_s3_connection', {
+        serviceId: this.serviceId,
+        config: this.config,
+      });
+
       const latency = Date.now() - startTime;
+      console.log('[S3Manager] 连接成功, 延迟:', latency, 'ms, 结果:', result);
       return { success: true, latency };
     } catch (error: any) {
       const latency = Date.now() - startTime;
-      return {
-        success: false,
-        latency,
-        error: error.message || '连接测试失败'
-      };
+
+      // 提取错误信息：后端 AppError 格式为 { type: "XXX", data: { message: "..." } }
+      let errorMessage = '连接测试失败';
+      if (typeof error === 'string') {
+        errorMessage = error;
+      } else if (error?.data?.message) {
+        // Tauri AppError 结构
+        errorMessage = error.data.message;
+      } else if (error?.message) {
+        errorMessage = error.message;
+      }
+
+      console.error('[S3Manager] 连接失败:', errorMessage, '类型:', error?.type);
+      return { success: false, latency, error: errorMessage };
     }
   }
 

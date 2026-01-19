@@ -3,33 +3,15 @@ import type { ServiceStatus, CloudServiceType, ConnectionStatus } from '../types
 import { getServiceIcon } from '../../../../utils/icons';
 
 const props = defineProps<{
-  /** 服务状态列表 */
   services: ServiceStatus[];
-  /** 当前激活的服务 */
   activeService: CloudServiceType;
+  expanded?: boolean;
 }>();
 
 const emit = defineEmits<{
   change: [serviceId: CloudServiceType];
 }>();
 
-// 获取状态图标
-const getStatusIcon = (status: ConnectionStatus): string => {
-  switch (status) {
-    case 'connected':
-      return 'pi-check-circle';
-    case 'connecting':
-      return 'pi-spin pi-spinner';
-    case 'error':
-      return 'pi-exclamation-circle';
-    case 'unconfigured':
-      return 'pi-minus-circle';
-    default:
-      return 'pi-circle';
-  }
-};
-
-// 获取状态颜色类
 const getStatusClass = (status: ConnectionStatus): string => {
   switch (status) {
     case 'connected':
@@ -45,15 +27,19 @@ const getStatusClass = (status: ConnectionStatus): string => {
   }
 };
 
-// 获取服务 SVG 图标
 const getServiceSvg = (serviceId: string): string | null => {
   return getServiceIcon(serviceId as CloudServiceType) || null;
 };
 </script>
 
 <template>
-  <nav class="service-nav">
-    <div class="nav-section-title">存储服务</div>
+  <nav class="service-nav" :class="{ expanded }">
+    <!-- 标题区域 -->
+    <div class="nav-header">
+      <i class="pi pi-cloud nav-icon"></i>
+      <span class="nav-title">云存储</span>
+    </div>
+
     <div class="service-list">
       <button
         v-for="service in services"
@@ -64,34 +50,65 @@ const getServiceSvg = (serviceId: string): string | null => {
           [getStatusClass(service.status)]: true,
         }"
         @click="emit('change', service.serviceId)"
-        :title="service.error || service.serviceName"
+        :title="service.serviceName"
       >
         <span class="service-icon-svg" v-html="getServiceSvg(service.serviceId)"></span>
         <span class="service-name">{{ service.serviceName }}</span>
-        <span v-if="service.serviceId === activeService" class="active-indicator"></span>
-        <i v-else :class="`pi ${getStatusIcon(service.status)}`" class="status-indicator"></i>
+        <span class="status-dot" :class="getStatusClass(service.status)"></span>
       </button>
     </div>
   </nav>
 </template>
 
 <style scoped>
-/* 侧边栏导航 */
 .service-nav {
   display: flex;
   flex-direction: column;
   flex: 1;
   overflow-y: auto;
-  padding: 0 8px 16px;
+  overflow-x: hidden;
+  padding: 12px 6px;
 }
 
-.nav-section-title {
-  font-size: 11px;
+.service-nav.expanded {
+  padding: 12px 8px;
+}
+
+/* 标题区域 */
+.nav-header {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 8px 10px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.service-nav.expanded .nav-header {
+  justify-content: flex-start;
+  padding: 8px 12px;
+}
+
+.nav-icon {
+  font-size: 18px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.nav-title {
+  font-size: 14px;
   font-weight: 600;
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
-  color: var(--text-muted);
-  padding: 8px 12px 12px;
+  color: var(--text-primary);
+  opacity: 0;
+  width: 0;
+  white-space: nowrap;
+  transition: opacity 0.2s ease;
+}
+
+.service-nav.expanded .nav-title {
+  opacity: 1;
+  width: auto;
 }
 
 .service-list {
@@ -103,10 +120,11 @@ const getServiceSvg = (serviceId: string): string | null => {
 .service-item {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 10px;
-  padding: 10px 12px;
+  padding: 10px;
   border: none;
-  border-radius: 8px;
+  border-radius: 10px;
   background: transparent;
   color: var(--text-secondary);
   font-size: 13px;
@@ -114,6 +132,12 @@ const getServiceSvg = (serviceId: string): string | null => {
   transition: all 0.15s ease;
   text-align: left;
   width: 100%;
+  position: relative;
+}
+
+.service-nav.expanded .service-item {
+  justify-content: flex-start;
+  padding: 10px 12px;
 }
 
 .service-item:hover {
@@ -131,13 +155,14 @@ const getServiceSvg = (serviceId: string): string | null => {
 }
 
 .service-icon-svg {
-  width: 18px;
-  height: 18px;
+  width: 20px;
+  height: 20px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
   color: var(--text-muted);
+  transition: color 0.15s;
 }
 
 .service-icon-svg :deep(svg) {
@@ -155,44 +180,53 @@ const getServiceSvg = (serviceId: string): string | null => {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
+  opacity: 0;
+  width: 0;
+  transition: opacity 0.2s ease;
 }
 
-.status-indicator {
-  font-size: 10px;
-  flex-shrink: 0;
+.service-nav.expanded .service-name {
+  opacity: 1;
+  width: auto;
 }
 
-/* 激活状态圆点指示器 */
-.active-indicator {
+.status-dot {
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: white;
   flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.2s;
 }
 
-/* 状态颜色 */
-.service-item.status-connected .status-indicator {
-  color: var(--success);
+.service-nav.expanded .status-dot {
+  opacity: 1;
 }
 
-.service-item.status-connecting .status-indicator {
-  color: var(--warning);
+.service-item.active .status-dot {
+  background: rgba(255, 255, 255, 0.8);
 }
 
-.service-item.status-error .status-indicator {
-  color: var(--error);
+.status-dot.status-connected {
+  background: var(--success);
 }
 
-.service-item.status-unconfigured .status-indicator {
-  color: var(--text-muted);
+.status-dot.status-connecting {
+  background: var(--warning);
 }
 
-.service-item.status-disconnected .status-indicator {
-  color: var(--text-muted);
+.status-dot.status-error {
+  background: var(--error);
 }
 
-/* 滚动条样式 */
+.status-dot.status-unconfigured {
+  background: var(--text-muted);
+}
+
+.status-dot.status-disconnected {
+  background: var(--text-muted);
+}
+
 .service-nav::-webkit-scrollbar {
   width: 4px;
 }
