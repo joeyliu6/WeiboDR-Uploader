@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { ref, watch, computed, onUnmounted } from 'vue';
 import Message from 'primevue/message';
 import Checkbox from 'primevue/checkbox';
 import FileListItem from './FileListItem.vue';
@@ -34,6 +34,42 @@ const isIndeterminate = computed(() => {
   return selectedCount > 0 && selectedCount < props.items.length;
 });
 
+// 延迟显示骨架屏（避免快速切换时闪烁）
+const showSkeleton = ref(false);
+let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
+
+watch(
+  () => props.loading,
+  (loading) => {
+    if (loading && props.items.length === 0) {
+      // 延迟 150ms 后显示骨架屏
+      skeletonTimer = setTimeout(() => {
+        showSkeleton.value = true;
+      }, 150);
+    } else {
+      // 取消延迟，立即隐藏
+      if (skeletonTimer) {
+        clearTimeout(skeletonTimer);
+        skeletonTimer = null;
+      }
+      showSkeleton.value = false;
+    }
+  },
+  { immediate: true }
+);
+
+onUnmounted(() => {
+  if (skeletonTimer) {
+    clearTimeout(skeletonTimer);
+  }
+});
+
+// 列表 key，用于触发过渡动画
+const listKey = computed(() => {
+  if (props.items.length === 0) return 'empty';
+  return `${props.items.length}-${props.items[0]?.key || ''}`;
+});
+
 const handleSelectAll = (checked: boolean) => {
   emit('selectAll', checked);
 };
@@ -54,8 +90,9 @@ const handleSelectAll = (checked: boolean) => {
       </div>
     </Transition>
 
-    <!-- 骨架屏加载状态 -->
-    <div v-if="loading && items.length === 0" class="skeleton-list">
+    <!-- 骨架屏加载状态（延迟显示，且仅在无数据时显示） -->
+    <Transition name="fade">
+      <div v-if="showSkeleton && items.length === 0" class="skeleton-list">
       <!-- 表头骨架 -->
       <div class="skeleton-header">
         <div class="skeleton-checkbox"></div>
@@ -72,16 +109,17 @@ const handleSelectAll = (checked: boolean) => {
         <div class="skeleton-size"></div>
         <div class="skeleton-time"></div>
       </div>
-    </div>
+      </div>
+    </Transition>
 
     <!-- 错误状态 -->
-    <Message v-else-if="error && items.length === 0" severity="error" :closable="false">
+    <Message v-if="error && items.length === 0 && !showSkeleton" severity="error" :closable="false">
       {{ error }}
     </Message>
 
     <!-- 空状态 -->
     <EmptyState
-      v-else-if="items.length === 0"
+      v-else-if="items.length === 0 && !showSkeleton && !loading"
       icon="pi-cloud-upload"
       title="暂无文件"
       description="拖拽文件到此处上传，或点击下方按钮选择文件"
@@ -90,11 +128,13 @@ const handleSelectAll = (checked: boolean) => {
       @action="emit('upload')"
     />
 
-    <!-- 文件列表 -->
-    <div
-      v-else
-      class="list-container"
-    >
+    <!-- 文件列表（带过渡动画） -->
+    <Transition name="list-fade" mode="out-in">
+      <div
+        v-if="items.length > 0"
+        :key="listKey"
+        class="list-container"
+      >
       <!-- 列表表头 -->
       <div class="list-header">
         <div class="header-checkbox">
@@ -128,6 +168,7 @@ const handleSelectAll = (checked: boolean) => {
         />
       </div>
     </div>
+    </Transition>
   </div>
 </template>
 

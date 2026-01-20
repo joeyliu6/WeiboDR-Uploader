@@ -270,6 +270,7 @@ watch(currentPath, () => {
         :services="services"
         :active-service="activeService"
         :expanded="sidebarExpanded"
+        :is-loading="isLoading"
         @change="handleServiceChange"
       />
     </aside>

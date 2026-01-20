@@ -6,6 +6,7 @@ import { useConfigManager } from '@/composables/useConfig';
 import { StorageManagerFactory } from '@/services/storage';
 import type { IStorageManager, StorageObject as BaseStorageObject } from '@/services/storage/IStorageManager';
 import { usePagination, type UsePaginationReturn } from './usePagination';
+import { cloudStorageCache } from './useCloudStorageCache';
 import {
   SUPPORTED_SERVICES,
   SERVICE_NAMES,
@@ -156,11 +157,89 @@ export function useCloudStorage(): CloudStorageReturn {
   async function setActiveService(serviceId: CloudServiceType) {
     activeService.value = serviceId;
     currentPath.value = '';
-    objects.value = [];
     error.value = null;
     searchQuery.value = '';
     pagination.reset();
-    await refresh();
+
+    // 尝试从缓存获取数据
+    const cacheKey = {
+      serviceId,
+      path: '',
+      page: 1,
+      pageSize: pagination.pageSize.value,
+    };
+    const { entry: cached, isStale } = cloudStorageCache.get(cacheKey);
+
+    if (cached) {
+      // 有缓存：立即显示缓存数据
+      objects.value = cached.objects;
+      pagination.setHasMore(cached.hasMore);
+
+      // 如果数据过期，后台静默刷新
+      if (isStale) {
+        refreshInBackground();
+      }
+    } else {
+      // 无缓存：清空数据，显示骨架屏
+      objects.value = [];
+      await refresh();
+    }
+  }
+
+  // 后台静默刷新（不显示 loading 状态）
+  async function refreshInBackground() {
+    try {
+      const manager = currentManager.value;
+      if (!manager) return;
+
+      const result = await manager.listObjects({
+        prefix: currentPath.value,
+        delimiter: '/',
+        maxKeys: pagination.pageSize.value,
+      });
+
+      // 处理文件夹
+      const folders: StorageObject[] = result.prefixes.map((prefix: string) => ({
+        key: prefix,
+        name: prefix.replace(currentPath.value, '').replace(/\/$/, ''),
+        type: 'folder' as const,
+        size: 0,
+        lastModified: new Date(),
+        isDirectory: true,
+      }));
+
+      // 处理文件
+      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
+        ...obj,
+        type: 'file' as const,
+        name: obj.key.replace(currentPath.value, ''),
+      }));
+
+      const newObjects = [...folders, ...files];
+
+      // 缓存新数据
+      cloudStorageCache.set(
+        {
+          serviceId: activeService.value,
+          path: currentPath.value,
+          page: pagination.currentPage.value,
+          pageSize: pagination.pageSize.value,
+        },
+        {
+          objects: newObjects,
+          hasMore: result.isTruncated,
+          nextToken: result.continuationToken || null,
+        }
+      );
+
+      // 平滑替换（如果用户还在同一位置）
+      if (currentPath.value === '' && pagination.currentPage.value === 1) {
+        objects.value = newObjects;
+        pagination.setHasMore(result.isTruncated);
+      }
+    } catch (e) {
+      console.warn('[CloudStorage] 后台刷新失败:', e);
+    }
   }
 
   // 导航到指定路径
@@ -168,7 +247,27 @@ export function useCloudStorage(): CloudStorageReturn {
     currentPath.value = path;
     searchQuery.value = '';
     pagination.reset();
-    await refresh();
+
+    // 尝试从缓存获取数据
+    const cacheKey = {
+      serviceId: activeService.value,
+      path,
+      page: 1,
+      pageSize: pagination.pageSize.value,
+    };
+    const { entry: cached, isStale } = cloudStorageCache.get(cacheKey);
+
+    if (cached) {
+      objects.value = cached.objects;
+      pagination.setHasMore(cached.hasMore);
+
+      if (isStale) {
+        refreshInBackground();
+      }
+    } else {
+      objects.value = [];
+      await refresh();
+    }
   }
 
   // 内部：获取指定页的数据

@@ -6,6 +6,7 @@ const props = defineProps<{
   services: ServiceStatus[];
   activeService: CloudServiceType;
   expanded?: boolean;
+  isLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -47,12 +48,18 @@ const getServiceSvg = (serviceId: string): string | null => {
         class="service-item"
         :class="{
           active: service.serviceId === activeService,
+          loading: service.serviceId === activeService && isLoading,
           [getStatusClass(service.status)]: true,
         }"
         @click="emit('change', service.serviceId)"
         :title="service.serviceName"
       >
-        <span class="service-icon-svg" v-html="getServiceSvg(service.serviceId)"></span>
+        <!-- 加载中指示器 -->
+        <i
+          v-if="service.serviceId === activeService && isLoading"
+          class="pi pi-spin pi-spinner loading-spinner"
+        ></i>
+        <span v-else class="service-icon-svg" v-html="getServiceSvg(service.serviceId)"></span>
         <span class="service-name">{{ service.serviceName }}</span>
         <span class="status-dot" :class="getStatusClass(service.status)"></span>
       </button>
@@ -231,6 +238,22 @@ const getServiceSvg = (serviceId: string): string | null => {
 
 .status-dot.status-disconnected {
   background: var(--text-muted);
+}
+
+/* 加载指示器 */
+.loading-spinner {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  color: var(--primary);
+}
+
+.service-item.loading {
+  pointer-events: none;
 }
 
 .service-nav::-webkit-scrollbar {
