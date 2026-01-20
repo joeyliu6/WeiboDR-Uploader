@@ -56,12 +56,21 @@ const handleSelectAll = (checked: boolean) => {
 
     <!-- 骨架屏加载状态 -->
     <div v-if="loading && items.length === 0" class="skeleton-list">
-      <div v-for="i in 6" :key="i" class="skeleton-item">
-        <div class="skeleton-thumb"></div>
-        <div class="skeleton-info">
-          <div class="skeleton-name"></div>
-          <div class="skeleton-meta"></div>
-        </div>
+      <!-- 表头骨架 -->
+      <div class="skeleton-header">
+        <div class="skeleton-checkbox"></div>
+        <div class="skeleton-header-name"></div>
+        <div class="skeleton-header-type"></div>
+        <div class="skeleton-header-size"></div>
+        <div class="skeleton-header-time"></div>
+      </div>
+      <!-- 行骨架 -->
+      <div v-for="i in 7" :key="i" class="skeleton-row">
+        <div class="skeleton-checkbox"></div>
+        <div class="skeleton-name" :style="{ width: 35 + (i % 4) * 10 + '%' }"></div>
+        <div class="skeleton-type"></div>
+        <div class="skeleton-size"></div>
+        <div class="skeleton-time"></div>
       </div>
     </div>
 
@@ -188,47 +197,122 @@ const handleSelectAll = (checked: boolean) => {
 
 /* 骨架屏 */
 .skeleton-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
   padding: 8px;
 }
 
-.skeleton-item {
+.skeleton-header {
   display: flex;
   align-items: center;
-  gap: 12px;
-  padding: 12px;
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 12px;
+  gap: 10px;
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 6px;
 }
 
-.skeleton-thumb {
-  width: 48px;
-  height: 48px;
-  border-radius: 8px;
+.skeleton-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.skeleton-checkbox {
+  width: 32px;
+  height: 18px;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.skeleton-checkbox::after {
+  content: '';
+  width: 16px;
+  height: 16px;
+  border-radius: 4px;
   background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
   background-size: 200% 100%;
   animation: shimmer 1.5s infinite;
 }
 
-.skeleton-info {
+.skeleton-header-name {
   flex: 1;
-}
-
-.skeleton-name {
-  height: 14px;
-  width: 60%;
-  background: var(--bg-app);
+  height: 12px;
+  width: 40px;
+  max-width: 40px;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
   border-radius: 4px;
-  margin-bottom: 8px;
   animation: shimmer 1.5s infinite;
 }
 
-.skeleton-meta {
-  height: 10px;
-  width: 30%;
-  background: var(--bg-app);
+.skeleton-header-type {
+  width: 60px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-header-size {
+  width: 80px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-header-time {
+  width: 90px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-name {
+  flex: 1;
+  height: 14px;
+  min-width: 100px;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-type {
+  width: 40px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-size {
+  width: 50px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
+  border-radius: 4px;
+  animation: shimmer 1.5s infinite;
+}
+
+.skeleton-time {
+  width: 70px;
+  height: 12px;
+  flex-shrink: 0;
+  background: linear-gradient(90deg, var(--bg-app) 25%, var(--bg-secondary) 50%, var(--bg-app) 75%);
+  background-size: 200% 100%;
   border-radius: 4px;
   animation: shimmer 1.5s infinite;
 }
