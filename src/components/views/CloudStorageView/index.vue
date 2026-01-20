@@ -13,6 +13,7 @@ import FileDetailPanel from './components/FileDetailPanel.vue';
 import FloatingActionBar from './components/FloatingActionBar.vue';
 import PreviewDialog from './components/PreviewDialog.vue';
 import ContextMenu from './components/ContextMenu.vue';
+import PaginationBar from './components/PaginationBar.vue';
 import type { StorageObject, LinkFormat, ContextMenuItem, SortField } from './types';
 
 const toast = useToast();
@@ -29,12 +30,13 @@ const {
   isLoading,
   error,
   stats,
-  hasMore,
   searchQuery,
+  pagination,
   setActiveService,
   navigateTo,
   refresh,
-  loadMore,
+  goToPage,
+  changePageSize,
   search,
   initServiceStatuses,
 } = useCloudStorage();
@@ -96,6 +98,15 @@ const isFirstMount = ref(true);
 
 // 计算存储桶名称
 const bucketName = computed(() => stats.value?.bucketName || '');
+
+// 分页状态（computed 确保响应式）
+const paginationState = computed(() => ({
+  currentPage: pagination.currentPage.value,
+  pageSize: pagination.pageSize.value,
+  hasMore: pagination.hasMore.value,
+  maxKnownPage: pagination.maxKnownPage.value,
+  pageSizeOptions: pagination.pageSizeOptions,
+}));
 
 // 右键菜单项
 const contextMenuItems = computed<ContextMenuItem[]>(() => {
@@ -287,18 +298,34 @@ watch(currentPath, () => {
           :selected-keys="selectedKeys"
           :loading="isLoading"
           :error="error"
-          :has-more="hasMore"
           :is-dragging="isDragging || isOver"
+          :all-selected="selectedKeys.size === objects.length && objects.length > 0"
           @select="handleSelect"
           @preview="handlePreview"
           @copy-link="(item) => handleCopyLink(item, 'url')"
           @delete="(item) => deleteFiles([item])"
           @open="handleOpenFolder"
-          @load-more="loadMore"
           @upload="uploadFiles"
           @show-detail="handleShowDetail"
+          @select-all="handleSelectAll"
         />
       </div>
+
+      <!-- 分页栏 -->
+      <footer class="pagination-footer">
+        <PaginationBar
+          :current-page="paginationState.currentPage"
+          :page-size="paginationState.pageSize"
+          :total-items="objects.length"
+          :selected-count="selectedItems.length"
+          :has-more="paginationState.hasMore"
+          :loading="isLoading"
+          :max-known-page="paginationState.maxKnownPage"
+          :page-size-options="paginationState.pageSizeOptions"
+          @page-change="goToPage"
+          @page-size-change="changePageSize"
+        />
+      </footer>
 
       <!-- 浮动操作栏 -->
       <FloatingActionBar
@@ -381,5 +408,14 @@ watch(currentPath, () => {
   flex: 1;
   overflow: hidden;
   padding: 16px;
+  padding-bottom: 0;
+}
+
+/* 分页栏 */
+.pagination-footer {
+  flex-shrink: 0;
+  height: 56px;
+  background: var(--bg-card);
+  border-top: 1px solid var(--border-subtle);
 }
 </style>

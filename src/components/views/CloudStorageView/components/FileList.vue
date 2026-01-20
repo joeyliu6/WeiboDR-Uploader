@@ -1,6 +1,5 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
-import ProgressSpinner from 'primevue/progressspinner';
+import { computed } from 'vue';
 import Message from 'primevue/message';
 import Checkbox from 'primevue/checkbox';
 import FileListItem from './FileListItem.vue';
@@ -12,7 +11,6 @@ const props = defineProps<{
   selectedKeys: Set<string>;
   loading: boolean;
   error: string | null;
-  hasMore: boolean;
   isDragging?: boolean;
   allSelected?: boolean;
 }>();
@@ -23,13 +21,10 @@ const emit = defineEmits<{
   copyLink: [item: StorageObject];
   delete: [item: StorageObject];
   open: [item: StorageObject];
-  loadMore: [];
   upload: [];
   showDetail: [item: StorageObject];
   selectAll: [checked: boolean];
 }>();
-
-const listContainerRef = ref<HTMLElement | null>(null);
 
 const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
 
@@ -41,16 +36,6 @@ const isIndeterminate = computed(() => {
 
 const handleSelectAll = (checked: boolean) => {
   emit('selectAll', checked);
-};
-
-const handleScroll = (e: Event) => {
-  const target = e.target as HTMLElement;
-  const threshold = 100;
-  const isNearBottom = target.scrollHeight - target.scrollTop - target.clientHeight < threshold;
-
-  if (isNearBottom && props.hasMore && !props.loading) {
-    emit('loadMore');
-  }
 };
 </script>
 
@@ -99,9 +84,7 @@ const handleScroll = (e: Event) => {
     <!-- 文件列表 -->
     <div
       v-else
-      ref="listContainerRef"
       class="list-container"
-      @scroll="handleScroll"
     >
       <!-- 列表表头 -->
       <div class="list-header">
@@ -134,12 +117,6 @@ const handleScroll = (e: Event) => {
           @open="(i) => emit('open', i)"
           @show-detail="(i) => emit('showDetail', i)"
         />
-      </div>
-
-      <!-- 加载更多指示器 -->
-      <div v-if="loading && items.length > 0" class="loading-more">
-        <ProgressSpinner style="width: 20px; height: 20px" />
-        <span>加载更多...</span>
       </div>
     </div>
   </div>
@@ -325,17 +302,6 @@ const handleScroll = (e: Event) => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-}
-
-/* 加载更多 */
-.loading-more {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  padding: 16px;
-  color: var(--text-secondary);
-  font-size: 13px;
 }
 
 /* 滚动条 */

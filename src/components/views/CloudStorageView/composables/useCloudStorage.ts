@@ -5,6 +5,7 @@ import { ref, computed, type Ref, type ComputedRef } from 'vue';
 import { useConfigManager } from '@/composables/useConfig';
 import { StorageManagerFactory } from '@/services/storage';
 import type { IStorageManager, StorageObject as BaseStorageObject } from '@/services/storage/IStorageManager';
+import { usePagination, type UsePaginationReturn } from './usePagination';
 import {
   SUPPORTED_SERVICES,
   SERVICE_NAMES,
@@ -30,20 +31,22 @@ export interface CloudStorageReturn {
   error: Ref<string | null>;
   /** 统计信息 */
   stats: Ref<StorageStats | null>;
-  /** 是否有更多数据 */
-  hasMore: Ref<boolean>;
   /** 搜索关键词 */
   searchQuery: Ref<string>;
   /** 当前存储管理器 */
   currentManager: ComputedRef<IStorageManager | null>;
+  /** 分页状态 */
+  pagination: UsePaginationReturn;
   /** 设置当前服务 */
   setActiveService: (serviceId: CloudServiceType) => Promise<void>;
   /** 导航到指定路径 */
   navigateTo: (path: string) => Promise<void>;
   /** 刷新文件列表 */
   refresh: () => Promise<void>;
-  /** 加载更多 */
-  loadMore: () => Promise<void>;
+  /** 跳转到指定页 */
+  goToPage: (page: number) => Promise<void>;
+  /** 修改每页条数 */
+  changePageSize: (size: number) => Promise<void>;
   /** 搜索文件 */
   search: (query: string) => Promise<void>;
   /** 初始化服务状态 */
@@ -67,8 +70,7 @@ export function useCloudStorage(): CloudStorageReturn {
   const serviceStatuses = ref<Map<string, ServiceStatus>>(new Map());
 
   // 分页状态
-  const continuationToken = ref<string | null>(null);
-  const hasMore = ref(false);
+  const pagination = usePagination({ defaultPageSize: 50 });
 
   // 搜索状态
   const searchQuery = ref('');
@@ -143,20 +145,78 @@ export function useCloudStorage(): CloudStorageReturn {
     currentPath.value = '';
     objects.value = [];
     error.value = null;
-    continuationToken.value = null;
     searchQuery.value = '';
+    pagination.reset();
     await refresh();
   }
 
   // 导航到指定路径
   async function navigateTo(path: string) {
     currentPath.value = path;
-    continuationToken.value = null;
     searchQuery.value = '';
+    pagination.reset();
     await refresh();
   }
 
-  // 刷新文件列表
+  // 内部：获取指定页的数据
+  async function fetchPage(page: number, updateUI: boolean = true): Promise<string | null> {
+    const manager = currentManager.value;
+    if (!manager) {
+      error.value = '请先在"设置"中配置存储服务';
+      return null;
+    }
+
+    const token = pagination.getToken(page);
+
+    // 如果 token 是 undefined，说明该页未被缓存，提前返回错误
+    if (token === undefined && page > 1) {
+      error.value = `无法加载第 ${page} 页：缺少分页凭证，请返回第 1 页重新加载`;
+      return null;
+    }
+
+    const result = await manager.listObjects({
+      prefix: currentPath.value,
+      delimiter: '/',
+      maxKeys: pagination.pageSize.value,
+      continuationToken: token ?? undefined,
+    });
+
+    // 缓存下一页的 token
+    if (result.isTruncated && result.continuationToken) {
+      pagination.cacheToken(page + 1, result.continuationToken);
+    }
+
+    if (updateUI) {
+      // 处理文件夹（从 prefixes 生成）
+      const folders: StorageObject[] = result.prefixes.map((prefix: string) => ({
+        key: prefix,
+        name: prefix.replace(currentPath.value, '').replace(/\/$/, ''),
+        type: 'folder' as const,
+        size: 0,
+        lastModified: new Date(),
+        isDirectory: true,
+      }));
+
+      // 处理文件
+      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
+        ...obj,
+        type: 'file' as const,
+        name: obj.key.replace(currentPath.value, ''),
+      }));
+
+      // 合并文件夹和文件
+      objects.value = [...folders, ...files];
+      pagination.setPage(page);
+      pagination.setHasMore(result.isTruncated);
+
+      // 更新统计信息
+      await refreshStats();
+    }
+
+    return result.continuationToken || null;
+  }
+
+  // 刷新文件列表（加载当前页）
   async function refresh() {
     const manager = currentManager.value;
     if (!manager) {
@@ -181,37 +241,8 @@ export function useCloudStorage(): CloudStorageReturn {
         return;
       }
 
-      // 列出对象
-      const result = await manager.listObjects({
-        prefix: currentPath.value,
-        delimiter: '/',
-        maxKeys: 100,
-      });
-
-      // 处理文件夹（从 prefixes 生成）
-      const folders: StorageObject[] = result.prefixes.map((prefix: string) => ({
-        key: prefix,
-        name: prefix.replace(currentPath.value, '').replace(/\/$/, ''),
-        type: 'folder' as const,
-        size: 0,
-        lastModified: new Date(),
-        isDirectory: true,
-      }));
-
-      // 处理文件
-      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
-        ...obj,
-        type: 'file' as const,
-        name: obj.key.replace(currentPath.value, ''),
-      }));
-
-      // 合并文件夹和文件
-      objects.value = [...folders, ...files];
-      hasMore.value = result.isTruncated;
-      continuationToken.value = result.continuationToken || null;
-
-      // 更新统计信息
-      await refreshStats();
+      // 获取当前页数据
+      await fetchPage(pagination.currentPage.value, true);
     } catch (e) {
       error.value = e instanceof Error ? e.message : '加载失败';
       updateServiceStatus(activeService.value, 'error', error.value);
@@ -220,34 +251,45 @@ export function useCloudStorage(): CloudStorageReturn {
     }
   }
 
-  // 加载更多
-  async function loadMore() {
-    if (!hasMore.value || !continuationToken.value) return;
+  // 跳转到指定页
+  async function goToPage(page: number) {
+    if (page < 1 || page === pagination.currentPage.value) {
+      return;
+    }
 
-    const manager = currentManager.value;
-    if (!manager) return;
+    isLoading.value = true;
+    error.value = null;
 
     try {
-      const result = await manager.listObjects({
-        prefix: currentPath.value,
-        delimiter: '/',
-        maxKeys: 100,
-        continuationToken: continuationToken.value,
-      });
+      const hasToken = pagination.hasToken(page);
 
-      // 处理文件
-      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
-        ...obj,
-        type: 'file' as const,
-        name: obj.key.replace(currentPath.value, ''),
-      }));
+      // 如果目标页的 token 已缓存，直接请求
+      if (hasToken) {
+        await fetchPage(page, true);
+        return;
+      }
 
-      objects.value = [...objects.value, ...files];
-      hasMore.value = result.isTruncated;
-      continuationToken.value = result.continuationToken || null;
+      // 否则，从最近的已知页快速遍历获取 token
+      const nearestPage = pagination.findNearestCachedPage(page);
+
+      for (let p = nearestPage; p < page; p++) {
+        // 仅获取 token，不更新 UI
+        await fetchPage(p, false);
+      }
+
+      // 最后加载目标页并更新 UI
+      await fetchPage(page, true);
     } catch (e) {
-      console.error('加载更多失败:', e);
+      error.value = e instanceof Error ? e.message : '加载失败';
+    } finally {
+      isLoading.value = false;
     }
+  }
+
+  // 修改每页条数
+  async function changePageSize(size: number) {
+    pagination.changePageSize(size);
+    await refresh();
   }
 
   // 刷新统计信息
@@ -289,6 +331,7 @@ export function useCloudStorage(): CloudStorageReturn {
     searchQuery.value = query;
 
     if (!query) {
+      pagination.reset();
       await refresh();
       return;
     }
@@ -315,6 +358,9 @@ export function useCloudStorage(): CloudStorageReturn {
         type: 'file' as const,
         name: obj.key.replace(currentPath.value, ''),
       }));
+
+      // 搜索模式下禁用分页
+      pagination.setHasMore(false);
     } catch (e) {
       error.value = e instanceof Error ? e.message : '搜索失败';
     } finally {
@@ -370,13 +416,14 @@ export function useCloudStorage(): CloudStorageReturn {
     isLoading,
     error,
     stats,
-    hasMore,
     searchQuery,
     currentManager,
+    pagination,
     setActiveService,
     navigateTo,
     refresh,
-    loadMore,
+    goToPage,
+    changePageSize,
     search,
     initServiceStatuses,
     getServiceName,

@@ -19,6 +19,31 @@ pub struct S3UploadResult {
     pub key: String,
 }
 
+/// 创建 S3 客户端（内部复用函数）
+fn create_s3_client(
+    endpoint: &str,
+    access_key: &str,
+    secret_key: &str,
+    region: &str,
+) -> Client {
+    let credentials = Credentials::new(
+        access_key,
+        secret_key,
+        None,
+        None,
+        "PicNexus",
+    );
+
+    let config = Config::builder()
+        .endpoint_url(endpoint)
+        .region(Region::new(region.to_string()))
+        .credentials_provider(credentials)
+        .force_path_style(true)
+        .build();
+
+    Client::from_conf(config)
+}
+
 /// 上传文件到 S3 兼容存储
 #[tauri::command]
 pub async fn upload_to_s3_compatible(
@@ -61,22 +86,7 @@ pub async fn upload_to_s3_compatible(
     }));
 
     // 2. 创建 S3 客户端
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)  // 使用路径风格，兼容性更好
-        .build();
-
-    let client = Client::from_conf(config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     // 发送进度: 66% - 正在上传
     let _ = window.emit("upload://progress", serde_json::json!({
@@ -128,23 +138,9 @@ pub async fn list_s3_objects(
     prefix: Option<String>,
     delimiter: Option<String>,
     max_keys: Option<u32>,
+    continuation_token: Option<String>,
 ) -> Result<serde_json::Value, AppError> {
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)
-        .build();
-
-    let client = Client::from_conf(config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     let mut request = client.list_objects_v2().bucket(&bucket);
 
@@ -159,6 +155,13 @@ pub async fn list_s3_objects(
 
     if let Some(max) = max_keys {
         request = request.max_keys(max as i32);
+    }
+
+    // 分页：使用 continuation_token 获取下一页
+    if let Some(token) = &continuation_token {
+        if !token.is_empty() {
+            request = request.continuation_token(token);
+        }
     }
 
     let response = request.send().await
@@ -207,22 +210,7 @@ pub async fn delete_s3_object(
     bucket: String,
     key: String,
 ) -> Result<String, AppError> {
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)
-        .build();
-
-    let client = Client::from_conf(config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     client
         .delete_object()
@@ -245,22 +233,7 @@ pub async fn delete_s3_objects(
     bucket: String,
     keys: Vec<String>,
 ) -> Result<serde_json::Value, AppError> {
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)
-        .build();
-
-    let client = Client::from_conf(config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     let mut success_keys: Vec<String> = Vec::new();
     let mut failed_keys: Vec<String> = Vec::new();
@@ -358,22 +331,7 @@ pub async fn test_s3_connection(
     println!("[S3测试] Endpoint: {}, Region: {}, Bucket: {}", endpoint, region, bucket);
 
     // 创建 S3 客户端
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let s3_config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)
-        .build();
-
-    let client = Client::from_conf(s3_config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     // 使用 list_objects_v2 验证连接（max_keys=1 减少开销）
     let test_timeout = Duration::from_secs(15);
@@ -524,24 +482,7 @@ pub async fn create_s3_folder(
     bucket: String,
     key: String,
 ) -> Result<String, AppError> {
-    println!("[S3兼容] 创建文件夹: {}", key);
-
-    let credentials = Credentials::new(
-        &access_key,
-        &secret_key,
-        None,
-        None,
-        "PicNexus",
-    );
-
-    let config = Config::builder()
-        .endpoint_url(&endpoint)
-        .region(Region::new(region.clone()))
-        .credentials_provider(credentials)
-        .force_path_style(true)
-        .build();
-
-    let client = Client::from_conf(config);
+    let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
     let body = ByteStream::from(Vec::new());
 
@@ -553,8 +494,6 @@ pub async fn create_s3_folder(
         .send()
         .await
         .map_err(|e| AppError::storage(format!("创建文件夹失败: {}", e)))?;
-
-    println!("[S3兼容] 文件夹创建成功: {}", key);
 
     Ok(format!("成功创建文件夹: {}", key))
 }

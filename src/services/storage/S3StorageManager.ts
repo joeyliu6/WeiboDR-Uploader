@@ -64,7 +64,8 @@ export abstract class BaseS3StorageManager implements IStorageManager {
       bucket: this.getBucket(),
       prefix: options.prefix,
       delimiter: options.delimiter || '/',
-      maxKeys: options.maxKeys || 100
+      maxKeys: options.maxKeys || 100,
+      continuationToken: options.continuationToken,
     });
 
     const data = result as {
