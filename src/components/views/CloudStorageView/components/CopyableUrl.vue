@@ -61,21 +61,19 @@ const copy = async () => {
 .copyable-url {
   display: flex;
   align-items: center;
-  background: rgba(0, 0, 0, 0.25);
-  border: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-input);
+  border: none;
   border-radius: 10px;
   overflow: hidden;
   transition: all 0.2s ease;
 }
 
 .copyable-url:hover {
-  border-color: rgba(59, 130, 246, 0.3);
-  background: rgba(0, 0, 0, 0.3);
+  background: var(--bg-secondary);
 }
 
 .copyable-url:focus-within {
-  border-color: var(--primary);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.15);
+  box-shadow: var(--focus-ring-shadow);
 }
 
 .url-input {

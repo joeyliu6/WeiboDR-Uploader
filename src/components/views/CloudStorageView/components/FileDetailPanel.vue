@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, onMounted, onUnmounted } from 'vue';
 import Button from 'primevue/button';
+import SplitButton from 'primevue/splitbutton';
 import CopyableUrl from './CopyableUrl.vue';
 import type { StorageObject, LinkFormat } from '../types';
 
@@ -16,28 +17,87 @@ const emit = defineEmits<{
   copyLink: [file: StorageObject, format: LinkFormat];
 }>();
 
+// ESC 键关闭面板或 Lightbox
+const lightboxOpen = ref(false);
+
+const openLightbox = () => {
+  lightboxOpen.value = true;
+};
+
+const closeLightbox = () => {
+  lightboxOpen.value = false;
+};
+
+const handleKeydown = (e: KeyboardEvent) => {
+  if (e.key === 'Escape') {
+    if (lightboxOpen.value) {
+      closeLightbox();
+    } else if (props.visible) {
+      emit('close');
+    }
+  }
+};
+
+onMounted(() => {
+  window.addEventListener('keydown', handleKeydown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeydown);
+});
+
 const isImage = computed(() => {
   if (!props.file || props.file.type === 'folder') return false;
   const ext = props.file.name.split('.').pop()?.toLowerCase();
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext || '');
 });
 
-const mimeType = computed(() => {
+// 获取路径前缀（用户名/目录）
+const getPathPrefix = (key: string): string => {
+  const parts = key.split('/');
+  if (parts.length <= 1) return '';
+  return parts.slice(0, -1).join('/');
+};
+
+// 中间省略文件名
+const truncateMiddle = (str: string, maxLen: number): string => {
+  if (str.length <= maxLen) return str;
+  const half = Math.floor((maxLen - 3) / 2);
+  return str.slice(0, half) + '...' + str.slice(-half);
+};
+
+// 获取文件扩展名（大写）
+const getFileType = computed(() => {
   if (!props.file) return '';
-  if (props.file.type === 'folder') return 'folder';
-  const ext = props.file.name.split('.').pop()?.toLowerCase();
-  const mimeMap: Record<string, string> = {
-    jpg: 'image/jpeg',
-    jpeg: 'image/jpeg',
-    png: 'image/png',
-    gif: 'image/gif',
-    webp: 'image/webp',
-    svg: 'image/svg+xml',
-    bmp: 'image/bmp',
-    ico: 'image/x-icon',
-  };
-  return mimeMap[ext || ''] || 'application/octet-stream';
+  const ext = props.file.name.split('.').pop()?.toUpperCase();
+  return ext || 'FILE';
 });
+
+// 复制格式菜单
+const copyFormats = computed(() => [
+  {
+    label: 'URL',
+    icon: 'pi pi-link',
+    command: () => props.file && emit('copyLink', props.file, 'url')
+  },
+  {
+    label: 'HTML',
+    icon: 'pi pi-code',
+    command: () => props.file && emit('copyLink', props.file, 'html')
+  },
+  {
+    label: 'BBCode',
+    icon: 'pi pi-hashtag',
+    command: () => props.file && emit('copyLink', props.file, 'bbcode')
+  }
+]);
+
+// 默认复制 Markdown
+const handleDefaultCopy = () => {
+  if (props.file) {
+    emit('copyLink', props.file, 'markdown');
+  }
+};
 
 const formatSize = (bytes: number): string => {
   if (bytes < 1024) return bytes + ' B';
@@ -47,13 +107,12 @@ const formatSize = (bytes: number): string => {
 };
 
 const formatDate = (date: Date): string => {
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(date);
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const h = String(date.getHours()).padStart(2, '0');
+  const min = String(date.getMinutes()).padStart(2, '0');
+  return `${y}/${m}/${d} ${h}:${min}`;
 };
 
 const handleOverlayClick = (e: MouseEvent) => {
@@ -72,87 +131,77 @@ const handleOverlayClick = (e: MouseEvent) => {
         @click="handleOverlayClick"
       >
         <div class="drawer-panel" @click.stop>
-          <div class="drawer-header">
-            <Button
-              icon="pi pi-times"
-              text
-              rounded
-              size="small"
-              @click="emit('close')"
-              class="close-btn"
-            />
-            <div class="header-actions">
-              <Button
-                icon="pi pi-download"
-                label="下载"
-                outlined
-                size="small"
-                @click="emit('download', file)"
+          <!-- 标题区：路径 + 文件名分层 -->
+          <div class="drawer-title-section">
+            <span v-if="getPathPrefix(file.key)" class="path-breadcrumb">{{ getPathPrefix(file.key) }}</span>
+            <span class="file-title" :title="file.name">{{ truncateMiddle(file.name, 28) }}</span>
+          </div>
+
+          <div class="drawer-content">
+            <!-- 毛玻璃图片预览 -->
+            <div
+              v-if="isImage && file.url"
+              class="preview-section"
+              @click="openLightbox"
+            >
+              <div class="preview-blur-bg" :style="{ backgroundImage: `url(${file.url})` }"></div>
+              <img :src="file.url" :alt="file.name" class="preview-image" />
+            </div>
+
+            <!-- 链接输入框 -->
+            <div v-if="file.url" class="url-section">
+              <CopyableUrl :url="file.url" @copy="emit('copyLink', file, 'url')" />
+            </div>
+
+            <!-- 操作按钮区：主按钮 + 删除图标 -->
+            <div v-if="file.url" class="action-row">
+              <SplitButton
+                label="复制 Markdown"
+                icon="pi pi-code"
+                :model="copyFormats"
+                @click="handleDefaultCopy"
+                class="copy-split-btn"
               />
               <Button
                 icon="pi pi-trash"
-                severity="danger"
-                outlined
-                size="small"
+                class="btn-icon btn-delete"
                 @click="emit('delete', file)"
                 v-tooltip.bottom="'删除'"
               />
             </div>
-          </div>
 
-          <div class="drawer-path">
-            <span class="path-text">{{ file.key }}</span>
-          </div>
-
-          <div class="drawer-content">
-            <div v-if="isImage && file.url" class="preview-section">
-              <img :src="file.url" :alt="file.name" class="preview-image" />
-            </div>
-
-            <div class="info-section">
-              <div class="section-title">文件详情</div>
-              <div class="info-grid">
-                <div class="info-row">
-                  <span class="info-label">文件名</span>
-                  <span class="info-value">{{ file.name }}</span>
+            <!-- 元数据区：底部三列布局 -->
+            <div class="metadata-section">
+              <div class="metadata-divider"></div>
+              <div class="metadata-grid">
+                <div class="meta-item">
+                  <span class="meta-label">类型</span>
+                  <span class="meta-value">{{ getFileType }}</span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">大小</span>
-                  <span class="info-value">{{ formatSize(file.size) }}</span>
+                <div class="meta-item">
+                  <span class="meta-label">大小</span>
+                  <span class="meta-value">{{ formatSize(file.size) }}</span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">类型</span>
-                  <span class="info-value">{{ mimeType }}</span>
+                <div class="meta-item">
+                  <span class="meta-label">时间</span>
+                  <span class="meta-value">{{ formatDate(file.lastModified) }}</span>
                 </div>
-                <div class="info-row">
-                  <span class="info-label">修改时间</span>
-                  <span class="info-value">{{ formatDate(file.lastModified) }}</span>
-                </div>
-              </div>
-            </div>
-
-            <div v-if="file.url" class="info-section">
-              <div class="section-title">访问链接</div>
-              <CopyableUrl :url="file.url" @copy="emit('copyLink', file, 'url')" />
-              <div class="url-actions">
-                <Button
-                  icon="pi pi-link"
-                  label="复制 URL"
-                  text
-                  size="small"
-                  @click="emit('copyLink', file, 'url')"
-                />
-                <Button
-                  icon="pi pi-code"
-                  label="复制 Markdown"
-                  text
-                  size="small"
-                  @click="emit('copyLink', file, 'markdown')"
-                />
               </div>
             </div>
           </div>
         </div>
+      </div>
+    </Transition>
+
+    <!-- Lightbox 放大预览 -->
+    <Transition name="fade">
+      <div
+        v-if="lightboxOpen && file?.url"
+        class="lightbox-overlay"
+        @click="closeLightbox"
+      >
+        <div class="lightbox-blur-bg" :style="{ backgroundImage: `url(${file.url})` }"></div>
+        <img :src="file.url" :alt="file.name" class="lightbox-image" @click.stop />
       </div>
     </Transition>
   </Teleport>
@@ -173,124 +222,197 @@ const handleOverlayClick = (e: MouseEvent) => {
   width: 400px;
   max-width: 90vw;
   height: 100%;
-  background: rgba(25, 25, 25, 0.95);
-  backdrop-filter: blur(20px);
-  border-left: 1px solid rgba(255, 255, 255, 0.1);
+  background: var(--bg-card);
+  border-left: 1px solid var(--border-subtle);
   display: flex;
   flex-direction: column;
-  box-shadow: -8px 0 32px rgba(0, 0, 0, 0.3);
+  box-shadow: var(--shadow-modal);
 }
 
-.drawer-header {
+/* 标题区：分层显示 */
+.drawer-title-section {
+  padding: 32px 24px 20px;
   display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 16px 20px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+  flex-direction: column;
+  gap: 4px;
   flex-shrink: 0;
 }
 
-.close-btn {
-  color: var(--text-secondary);
-}
-
-.close-btn:hover {
-  color: var(--text-primary);
-  background: rgba(255, 255, 255, 0.1);
-}
-
-.header-actions {
-  display: flex;
-  gap: 8px;
-}
-
-.drawer-path {
-  padding: 12px 20px;
-  background: rgba(255, 255, 255, 0.03);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.08);
-  flex-shrink: 0;
-}
-
-.path-text {
-  font-family: var(--font-mono, monospace);
+.path-breadcrumb {
   font-size: 12px;
-  color: var(--text-secondary);
+  color: var(--primary);
+  font-weight: 400;
+}
+
+.file-title {
+  font-size: 18px;
+  font-weight: 700;
+  color: var(--text-primary);
   word-break: break-all;
-  line-height: 1.5;
+  line-height: 1.4;
 }
 
 .drawer-content {
   flex: 1;
   overflow-y: auto;
-  padding: 20px;
+  padding: 0 24px 24px;
+  display: flex;
+  flex-direction: column;
 }
 
+/* 毛玻璃图片预览 */
 .preview-section {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(255, 255, 255, 0.03);
   border-radius: 12px;
-  padding: 20px;
-  margin-bottom: 24px;
-  max-height: 280px;
+  padding: 24px;
+  margin-bottom: 20px;
+  min-height: 200px;
+  max-height: 360px;
   overflow: hidden;
+  cursor: pointer;
+  border: none;
+}
+
+.preview-blur-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(30px) brightness(0.6);
+  transform: scale(1.3);
+  z-index: 1;
 }
 
 .preview-image {
+  position: relative;
+  z-index: 2;
   max-width: 100%;
-  max-height: 240px;
+  max-height: 300px;
   object-fit: contain;
   border-radius: 8px;
+  box-shadow: var(--shadow-float);
 }
 
-.info-section {
-  margin-bottom: 24px;
+/* 链接输入框区 */
+.url-section {
+  margin-bottom: 16px;
 }
 
-.section-title {
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--text-primary);
-  margin-bottom: 12px;
-}
-
-.info-grid {
-  background: rgba(255, 255, 255, 0.03);
-  border-radius: 10px;
-  overflow: hidden;
-}
-
-.info-row {
+/* 操作按钮区 */
+.action-row {
   display: flex;
-  justify-content: space-between;
-  padding: 12px 14px;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  gap: 12px;
+  margin-bottom: 20px;
 }
 
-.info-row:last-child {
-  border-bottom: none;
+.copy-split-btn {
+  flex: 1;
 }
 
-.info-label {
-  font-size: 13px;
+:deep(.copy-split-btn .p-splitbutton-button) {
+  flex: 1;
+}
+
+:deep(.copy-split-btn .p-splitbutton-dropdown) {
+  border-left: 1px solid rgba(255, 255, 255, 0.3);
+}
+
+.btn-icon {
+  width: 44px !important;
+  height: 44px !important;
+  border-radius: 8px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--bg-input) !important;
+  border: 1px solid var(--border-subtle) !important;
+  color: var(--text-secondary) !important;
+  flex-shrink: 0;
+}
+
+.btn-icon:hover {
+  background: var(--hover-overlay) !important;
+}
+
+.btn-delete:hover {
+  background: var(--state-error-bg) !important;
+  border-color: var(--error) !important;
+  color: var(--error) !important;
+}
+
+/* 元数据区 */
+.metadata-section {
+  margin-top: auto;
+  padding: 12px 24px;
+  margin-left: -24px;
+  margin-right: -24px;
+  margin-bottom: -24px;
+  background: var(--bg-surface, #f8f9fa);
+  border-top: 1px solid var(--border-subtle);
+}
+
+.metadata-divider {
+  display: none;
+}
+
+.metadata-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr 1fr;
+  gap: 4px;
+}
+
+.meta-item {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.meta-label {
+  font-size: 12px;
   color: var(--text-muted);
 }
 
-.info-value {
+.meta-value {
   font-size: 13px;
   color: var(--text-primary);
-  text-align: right;
-  max-width: 60%;
-  word-break: break-all;
+  font-weight: 500;
 }
 
-.url-actions {
+/* Lightbox 放大预览 */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
   display: flex;
-  gap: 8px;
-  margin-top: 12px;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
 }
 
+.lightbox-blur-bg {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  filter: blur(50px) brightness(0.4);
+  transform: scale(1.2);
+}
+
+.lightbox-image {
+  position: relative;
+  z-index: 1;
+  max-width: 90vw;
+  max-height: 90vh;
+  object-fit: contain;
+  border-radius: 8px;
+  box-shadow: var(--shadow-modal);
+  cursor: default;
+}
+
+/* 滚动条样式 */
 .drawer-content::-webkit-scrollbar {
   width: 6px;
 }
@@ -300,14 +422,15 @@ const handleOverlayClick = (e: MouseEvent) => {
 }
 
 .drawer-content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.15);
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 .drawer-content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.25);
+  background: var(--scrollbar-thumb-hover);
 }
 
+/* 动画 */
 .drawer-enter-active,
 .drawer-leave-active {
   transition: opacity 0.25s ease;
@@ -326,6 +449,16 @@ const handleOverlayClick = (e: MouseEvent) => {
 .drawer-enter-from .drawer-panel,
 .drawer-leave-to .drawer-panel {
   transform: translateX(100%);
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 
 @media (max-width: 480px) {
