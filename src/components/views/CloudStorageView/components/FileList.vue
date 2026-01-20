@@ -101,10 +101,10 @@ const handleSelectAll = (checked: boolean) => {
         <div class="skeleton-header-size"></div>
         <div class="skeleton-header-time"></div>
       </div>
-      <!-- 行骨架 -->
-      <div v-for="i in 7" :key="i" class="skeleton-row">
+      <!-- 行骨架（单行） -->
+      <div class="skeleton-row">
         <div class="skeleton-checkbox"></div>
-        <div class="skeleton-name" :style="{ width: 35 + (i % 4) * 10 + '%' }"></div>
+        <div class="skeleton-name" style="width: 45%"></div>
         <div class="skeleton-type"></div>
         <div class="skeleton-size"></div>
         <div class="skeleton-time"></div>

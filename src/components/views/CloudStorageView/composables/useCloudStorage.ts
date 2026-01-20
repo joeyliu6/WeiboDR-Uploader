@@ -20,6 +20,9 @@ import {
 // 服务商状态缓存有效期（10 分钟）
 const SERVICE_STATUS_CACHE_TTL = 10 * 60 * 1000;
 
+// 自动刷新间隔（5 分钟）
+const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000;
+
 export interface CloudStorageReturn {
   /** 当前激活的服务 */
   activeService: Ref<CloudServiceType>;
@@ -63,6 +66,10 @@ export interface CloudStorageReturn {
   getServiceName: (serviceId: string) => string;
   /** 检查服务是否已配置 */
   isServiceConfigured: (serviceId: string) => boolean;
+  /** 启动定时自动刷新 */
+  startAutoRefresh: () => void;
+  /** 停止定时自动刷新 */
+  stopAutoRefresh: () => void;
 }
 
 export function useCloudStorage(): CloudStorageReturn {
@@ -530,6 +537,23 @@ export function useCloudStorage(): CloudStorageReturn {
     });
   }
 
+  // 定时自动刷新
+  let autoRefreshTimer: ReturnType<typeof setInterval> | null = null;
+
+  function startAutoRefresh() {
+    stopAutoRefresh();
+    autoRefreshTimer = setInterval(() => {
+      refreshInBackground();
+    }, AUTO_REFRESH_INTERVAL);
+  }
+
+  function stopAutoRefresh() {
+    if (autoRefreshTimer) {
+      clearInterval(autoRefreshTimer);
+      autoRefreshTimer = null;
+    }
+  }
+
   return {
     activeService,
     services,
@@ -552,5 +576,7 @@ export function useCloudStorage(): CloudStorageReturn {
     initServiceStatuses,
     getServiceName,
     isServiceConfigured,
+    startAutoRefresh,
+    stopAutoRefresh,
   };
 }

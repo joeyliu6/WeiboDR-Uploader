@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, computed, onMounted, onActivated, nextTick, watch } from 'vue';
+import { ref, computed, onMounted, onUnmounted, onActivated, nextTick, watch } from 'vue';
 import { useToast } from '@/composables/useToast';
 import { useCloudStorage } from './composables/useCloudStorage';
 import { useFileSelection } from './composables/useFileSelection';
@@ -43,6 +43,8 @@ const {
   changePageSize,
   search,
   initServiceStatuses,
+  startAutoRefresh,
+  stopAutoRefresh,
 } = useCloudStorage();
 
 // 文件选择
@@ -274,6 +276,11 @@ onMounted(async () => {
   await refresh();
   await nextTick();
   isFirstMount.value = false;
+  startAutoRefresh();
+});
+
+onUnmounted(() => {
+  stopAutoRefresh();
 });
 
 onActivated(() => {
@@ -433,7 +440,7 @@ watch(currentPath, () => {
 /* 左侧侧边栏 - 始终展开 */
 .sidebar-area {
   flex-shrink: 0;
-  width: 200px;
+  width: 180px;
   background: var(--bg-card);
   border-right: 1px solid var(--border-subtle);
   display: flex;
