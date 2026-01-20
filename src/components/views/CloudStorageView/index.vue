@@ -10,7 +10,6 @@ import ServiceTabs from './components/ServiceTabs.vue';
 import StorageToolbar from './components/StorageToolbar.vue';
 import FileList from './components/FileList.vue';
 import FileDetailPanel from './components/FileDetailPanel.vue';
-import FloatingActionBar from './components/FloatingActionBar.vue';
 import PreviewDialog from './components/PreviewDialog.vue';
 import ContextMenu from './components/ContextMenu.vue';
 import PaginationBar from './components/PaginationBar.vue';
@@ -328,15 +327,6 @@ watch(currentPath, () => {
         />
       </footer>
 
-      <!-- 浮动操作栏 -->
-      <FloatingActionBar
-        :selected-items="selectedItems"
-        :visible="selectedItems.length > 0"
-        @delete="handleBatchDelete"
-        @copy-link="handleBatchCopyLink"
-        @download="handleBatchDownload"
-        @close="clearSelection"
-      />
     </main>
 
     <!-- 详情抽屉（浮层） -->
