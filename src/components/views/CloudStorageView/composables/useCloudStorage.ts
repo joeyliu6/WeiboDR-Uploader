@@ -17,6 +17,9 @@ import {
   type StorageStats,
 } from '../types';
 
+// 服务商状态缓存有效期（10 分钟）
+const SERVICE_STATUS_CACHE_TTL = 10 * 60 * 1000;
+
 export interface CloudStorageReturn {
   /** 当前激活的服务 */
   activeService: Ref<CloudServiceType>;
@@ -28,6 +31,8 @@ export interface CloudStorageReturn {
   objects: Ref<StorageObject[]>;
   /** 是否加载中 */
   isLoading: Ref<boolean>;
+  /** 服务商初始化加载中（用于侧边栏 Spinner） */
+  isServiceLoading: Ref<boolean>;
   /** 错误信息 */
   error: Ref<string | null>;
   /** 统计信息 */
@@ -66,6 +71,7 @@ export function useCloudStorage(): CloudStorageReturn {
   const currentPath = ref<string>('');
   const objects = ref<StorageObject[]>([]);
   const isLoading = ref(false);
+  const isServiceLoading = ref(false);
   const error = ref<string | null>(null);
   const serviceStatuses = ref<Map<string, ServiceStatus>>(new Map());
 
@@ -337,17 +343,23 @@ export function useCloudStorage(): CloudStorageReturn {
     error.value = null;
 
     try {
-      // 仅在未连接或状态为错误时测试连接，已连接则跳过
+      // 仅在未连接、状态为错误或缓存过期时测试连接
       const cachedStatus = serviceStatuses.value.get(activeService.value);
-      const needsConnectionTest = !cachedStatus || cachedStatus.status !== 'connected';
+      const isStatusExpired = cachedStatus?.lastChecked
+        ? Date.now() - cachedStatus.lastChecked.getTime() > SERVICE_STATUS_CACHE_TTL
+        : true;
+      const needsConnectionTest =
+        !cachedStatus || cachedStatus.status !== 'connected' || isStatusExpired;
 
       if (needsConnectionTest) {
+        isServiceLoading.value = true;
         const connectionResult = await manager.testConnection();
         updateServiceStatus(
           activeService.value,
           connectionResult.success ? 'connected' : 'error',
           connectionResult.error
         );
+        isServiceLoading.value = false;
 
         if (!connectionResult.success) {
           error.value = connectionResult.error || '连接失败';
@@ -362,6 +374,7 @@ export function useCloudStorage(): CloudStorageReturn {
       updateServiceStatus(activeService.value, 'error', error.value);
     } finally {
       isLoading.value = false;
+      isServiceLoading.value = false;
     }
   }
 
@@ -515,6 +528,7 @@ export function useCloudStorage(): CloudStorageReturn {
     currentPath,
     objects,
     isLoading,
+    isServiceLoading,
     error,
     stats,
     searchQuery,

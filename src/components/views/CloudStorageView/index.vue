@@ -27,6 +27,7 @@ const {
   currentPath,
   objects,
   isLoading,
+  isServiceLoading,
   error,
   stats,
   searchQuery,
@@ -269,7 +270,7 @@ watch(currentPath, () => {
         :services="services"
         :active-service="activeService"
         :expanded="sidebarExpanded"
-        :is-loading="isLoading"
+        :is-loading="isServiceLoading"
         @change="handleServiceChange"
       />
     </aside>
