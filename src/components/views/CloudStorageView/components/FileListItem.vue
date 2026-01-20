@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import Button from 'primevue/button';
+import Checkbox from 'primevue/checkbox';
 import type { StorageObject } from '../types';
 
 const props = defineProps<{
@@ -11,8 +11,6 @@ const props = defineProps<{
 const emit = defineEmits<{
   select: [item: StorageObject, event: MouseEvent];
   preview: [item: StorageObject];
-  copyLink: [item: StorageObject];
-  delete: [item: StorageObject];
   open: [item: StorageObject];
   showDetail: [item: StorageObject];
 }>();
@@ -23,9 +21,15 @@ const isImage = computed(() => {
   return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext || '');
 });
 
-const thumbnailUrl = computed(() => {
-  if (props.item.type === 'folder') return '';
-  return props.item.url || '';
+const fileType = computed(() => {
+  if (props.item.type === 'folder') return '文件夹';
+  const ext = props.item.name.split('.').pop()?.toLowerCase() || '';
+  const typeMap: Record<string, string> = {
+    png: 'PNG', jpg: 'JPG', jpeg: 'JPG', gif: 'GIF',
+    webp: 'WebP', svg: 'SVG', bmp: 'BMP', ico: 'ICO',
+    pdf: 'PDF', json: 'JSON', txt: 'TXT',
+  };
+  return typeMap[ext] || ext.toUpperCase() || '-';
 });
 
 const formatSize = (bytes: number): string => {
@@ -36,29 +40,24 @@ const formatSize = (bytes: number): string => {
   return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
 };
 
-const formatTime = (date: Date): string => {
-  const now = new Date();
-  const diff = now.getTime() - date.getTime();
-  const minutes = Math.floor(diff / 60000);
-  const hours = Math.floor(diff / 3600000);
-  const days = Math.floor(diff / 86400000);
-
-  if (minutes < 1) return '刚刚';
-  if (minutes < 60) return `${minutes} 分钟前`;
-  if (hours < 24) return `${hours} 小时前`;
-  if (days < 7) return `${days} 天前`;
-  return date.toLocaleDateString('zh-CN');
+const formatDate = (date: Date): string => {
+  return date.toLocaleDateString('zh-CN', {
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
 };
 
-const handleClick = (e: MouseEvent) => {
+const handleCheckboxClick = (e: MouseEvent) => {
+  e.stopPropagation();
   emit('select', props.item, e);
 };
 
-const handleDoubleClick = () => {
+const handleRowClick = () => {
   if (props.item.type === 'folder') {
     emit('open', props.item);
   } else if (isImage.value) {
-    emit('preview', props.item);
+    emit('showDetail', props.item);
   } else {
     emit('showDetail', props.item);
   }
@@ -72,56 +71,26 @@ const handleDoubleClick = () => {
       'is-selected': selected,
       'is-folder': item.type === 'folder',
     }"
-    @click="handleClick"
-    @dblclick="handleDoubleClick"
+    @click="handleRowClick"
   >
-    <!-- 文件图标（替代缩略图） -->
-    <div class="item-icon">
-      <i v-if="item.type === 'folder'" class="pi pi-folder folder-icon"></i>
-      <i v-else-if="isImage" class="pi pi-image file-icon"></i>
-      <i v-else class="pi pi-file file-icon"></i>
+    <!-- 复选框 -->
+    <div class="item-checkbox" @click="handleCheckboxClick">
+      <Checkbox :modelValue="selected" binary />
     </div>
 
     <!-- 文件信息 -->
     <div class="item-info">
+      <i v-if="item.type === 'folder'" class="pi pi-folder folder-icon"></i>
       <span class="item-name" :title="item.name">{{ item.name }}</span>
     </div>
+
+    <!-- 类型 -->
+    <div class="item-type">{{ fileType }}</div>
 
     <!-- 元信息 -->
     <div class="item-meta">
       <span class="item-size">{{ formatSize(item.size) }}</span>
-      <span class="item-time">{{ formatTime(item.lastModified) }}</span>
-    </div>
-
-    <!-- 操作按钮 -->
-    <div class="item-actions">
-      <Button
-        v-if="item.type === 'file' && isImage"
-        icon="pi pi-eye"
-        @click.stop="emit('showDetail', item)"
-        size="small"
-        text
-        rounded
-        v-tooltip.top="'预览'"
-      />
-      <Button
-        v-if="item.type === 'file'"
-        icon="pi pi-copy"
-        @click.stop="emit('copyLink', item)"
-        size="small"
-        text
-        rounded
-        v-tooltip.top="'复制链接'"
-      />
-      <Button
-        icon="pi pi-trash"
-        @click.stop="emit('delete', item)"
-        severity="danger"
-        size="small"
-        text
-        rounded
-        v-tooltip.top="'删除'"
-      />
+      <span class="item-time">{{ formatDate(item.lastModified) }}</span>
     </div>
   </div>
 </template>
@@ -131,55 +100,46 @@ const handleDoubleClick = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.03);
-  backdrop-filter: blur(10px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  border-radius: 12px;
+  padding: 10px 12px;
+  background: var(--bg-card);
+  border: none;
+  border-bottom: 1px solid var(--border-subtle);
+  border-radius: 0;
   cursor: pointer;
-  transition: all 0.2s ease;
+  transition: background-color 0.15s ease;
 }
 
 .file-list-item:hover {
-  background: rgba(255, 255, 255, 0.06);
-  border-color: rgba(255, 255, 255, 0.1);
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  background: var(--hover-overlay);
 }
 
 .file-list-item.is-selected {
-  background: rgba(var(--primary-rgb, 59, 130, 246), 0.12);
-  border-color: rgba(var(--primary-rgb, 59, 130, 246), 0.3);
+  background: rgba(var(--primary-rgb, 59, 130, 246), 0.08);
 }
 
-/* 文件图标 */
-.item-icon {
-  width: 24px;
-  height: 24px;
+.item-checkbox {
+  width: 32px;
   flex-shrink: 0;
   display: flex;
   align-items: center;
   justify-content: center;
 }
 
-.item-icon .folder-icon {
-  font-size: 1.1rem;
-  color: #f59e0b;
-}
-
-.item-icon .file-icon {
-  font-size: 1rem;
-  color: var(--text-muted);
-}
-
-/* 文件信息 */
 .item-info {
   flex: 1;
   min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.item-info .folder-icon {
+  font-size: 1.1rem;
+  color: var(--primary);
+  flex-shrink: 0;
 }
 
 .item-name {
-  display: block;
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
@@ -188,56 +148,32 @@ const handleDoubleClick = () => {
   text-overflow: ellipsis;
 }
 
-/* 元信息 */
+.item-type {
+  width: 60px;
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+  text-align: center;
+}
+
 .item-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 16px;
   flex-shrink: 0;
-  min-width: 120px;
 }
 
 .item-size {
+  width: 80px;
   font-size: 12px;
   color: var(--text-muted);
-  min-width: 50px;
   text-align: right;
 }
 
 .item-time {
+  width: 90px;
   font-size: 12px;
   color: var(--text-muted);
-  min-width: 60px;
   text-align: right;
-}
-
-/* 操作按钮 */
-.item-actions {
-  display: flex;
-  align-items: center;
-  gap: 2px;
-  opacity: 0;
-  transition: opacity 0.2s;
-  flex-shrink: 0;
-}
-
-.file-list-item:hover .item-actions {
-  opacity: 1;
-}
-
-.item-actions :deep(.p-button) {
-  width: 32px;
-  height: 32px;
-  color: var(--text-secondary);
-}
-
-.item-actions :deep(.p-button:hover) {
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--text-primary);
-}
-
-.item-actions :deep(.p-button-danger:hover) {
-  background: rgba(239, 68, 68, 0.15);
-  color: var(--error);
 }
 </style>

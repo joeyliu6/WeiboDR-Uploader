@@ -2,7 +2,6 @@
 import { ref, watch } from 'vue';
 import Button from 'primevue/button';
 import InputText from 'primevue/inputtext';
-import Menu from 'primevue/menu';
 import Breadcrumb from './Breadcrumb.vue';
 import type { StorageStats } from '../types';
 
@@ -12,6 +11,7 @@ const props = defineProps<{
   stats: StorageStats | null;
   loading: boolean;
   searchQuery: string;
+  selectedCount?: number;
 }>();
 
 const emit = defineEmits<{
@@ -19,11 +19,12 @@ const emit = defineEmits<{
   refresh: [];
   upload: [];
   search: [query: string];
+  delete: [];
+  createFolder: [];
 }>();
 
 const localSearchQuery = ref(props.searchQuery);
 const searchFocused = ref(false);
-const menuRef = ref();
 
 watch(
   () => props.searchQuery,
@@ -39,26 +40,6 @@ const handleSearchInput = () => {
   searchTimeout = setTimeout(() => {
     emit('search', localSearchQuery.value);
   }, 300);
-};
-
-const menuItems = ref([
-  {
-    label: '刷新',
-    icon: 'pi pi-refresh',
-    command: () => emit('refresh'),
-  },
-  {
-    separator: true,
-  },
-  {
-    label: '上传文件',
-    icon: 'pi pi-upload',
-    command: () => emit('upload'),
-  },
-]);
-
-const toggleMenu = (event: Event) => {
-  menuRef.value.toggle(event);
 };
 </script>
 
@@ -97,27 +78,42 @@ const toggleMenu = (event: Event) => {
         />
       </div>
 
-      <!-- 上传按钮 -->
+      <!-- 删除按钮（选中时显示） -->
       <Button
-        icon="pi pi-upload"
-        @click="emit('upload')"
+        v-if="selectedCount && selectedCount > 0"
+        :label="`删除 ${selectedCount} 个文件`"
+        icon="pi pi-trash"
+        severity="danger"
         size="small"
-        class="upload-btn"
-        v-tooltip.bottom="'上传文件'"
+        @click="emit('delete')"
       />
 
-      <!-- 更多菜单 -->
+      <!-- 上传按钮 -->
       <Button
-        icon="pi pi-ellipsis-v"
-        @click="toggleMenu"
-        text
-        rounded
+        label="上传"
+        icon="pi pi-upload"
+        outlined
         size="small"
-        class="more-btn"
-        :loading="loading"
-        v-tooltip.bottom="'更多操作'"
+        @click="emit('upload')"
       />
-      <Menu ref="menuRef" :model="menuItems" :popup="true" class="toolbar-menu" />
+
+      <!-- 添加目录按钮 -->
+      <Button
+        label="添加目录"
+        icon="pi pi-plus"
+        size="small"
+        @click="emit('createFolder')"
+      />
+
+      <!-- 刷新按钮 -->
+      <Button
+        label="刷新"
+        icon="pi pi-sync"
+        outlined
+        size="small"
+        @click="emit('refresh')"
+        :loading="loading"
+      />
     </div>
   </div>
 </template>
@@ -195,62 +191,5 @@ const toggleMenu = (event: Event) => {
 
 .search-clear :deep(.p-button-icon) {
   font-size: 12px;
-}
-
-/* 上传按钮 */
-.upload-btn {
-  width: 34px;
-  height: 34px;
-  border-radius: 8px;
-}
-
-/* 更多按钮 */
-.more-btn {
-  width: 34px;
-  height: 34px;
-  color: var(--text-secondary);
-}
-
-.more-btn:hover {
-  color: var(--text-primary);
-  background: var(--hover-overlay);
-}
-</style>
-
-<style>
-/* 菜单样式（非 scoped） */
-.toolbar-menu.p-menu {
-  background: var(--bg-card);
-  backdrop-filter: blur(20px);
-  border: 1px solid var(--border-subtle);
-  border-radius: 10px;
-  box-shadow: var(--shadow-float);
-  min-width: 160px;
-}
-
-.toolbar-menu .p-menuitem-link {
-  padding: 10px 14px;
-  border-radius: 6px;
-  margin: 2px 4px;
-  transition: background 0.15s;
-}
-
-.toolbar-menu .p-menuitem-link:hover {
-  background: var(--hover-overlay);
-}
-
-.toolbar-menu .p-menuitem-icon {
-  color: var(--text-muted);
-  margin-right: 10px;
-}
-
-.toolbar-menu .p-menuitem-text {
-  color: var(--text-primary);
-  font-size: 13px;
-}
-
-.toolbar-menu .p-menu-separator {
-  border-color: var(--border-subtle);
-  margin: 4px 8px;
 }
 </style>

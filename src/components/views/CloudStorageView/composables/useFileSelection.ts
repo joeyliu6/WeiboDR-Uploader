@@ -79,20 +79,11 @@ export function useFileSelection(options: FileSelectionOptions): FileSelectionRe
       }
       // 触发响应式更新
       selectedKeys.value = new Set(selectedKeys.value);
-    } else if (event?.ctrlKey || event?.metaKey) {
-      // Ctrl/Cmd + 点击：多选
+    } else {
+      // 普通点击：切换选中状态（多选模式）
       if (selectedKeys.value.has(item.key)) {
         selectedKeys.value.delete(item.key);
       } else {
-        selectedKeys.value.add(item.key);
-      }
-      selectedKeys.value = new Set(selectedKeys.value);
-    } else {
-      // 普通点击：单选/取消
-      if (selectedKeys.value.has(item.key) && selectedKeys.value.size === 1) {
-        selectedKeys.value.clear();
-      } else {
-        selectedKeys.value.clear();
         selectedKeys.value.add(item.key);
       }
       selectedKeys.value = new Set(selectedKeys.value);

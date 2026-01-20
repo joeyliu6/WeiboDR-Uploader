@@ -2,6 +2,7 @@
 import { ref, computed } from 'vue';
 import ProgressSpinner from 'primevue/progressspinner';
 import Message from 'primevue/message';
+import Checkbox from 'primevue/checkbox';
 import FileListItem from './FileListItem.vue';
 import EmptyState from './EmptyState.vue';
 import type { StorageObject } from '../types';
@@ -13,6 +14,7 @@ const props = defineProps<{
   error: string | null;
   hasMore: boolean;
   isDragging?: boolean;
+  allSelected?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -24,11 +26,22 @@ const emit = defineEmits<{
   loadMore: [];
   upload: [];
   showDetail: [item: StorageObject];
+  selectAll: [checked: boolean];
 }>();
 
 const listContainerRef = ref<HTMLElement | null>(null);
 
 const isSelected = (item: StorageObject) => props.selectedKeys.has(item.key);
+
+// 全选状态（考虑部分选中）
+const isIndeterminate = computed(() => {
+  const selectedCount = props.selectedKeys.size;
+  return selectedCount > 0 && selectedCount < props.items.length;
+});
+
+const handleSelectAll = (checked: boolean) => {
+  emit('selectAll', checked);
+};
 
 const handleScroll = (e: Event) => {
   const target = e.target as HTMLElement;
@@ -92,13 +105,20 @@ const handleScroll = (e: Event) => {
     >
       <!-- 列表表头 -->
       <div class="list-header">
-        <div class="header-icon"></div>
+        <div class="header-checkbox">
+          <Checkbox
+            :modelValue="allSelected"
+            :indeterminate="isIndeterminate"
+            @update:modelValue="handleSelectAll"
+            binary
+          />
+        </div>
         <div class="header-name">文件名</div>
+        <div class="header-type">类型</div>
         <div class="header-meta">
           <span class="header-size">大小</span>
           <span class="header-time">修改时间</span>
         </div>
-        <div class="header-actions">操作</div>
       </div>
 
       <div class="list-content">
@@ -254,22 +274,23 @@ const handleScroll = (e: Event) => {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
-  background: rgba(255, 255, 255, 0.02);
-  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  background: var(--bg-card);
+  border-bottom: 1px solid var(--border-subtle);
   font-size: 12px;
   color: var(--text-muted);
   font-weight: 500;
   position: sticky;
-  top: 0;
+  top: -8px;
   z-index: 10;
-  backdrop-filter: blur(8px);
-  border-radius: 8px 8px 0 0;
-  margin-bottom: 6px;
+  margin: -8px -8px 6px -8px;
 }
 
-.header-icon {
-  width: 24px;
+.header-checkbox {
+  width: 32px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .header-name {
@@ -277,26 +298,27 @@ const handleScroll = (e: Event) => {
   min-width: 0;
 }
 
+.header-type {
+  width: 60px;
+  flex-shrink: 0;
+  text-align: center;
+}
+
 .header-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
-  min-width: 120px;
+  gap: 16px;
+  flex-shrink: 0;
 }
 
 .header-size {
-  min-width: 50px;
+  width: 80px;
   text-align: right;
 }
 
 .header-time {
-  min-width: 60px;
+  width: 90px;
   text-align: right;
-}
-
-.header-actions {
-  min-width: 100px;
-  text-align: center;
 }
 
 .list-content {
