@@ -26,12 +26,12 @@ export interface UsePaginationReturn {
 }
 
 export function usePagination(options: UsePaginationOptions = {}): UsePaginationReturn {
-  const { defaultPageSize = 50 } = options;
+  const { defaultPageSize = 30 } = options;
 
   const currentPage = ref(1);
   const pageSize = ref(defaultPageSize);
   const hasMore = ref(false);
-  const pageSizeOptions = [20, 50, 100];
+  const pageSizeOptions = [30, 50, 100];
 
   // Token 缓存：页码 -> 该页所需的 continuationToken
   // 第 1 页的 token 为 null（不需要 token）

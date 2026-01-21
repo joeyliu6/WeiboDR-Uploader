@@ -18,12 +18,11 @@ const emit = defineEmits<{
   'page-size-change': [size: number];
 }>();
 
-// 游标分页适配：估算总记录数
+// 游标分页适配：使用 maxKnownPage 稳定页码显示
 const computedTotalRecords = computed(() => {
-  if (props.hasMore) {
-    return (props.currentPage + 1) * props.pageSize;
-  }
-  return props.totalItems + (props.currentPage - 1) * props.pageSize;
+  const knownPages = props.maxKnownPage;
+  const extraPage = props.hasMore ? 1 : 0;
+  return (knownPages + extraPage) * props.pageSize;
 });
 
 // 计算 first（起始索引）
@@ -44,6 +43,7 @@ function handlePageChange(event: PageState) {
       :first="first"
       :rows="pageSize"
       :totalRecords="computedTotalRecords"
+      :pageLinkSize="5"
       template="FirstPageLink PrevPageLink PageLinks NextPageLink LastPageLink"
       :pt="{
         root: { class: 'minimal-paginator' }
