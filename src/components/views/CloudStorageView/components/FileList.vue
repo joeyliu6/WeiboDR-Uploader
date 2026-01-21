@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch, computed, onUnmounted } from 'vue';
+import { computed } from 'vue';
 import Message from 'primevue/message';
 import Checkbox from 'primevue/checkbox';
 import FileListItem from './FileListItem.vue';
@@ -34,40 +34,13 @@ const isIndeterminate = computed(() => {
   return selectedCount > 0 && selectedCount < props.items.length;
 });
 
-// 延迟显示骨架屏（避免快速切换时闪烁）
-const showSkeleton = ref(false);
-let skeletonTimer: ReturnType<typeof setTimeout> | null = null;
-
-watch(
-  () => props.loading,
-  (loading) => {
-    if (loading && props.items.length === 0) {
-      // 延迟 150ms 后显示骨架屏
-      skeletonTimer = setTimeout(() => {
-        showSkeleton.value = true;
-      }, 150);
-    } else {
-      // 取消延迟，立即隐藏
-      if (skeletonTimer) {
-        clearTimeout(skeletonTimer);
-        skeletonTimer = null;
-      }
-      showSkeleton.value = false;
-    }
-  },
-  { immediate: true }
-);
-
-onUnmounted(() => {
-  if (skeletonTimer) {
-    clearTimeout(skeletonTimer);
-  }
-});
-
-// 列表 key，用于触发过渡动画
-const listKey = computed(() => {
+// 统一视图状态：骨架屏 / 错误 / 空状态 / 内容
+type ViewState = 'skeleton' | 'error' | 'empty' | 'content';
+const viewState = computed<ViewState>(() => {
+  if (props.loading && props.items.length === 0) return 'skeleton';
+  if (props.error && props.items.length === 0) return 'error';
   if (props.items.length === 0) return 'empty';
-  return `${props.items.length}-${props.items[0]?.key || ''}`;
+  return 'content';
 });
 
 const handleSelectAll = (checked: boolean) => {
@@ -90,84 +63,77 @@ const handleSelectAll = (checked: boolean) => {
       </div>
     </Transition>
 
-    <!-- 骨架屏加载状态（延迟显示，且仅在无数据时显示） -->
-    <Transition name="fade">
-      <div v-if="showSkeleton && items.length === 0" class="skeleton-list">
-      <!-- 表头骨架 -->
-      <div class="skeleton-header">
-        <div class="skeleton-checkbox"></div>
-        <div class="skeleton-header-name"></div>
-        <div class="skeleton-header-type"></div>
-        <div class="skeleton-header-size"></div>
-        <div class="skeleton-header-time"></div>
+    <!-- 统一过渡：骨架屏 / 错误 / 空状态 / 内容（互斥渲染，避免重叠闪烁） -->
+    <Transition name="fade" mode="out-in">
+      <!-- 骨架屏加载状态 -->
+      <div v-if="viewState === 'skeleton'" key="skeleton" class="skeleton-list">
+        <div class="skeleton-header">
+          <div class="skeleton-checkbox"></div>
+          <div class="skeleton-header-name"></div>
+          <div class="skeleton-header-type"></div>
+          <div class="skeleton-header-size"></div>
+          <div class="skeleton-header-time"></div>
+        </div>
+        <div class="skeleton-row">
+          <div class="skeleton-checkbox"></div>
+          <div class="skeleton-name" style="width: 45%"></div>
+          <div class="skeleton-type"></div>
+          <div class="skeleton-size"></div>
+          <div class="skeleton-time"></div>
+        </div>
       </div>
-      <!-- 行骨架（单行） -->
-      <div class="skeleton-row">
-        <div class="skeleton-checkbox"></div>
-        <div class="skeleton-name" style="width: 45%"></div>
-        <div class="skeleton-type"></div>
-        <div class="skeleton-size"></div>
-        <div class="skeleton-time"></div>
-      </div>
-      </div>
-    </Transition>
 
-    <!-- 错误状态 -->
-    <Message v-if="error && items.length === 0 && !showSkeleton" severity="error" :closable="false">
-      {{ error }}
-    </Message>
+      <!-- 错误状态 -->
+      <Message v-else-if="viewState === 'error'" key="error" severity="error" :closable="false">
+        {{ error }}
+      </Message>
 
-    <!-- 空状态 -->
-    <EmptyState
-      v-else-if="items.length === 0 && !showSkeleton && !loading"
-      icon="pi-cloud-upload"
-      title="暂无文件"
-      description="拖拽文件到此处上传，或点击下方按钮选择文件"
-      actionLabel="上传文件"
-      actionIcon="pi-upload"
-      @action="emit('upload')"
-    />
+      <!-- 空状态 -->
+      <EmptyState
+        v-else-if="viewState === 'empty'"
+        key="empty"
+        icon="pi-cloud-upload"
+        title="暂无文件"
+        description="拖拽文件到此处上传，或点击下方按钮选择文件"
+        actionLabel="上传文件"
+        actionIcon="pi-upload"
+        @action="emit('upload')"
+      />
 
-    <!-- 文件列表（带过渡动画） -->
-    <Transition name="list-fade" mode="out-in">
-      <div
-        v-if="items.length > 0"
-        :key="listKey"
-        class="list-container"
-      >
-      <!-- 列表表头 -->
-      <div class="list-header">
-        <div class="header-checkbox">
-          <Checkbox
-            :modelValue="allSelected"
-            :indeterminate="isIndeterminate"
-            @update:modelValue="handleSelectAll"
-            binary
+      <!-- 文件列表 -->
+      <div v-else key="content" class="list-container">
+        <div class="list-header">
+          <div class="header-checkbox">
+            <Checkbox
+              :modelValue="allSelected"
+              :indeterminate="isIndeterminate"
+              @update:modelValue="handleSelectAll"
+              binary
+            />
+          </div>
+          <div class="header-name">文件名</div>
+          <div class="header-type">类型</div>
+          <div class="header-meta">
+            <span class="header-size">大小</span>
+            <span class="header-time">修改时间</span>
+          </div>
+        </div>
+
+        <div class="list-content">
+          <FileListItem
+            v-for="item in items"
+            :key="item.key"
+            :item="item"
+            :selected="isSelected(item)"
+            @select="(i, e) => emit('select', i, e)"
+            @preview="(i) => emit('preview', i)"
+            @copy-link="(i) => emit('copyLink', i)"
+            @delete="(i) => emit('delete', i)"
+            @open="(i) => emit('open', i)"
+            @show-detail="(i) => emit('showDetail', i)"
           />
         </div>
-        <div class="header-name">文件名</div>
-        <div class="header-type">类型</div>
-        <div class="header-meta">
-          <span class="header-size">大小</span>
-          <span class="header-time">修改时间</span>
-        </div>
       </div>
-
-      <div class="list-content">
-        <FileListItem
-          v-for="item in items"
-          :key="item.key"
-          :item="item"
-          :selected="isSelected(item)"
-          @select="(i, e) => emit('select', i, e)"
-          @preview="(i) => emit('preview', i)"
-          @copy-link="(i) => emit('copyLink', i)"
-          @delete="(i) => emit('delete', i)"
-          @open="(i) => emit('open', i)"
-          @show-detail="(i) => emit('showDetail', i)"
-        />
-      </div>
-    </div>
     </Transition>
   </div>
 </template>
