@@ -21,7 +21,7 @@ import { useServiceAvailability } from '../../composables/useServiceAvailability
 // 组件
 import HostingSettingsPanel from '../settings/HostingSettingsPanel.vue';
 import GeneralSettingsPanel from '../settings/GeneralSettingsPanel.vue';
-import LinkPrefixPanel from '../settings/LinkPrefixPanel.vue';
+import AdvancedSettingsPanel from '../settings/AdvancedSettingsPanel.vue';
 import BackupSyncPanel from '../settings/BackupSyncPanel.vue';
 
 import { Store } from '../../store';
@@ -58,7 +58,7 @@ const appVersion = ref<string>('');
 const isClearingCache = ref(false);
 
 // 导航状态
-type SettingsTab = 'general' | 'hosting' | 'links' | 'backup';
+type SettingsTab = 'general' | 'hosting' | 'advanced' | 'backup';
 const activeTab = ref<SettingsTab>('general');
 
 interface NavItem {
@@ -77,12 +77,7 @@ const navGroups: NavGroup[] = [
     items: [
       { id: 'general', label: '常规设置', icon: 'pi pi-cog' },
       { id: 'hosting', label: '图床设置', icon: 'pi pi-images' },
-    ]
-  },
-  {
-    label: '高级',
-    items: [
-      { id: 'links', label: '链接前缀', icon: 'pi pi-link' },
+      { id: 'advanced', label: '高级设置', icon: 'pi pi-sliders-h' },
       { id: 'backup', label: '备份与同步', icon: 'pi pi-database' },
     ]
   }
@@ -566,15 +561,10 @@ onUnmounted(() => {
           :current-theme="currentTheme"
           :available-services="availableServices"
           :default-history-view-mode="formData.defaultHistoryViewMode"
-          :analytics-enabled="formData.analyticsEnabled"
-          :is-clearing-cache="isClearingCache"
           :service-names="serviceNames"
           @update:current-theme="handleThemeChange"
           @update:available-services="(v) => { availableServices = v; saveSettings(); }"
           @update:default-history-view-mode="(v) => { formData.defaultHistoryViewMode = v; saveSettings(); }"
-          @update:analytics-enabled="(v) => { formData.analyticsEnabled = v; handleAnalyticsToggle(); }"
-          @clear-history="handleClearHistory"
-          @clear-cache="handleClearAppCache"
           @save="saveSettings"
         />
       </div>
@@ -616,19 +606,24 @@ onUnmounted(() => {
         />
       </div>
 
-      <!-- 链接前缀 -->
-      <div v-if="activeTab === 'links'" class="settings-section">
-        <LinkPrefixPanel
-          :enabled="formData.linkPrefixEnabled"
+      <!-- 高级设置 -->
+      <div v-if="activeTab === 'advanced'" class="settings-section">
+        <AdvancedSettingsPanel
+          :link-prefix-enabled="formData.linkPrefixEnabled"
           :prefix-list="formData.linkPrefixList"
-          :selected-index="formData.selectedPrefixIndex"
-          @update:enabled="(v) => { formData.linkPrefixEnabled = v; saveSettings(); }"
+          :selected-prefix-index="formData.selectedPrefixIndex"
+          :analytics-enabled="formData.analyticsEnabled"
+          :is-clearing-cache="isClearingCache"
+          @update:link-prefix-enabled="(v) => { formData.linkPrefixEnabled = v; saveSettings(); }"
           @update:prefix-list="(v) => { formData.linkPrefixList = v; }"
-          @update:selected-index="(v) => { formData.selectedPrefixIndex = v; saveSettings(); }"
+          @update:selected-prefix-index="(v) => { formData.selectedPrefixIndex = v; saveSettings(); }"
+          @update:analytics-enabled="(v) => { formData.analyticsEnabled = v; handleAnalyticsToggle(); }"
           @save="saveSettings"
           @add-prefix="addPrefix"
           @remove-prefix="removePrefix"
           @reset-to-default="resetToDefaultPrefixes"
+          @clear-history="handleClearHistory"
+          @clear-cache="handleClearAppCache"
         />
       </div>
 

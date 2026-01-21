@@ -5,9 +5,7 @@
 import { computed } from 'vue';
 import Checkbox from 'primevue/checkbox';
 import RadioButton from 'primevue/radiobutton';
-import Button from 'primevue/button';
 import Divider from 'primevue/divider';
-import ToggleSwitch from 'primevue/toggleswitch';
 import type { ThemeMode, ServiceType } from '../../config/types';
 import { PRIVATE_SERVICES, PUBLIC_SERVICES } from '../../config/types';
 
@@ -22,12 +20,6 @@ interface Props {
 
   /** 默认历史视图模式 */
   defaultHistoryViewMode: 'grid' | 'table';
-
-  /** 是否启用数据分析 */
-  analyticsEnabled: boolean;
-
-  /** 是否正在清理缓存 */
-  isClearingCache: boolean;
 
   /** 服务名称映射 */
   serviceNames: Record<ServiceType, string>;
@@ -46,15 +38,6 @@ const emit = defineEmits<{
 
   /** 默认视图模式变更 */
   'update:defaultHistoryViewMode': [mode: 'grid' | 'table'];
-
-  /** 数据分析开关变更 */
-  'update:analyticsEnabled': [enabled: boolean];
-
-  /** 清空历史记录 */
-  'clearHistory': [];
-
-  /** 清理缓存 */
-  'clearCache': [];
 
   /** 保存设置 */
   'save': [];
@@ -79,11 +62,6 @@ const localDefaultHistoryViewMode = computed({
   set: (val) => emit('update:defaultHistoryViewMode', val)
 });
 
-const localAnalyticsEnabled = computed({
-  get: () => props.analyticsEnabled,
-  set: (val) => emit('update:analyticsEnabled', val)
-});
-
 // ==================== 方法 ====================
 
 function handleThemeChange(theme: ThemeMode) {
@@ -97,18 +75,6 @@ function handleServiceChange() {
 
 function handleViewModeChange() {
   emit('save');
-}
-
-function handleAnalyticsToggle() {
-  emit('save');
-}
-
-function handleClearHistory() {
-  emit('clearHistory');
-}
-
-function handleClearCache() {
-  emit('clearCache');
 }
 </script>
 
@@ -206,54 +172,6 @@ function handleClearCache() {
             @change="handleViewModeChange"
           />
           <label for="view-table" class="radio-label">表格视图</label>
-        </div>
-      </div>
-    </div>
-
-    <Divider />
-
-    <!-- 数据管理 -->
-    <div class="form-group">
-      <label class="group-label">数据管理</label>
-      <p class="helper-text">管理上传历史记录和应用缓存。</p>
-      <div class="flex gap-2 flex-wrap">
-        <Button
-          label="清空历史记录"
-          icon="pi pi-trash"
-          severity="danger"
-          outlined
-          @click="handleClearHistory"
-        />
-        <Button
-          label="清理应用缓存"
-          icon="pi pi-refresh"
-          severity="secondary"
-          outlined
-          @click="handleClearCache"
-          :loading="isClearingCache"
-        />
-      </div>
-    </div>
-
-    <Divider />
-
-    <!-- 隐私设置 -->
-    <div class="form-group">
-      <label class="group-label">隐私设置</label>
-      <p class="helper-text">管理应用使用数据的收集。</p>
-
-      <div class="privacy-setting">
-        <div class="setting-row">
-          <div class="setting-info">
-            <span class="setting-label">使用数据收集</span>
-            <span class="setting-desc">
-              允许发送匿名使用统计，帮助改进应用。不收集任何个人信息或上传内容。
-            </span>
-          </div>
-          <ToggleSwitch
-            v-model="localAnalyticsEnabled"
-            @change="handleAnalyticsToggle"
-          />
         </div>
       </div>
     </div>
@@ -375,38 +293,5 @@ function handleClearCache() {
 .radio-option:has(:deep(.p-radiobutton-checked)) .radio-label {
   color: var(--primary);
   font-weight: 500;
-}
-
-/* 隐私设置 */
-.privacy-setting {
-  background: var(--bg-card);
-  border: 1px solid var(--border-subtle);
-  border-radius: 8px;
-  padding: 16px;
-}
-
-.setting-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.setting-info {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  flex: 1;
-}
-
-.setting-label {
-  font-size: 14px;
-  font-weight: 500;
-  color: var(--text-primary);
-}
-
-.setting-desc {
-  font-size: 13px;
-  color: var(--text-muted);
 }
 </style>
