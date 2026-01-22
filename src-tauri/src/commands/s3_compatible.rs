@@ -12,6 +12,14 @@ use tokio::time::{timeout, Duration};
 use crate::error::AppError;
 use super::utils::read_file_bytes;
 
+// ==================== 常量 ====================
+
+/// S3 操作默认超时时间（秒）
+const S3_OPERATION_TIMEOUT_SECS: u64 = 30;
+
+/// 默认每页返回的最大对象数
+const DEFAULT_MAX_KEYS: i32 = 100;
+
 /// S3 兼容上传结果
 #[derive(Debug, Serialize, Deserialize)]
 pub struct S3UploadResult {
@@ -98,17 +106,21 @@ pub async fn upload_to_s3_compatible(
         "total_steps": 3
     }));
 
-    // 3. 上传文件
+    // 3. 上传文件（带超时保护）
     let body = ByteStream::from(buffer);
 
-    client
-        .put_object()
-        .bucket(&bucket)
-        .key(&key)
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| AppError::upload("S3兼容", format!("上传失败: {}", e)))?;
+    timeout(
+        Duration::from_secs(S3_OPERATION_TIMEOUT_SECS * 2),  // 上传操作给予更长超时
+        client
+            .put_object()
+            .bucket(&bucket)
+            .key(&key)
+            .body(body)
+            .send()
+    )
+    .await
+    .map_err(|_| AppError::upload("S3兼容", format!("上传超时 ({}秒)", S3_OPERATION_TIMEOUT_SECS * 2)))?
+    .map_err(|e| AppError::upload("S3兼容", format!("上传失败: {}", e)))?;
 
     println!("[S3兼容] 上传成功 - Key: {}", key);
 
@@ -155,6 +167,8 @@ pub async fn list_s3_objects(
 
     if let Some(max) = max_keys {
         request = request.max_keys(max as i32);
+    } else {
+        request = request.max_keys(DEFAULT_MAX_KEYS);
     }
 
     // 分页：使用 continuation_token 获取下一页
@@ -164,8 +178,14 @@ pub async fn list_s3_objects(
         }
     }
 
-    let response = request.send().await
-        .map_err(|e| AppError::storage(format!("列出对象失败: {}", e)))?;
+    // 发送请求（带超时保护）
+    let response = timeout(
+        Duration::from_secs(S3_OPERATION_TIMEOUT_SECS),
+        request.send()
+    )
+    .await
+    .map_err(|_| AppError::storage(format!("列出对象超时 ({}秒)", S3_OPERATION_TIMEOUT_SECS)))?
+    .map_err(|e| AppError::storage(format!("列出对象失败: {}", e)))?;
 
     // 解析文件列表
     let objects: Vec<serde_json::Value> = response
@@ -212,13 +232,18 @@ pub async fn delete_s3_object(
 ) -> Result<String, AppError> {
     let client = create_s3_client(&endpoint, &access_key, &secret_key, &region);
 
-    client
-        .delete_object()
-        .bucket(&bucket)
-        .key(&key)
-        .send()
-        .await
-        .map_err(|e| AppError::storage(format!("删除对象失败: {}", e)))?;
+    // 删除对象（带超时保护）
+    timeout(
+        Duration::from_secs(S3_OPERATION_TIMEOUT_SECS),
+        client
+            .delete_object()
+            .bucket(&bucket)
+            .key(&key)
+            .send()
+    )
+    .await
+    .map_err(|_| AppError::storage(format!("删除对象超时 ({}秒)", S3_OPERATION_TIMEOUT_SECS)))?
+    .map_err(|e| AppError::storage(format!("删除对象失败: {}", e)))?;
 
     Ok(format!("成功删除: {}", key))
 }
@@ -239,10 +264,20 @@ pub async fn delete_s3_objects(
     let mut failed_keys: Vec<String> = Vec::new();
 
     for key in keys {
-        match client.delete_object().bucket(&bucket).key(&key).send().await {
-            Ok(_) => success_keys.push(key),
-            Err(e) => {
+        // 每个删除操作带超时保护
+        let result = timeout(
+            Duration::from_secs(S3_OPERATION_TIMEOUT_SECS),
+            client.delete_object().bucket(&bucket).key(&key).send()
+        ).await;
+
+        match result {
+            Ok(Ok(_)) => success_keys.push(key),
+            Ok(Err(e)) => {
                 eprintln!("[S3兼容] 删除失败 {}: {}", key, e);
+                failed_keys.push(key);
+            }
+            Err(_) => {
+                eprintln!("[S3兼容] 删除超时 {}", key);
                 failed_keys.push(key);
             }
         }
@@ -533,14 +568,19 @@ pub async fn create_s3_folder(
 
     let body = ByteStream::from(Vec::new());
 
-    client
-        .put_object()
-        .bucket(&bucket)
-        .key(&key)
-        .body(body)
-        .send()
-        .await
-        .map_err(|e| AppError::storage(format!("创建文件夹失败: {}", e)))?;
+    // 创建文件夹（带超时保护）
+    timeout(
+        Duration::from_secs(S3_OPERATION_TIMEOUT_SECS),
+        client
+            .put_object()
+            .bucket(&bucket)
+            .key(&key)
+            .body(body)
+            .send()
+    )
+    .await
+    .map_err(|_| AppError::storage(format!("创建文件夹超时 ({}秒)", S3_OPERATION_TIMEOUT_SECS)))?
+    .map_err(|e| AppError::storage(format!("创建文件夹失败: {}", e)))?;
 
     Ok(format!("成功创建文件夹: {}", key))
 }

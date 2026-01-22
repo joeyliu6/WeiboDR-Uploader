@@ -66,8 +66,9 @@ export function clearImageMetadataCache(filePath?: string): void {
 }
 
 /**
- * 批量获取图片元数据（带并发控制）
+ * 批量获取图片元数据（带并发控制和错误隔离）
  * 性能优化：分批获取避免同时发起大量请求
+ * 错误隔离：单个图片失败不影响其他图片，失败的返回默认值
  * @param filePaths 文件路径列表
  * @param concurrency 并发数（默认 5）
  * @returns 文件路径到元数据的 Map
@@ -79,15 +80,39 @@ export async function fetchMetadataBatch(
   const results = new Map<string, ImageMetadata>();
   const semaphore = new Semaphore(concurrency);
 
-  await Promise.all(filePaths.map(async (filePath) => {
+  // 使用 Promise.allSettled 确保单个失败不影响整体
+  const promises = filePaths.map(async (filePath) => {
     await semaphore.acquire();
     try {
       const metadata = await getImageMetadata(filePath);
-      results.set(filePath, metadata);
+      return { filePath, metadata, success: true as const };
+    } catch (error) {
+      // getImageMetadata 内部已有 try-catch，这里是额外保护
+      console.warn('[元信息] 批量获取时单个文件失败:', filePath, error);
+      return {
+        filePath,
+        metadata: {
+          width: 0,
+          height: 0,
+          aspect_ratio: 1,
+          file_size: 0,
+          format: 'unknown'
+        } as ImageMetadata,
+        success: false as const
+      };
     } finally {
       semaphore.release();
     }
-  }));
+  });
+
+  const settledResults = await Promise.allSettled(promises);
+
+  settledResults.forEach((result) => {
+    if (result.status === 'fulfilled') {
+      results.set(result.value.filePath, result.value.metadata);
+    }
+    // rejected 情况理论上不会发生（已被内部 try-catch 捕获）
+  });
 
   return results;
 }

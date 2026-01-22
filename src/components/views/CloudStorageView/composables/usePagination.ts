@@ -3,6 +3,15 @@
 
 import { ref, computed, type Ref, type ComputedRef } from 'vue';
 
+// Token 缓存有效期（5 分钟）
+const TOKEN_CACHE_TTL = 5 * 60 * 1000;
+
+// Token 缓存条目（包含时间戳）
+interface TokenCacheEntry {
+  token: string | null;
+  timestamp: number;
+}
+
 export interface UsePaginationOptions {
   defaultPageSize?: number;
 }
@@ -11,7 +20,7 @@ export interface UsePaginationReturn {
   currentPage: Ref<number>;
   pageSize: Ref<number>;
   hasMore: Ref<boolean>;
-  tokenCache: Ref<Map<number, string | null>>;
+  tokenCache: Ref<Map<number, TokenCacheEntry>>;
   maxKnownPage: ComputedRef<number>;
   pageSizeOptions: number[];
 
@@ -33,9 +42,11 @@ export function usePagination(options: UsePaginationOptions = {}): UsePagination
   const hasMore = ref(false);
   const pageSizeOptions = [30, 50, 100];
 
-  // Token 缓存：页码 -> 该页所需的 continuationToken
+  // Token 缓存：页码 -> { token, timestamp }
   // 第 1 页的 token 为 null（不需要 token）
-  const tokenCache = ref<Map<number, string | null>>(new Map([[1, null]]));
+  const tokenCache = ref<Map<number, TokenCacheEntry>>(
+    new Map([[1, { token: null, timestamp: Date.now() }]])
+  );
 
   // 已知的最大页码（基于缓存的 token）
   const maxKnownPage = computed(() => {
@@ -55,22 +66,42 @@ export function usePagination(options: UsePaginationOptions = {}): UsePagination
   }
 
   function cacheToken(page: number, token: string | null) {
-    tokenCache.value.set(page, token);
+    tokenCache.value.set(page, { token, timestamp: Date.now() });
     // 触发响应式更新
     tokenCache.value = new Map(tokenCache.value);
   }
 
   function getToken(page: number): string | null | undefined {
-    return tokenCache.value.get(page);
+    const entry = tokenCache.value.get(page);
+    if (!entry) return undefined;
+
+    // 检查是否过期（第 1 页永不过期）
+    if (page > 1 && Date.now() - entry.timestamp > TOKEN_CACHE_TTL) {
+      tokenCache.value.delete(page);
+      return undefined;
+    }
+
+    return entry.token;
   }
 
   function hasToken(page: number): boolean {
-    return tokenCache.value.has(page);
+    const entry = tokenCache.value.get(page);
+    if (!entry) return false;
+
+    // 检查是否过期（第 1 页永不过期）
+    if (page > 1 && Date.now() - entry.timestamp > TOKEN_CACHE_TTL) {
+      tokenCache.value.delete(page);
+      return false;
+    }
+
+    return true;
   }
 
-  // 找到最接近目标页且已缓存的页码
+  // 找到最接近目标页且已缓存（未过期）的页码
   function findNearestCachedPage(targetPage: number): number {
-    const cachedPages = [...tokenCache.value.keys()].sort((a, b) => b - a);
+    const cachedPages = [...tokenCache.value.keys()]
+      .filter((p) => hasToken(p))  // 只考虑未过期的缓存
+      .sort((a, b) => b - a);
     const nearest = cachedPages.find((p) => p < targetPage);
     return nearest ?? 1;
   }
@@ -84,7 +115,7 @@ export function usePagination(options: UsePaginationOptions = {}): UsePagination
   function reset() {
     currentPage.value = 1;
     hasMore.value = false;
-    tokenCache.value = new Map([[1, null]]);
+    tokenCache.value = new Map([[1, { token: null, timestamp: Date.now() }]]);
   }
 
   return {

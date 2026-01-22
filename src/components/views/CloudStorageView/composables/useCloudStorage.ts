@@ -529,6 +529,8 @@ export function useCloudStorage(): CloudStorageReturn {
 
     const results = await Promise.allSettled(testPromises);
 
+    // JavaScript 单线程事件循环保证以下操作的原子性，无需加锁
+    // 每个 updateServiceStatus 调用都是同步完成的，不会被其他异步操作打断
     results.forEach((result) => {
       if (result.status === 'fulfilled') {
         const { serviceId, success, error } = result.value;

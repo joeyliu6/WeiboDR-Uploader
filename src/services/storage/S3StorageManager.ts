@@ -50,7 +50,14 @@ export abstract class BaseS3StorageManager implements IStorageManager {
         errorMessage = error.message;
       }
 
-      console.error('[S3Manager] 连接失败:', errorMessage, '类型:', error?.type);
+      // 保留完整错误上下文，便于调试
+      console.error('[S3Manager] 连接失败 - 完整错误:', {
+        message: errorMessage,
+        type: error?.type,
+        stack: error?.stack,
+        raw: error
+      });
+
       return { success: false, latency, error: errorMessage };
     }
   }
