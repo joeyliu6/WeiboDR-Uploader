@@ -68,12 +68,21 @@ export class ThemeManager {
   }
 
   /**
+   * 应用主题类到 DOM 元素
+   */
+  private applyThemeClass(mode: ThemeMode): void {
+    const root = document.documentElement;
+    root.classList.toggle('dark-theme', mode === 'dark');
+    root.classList.toggle('light-theme', mode === 'light');
+    localStorage.setItem('picnexus-theme', `${mode}-theme`);
+  }
+
+  /**
    * 应用主题到 DOM
    * @param mode 主题模式
    * @param withTransition 是否启用过渡动画
    */
   private async applyTheme(mode: ThemeMode, withTransition: boolean): Promise<void> {
-    // 防止并发切换
     if (this.isTransitioning) {
       return;
     }
@@ -81,50 +90,22 @@ export class ThemeManager {
     const root = document.documentElement;
     const duration = this.config.theme?.transitionDuration || 200;
 
-    // 如果启用过渡动画
     if (withTransition) {
       this.isTransitioning = true;
-
-      // 添加 GPU 加速提示，优化渲染性能
       root.style.willChange = 'background-color';
-
-      // 设置过渡持续时间
       root.style.setProperty('--theme-transition-duration', `${duration}ms`);
-
-      // 添加过渡类
       root.classList.add('theme-transitioning');
 
-      // 切换主题类（在过渡开始时立即切换）
-      if (mode === 'dark') {
-        root.classList.add('dark-theme');
-        root.classList.remove('light-theme');
-      } else {
-        root.classList.add('light-theme');
-        root.classList.remove('dark-theme');
-      }
+      this.applyThemeClass(mode);
 
-      // 同步到 localStorage（过渡动画分支）
-      localStorage.setItem('picnexus-theme', mode === 'dark' ? 'dark-theme' : 'light-theme');
-
-      // 延迟后移除过渡类并清理 GPU 资源
       setTimeout(() => {
         root.classList.remove('theme-transitioning');
-        root.style.willChange = 'auto'; // 清理 GPU 资源，避免内存浪费
+        root.style.willChange = 'auto';
         this.isTransitioning = false;
       }, duration);
     } else {
-      // 无过渡时直接切换
-      if (mode === 'dark') {
-        root.classList.add('dark-theme');
-        root.classList.remove('light-theme');
-      } else {
-        root.classList.add('light-theme');
-        root.classList.remove('dark-theme');
-      }
+      this.applyThemeClass(mode);
     }
-
-    // 同步到 localStorage，供托盘菜单等独立窗口读取
-    localStorage.setItem('picnexus-theme', mode === 'dark' ? 'dark-theme' : 'light-theme');
   }
 
   /**

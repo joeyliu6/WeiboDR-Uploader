@@ -299,111 +299,54 @@ export class MultiServiceUploader {
     );
   }
 
+  /** 基于 Cookie 认证的图床列表 */
+  private static readonly COOKIE_BASED_SERVICES: ServiceType[] = [
+    'weibo', 'nowcoder', 'zhihu', 'nami', 'bilibili', 'chaoxing'
+  ];
+
+  /** 无需配置的图床列表 */
+  private static readonly NO_CONFIG_SERVICES: ServiceType[] = ['jd', 'qiyu'];
+
   /**
    * 过滤出已配置的图床
-   *
-   * @param enabledServices 用户启用的图床列表
-   * @param config 用户配置
-   * @returns 已配置的图床列表
    */
   private filterConfiguredServices(
     enabledServices: ServiceType[],
     config: UserConfig
   ): ServiceType[] {
     return enabledServices.filter(serviceId => {
-      const serviceConfig = config.services[serviceId];
-
-      // TCL、京东和七鱼图床无需配置，直接返回 true
-      // 七鱼的 Token 由后端自动获取，Chrome 检测在 validateConfig 中进行
-      if (serviceId === 'jd' || serviceId === 'qiyu') {
+      // 无需配置的图床直接通过
+      if (MultiServiceUploader.NO_CONFIG_SERVICES.includes(serviceId)) {
         return true;
       }
 
-      // 其他图床检查是否已配置
+      const serviceConfig = config.services[serviceId];
       if (!serviceConfig) {
         console.warn(`[MultiUploader] ${serviceId} 未配置，跳过`);
         return false;
       }
 
-      // 检查必填字段（而不是检查 enabled 字段）
-      // enabled 字段只是一个开关，不影响配置是否完整
-      if (serviceId === 'weibo') {
-        const weiboConfig = serviceConfig as any;
-        if (!weiboConfig.cookie || weiboConfig.cookie.trim().length === 0) {
+      // Cookie 类图床：统一检查 cookie 字段
+      if (MultiServiceUploader.COOKIE_BASED_SERVICES.includes(serviceId)) {
+        const cfg = serviceConfig as any;
+        if (!cfg.cookie?.trim()) {
           console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
           return false;
         }
-        // 如果 cookie 存在，认为已配置
         return true;
       }
 
-      if (serviceId === 'nowcoder') {
-        const nowcoderConfig = serviceConfig as any;
-        if (!nowcoderConfig.cookie || nowcoderConfig.cookie.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
-          return false;
-        }
-        // 如果 cookie 存在，认为已配置
-        return true;
-      }
-
-      if (serviceId === 'zhihu') {
-        const zhihuConfig = serviceConfig as any;
-        if (!zhihuConfig.cookie || zhihuConfig.cookie.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
-          return false;
-        }
-        // 如果 cookie 存在，认为已配置
-        return true;
-      }
-
-      if (serviceId === 'nami') {
-        const namiConfig = serviceConfig as any;
-        if (!namiConfig.cookie || namiConfig.cookie.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
-          return false;
-        }
-        // 如果 cookie 存在，认为已配置
-        return true;
-      }
-
-      if (serviceId === 'bilibili') {
-        const bilibiliConfig = serviceConfig as any;
-        if (!bilibiliConfig.cookie || bilibiliConfig.cookie.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
-          return false;
-        }
-        // 如果 cookie 存在，认为已配置
-        return true;
-      }
-
-      if (serviceId === 'chaoxing') {
-        const chaoxingConfig = serviceConfig as any;
-        if (!chaoxingConfig.cookie || chaoxingConfig.cookie.trim().length === 0) {
-          console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
-          return false;
-        }
-        // 如果 cookie 存在，认为已配置
-        return true;
-      }
-
+      // R2：检查必填字段
       if (serviceId === 'r2') {
-        const r2Config = serviceConfig as any;
-        if (
-          !r2Config.accountId ||
-          !r2Config.accessKeyId ||
-          !r2Config.secretAccessKey ||
-          !r2Config.bucketName ||
-          !r2Config.publicDomain
-        ) {
+        const r2 = serviceConfig as any;
+        if (!r2.accountId || !r2.accessKeyId || !r2.secretAccessKey || !r2.bucketName || !r2.publicDomain) {
           console.warn(`[MultiUploader] ${serviceId} 配置不完整，跳过`);
           return false;
         }
-        // 如果所有必填字段都存在，认为已配置
         return true;
       }
 
-      // 对于其他图床，检查 enabled 字段
+      // 其他图床：检查 enabled 字段
       if (serviceConfig.enabled === false) {
         console.warn(`[MultiUploader] ${serviceId} 未启用，跳过`);
         return false;
