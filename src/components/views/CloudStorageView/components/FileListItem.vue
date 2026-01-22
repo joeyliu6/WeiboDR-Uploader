@@ -17,7 +17,7 @@ const emit = defineEmits<{
 }>();
 
 const itemInfoRef = ref<HTMLElement | null>(null);
-const containerWidth = ref(300);
+const containerWidth = ref(400);
 
 let resizeObserver: ResizeObserver | null = null;
 
@@ -37,10 +37,15 @@ onUnmounted(() => {
   resizeObserver?.disconnect();
 });
 
-const isImage = computed(() => {
-  if (props.item.type === 'folder') return false;
-  const ext = props.item.name.split('.').pop()?.toLowerCase();
-  return ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'bmp', 'ico'].includes(ext || '');
+const truncatedName = computed(() => {
+  const name = props.item.name;
+  const charWidth = 7;
+  const maxLength = Math.max(30, Math.floor(containerWidth.value / charWidth));
+
+  if (name.length <= maxLength) return name;
+
+  const half = Math.floor((maxLength - 3) / 2);
+  return name.slice(0, half) + '...' + name.slice(-half);
 });
 
 const fileType = computed(() => {
@@ -52,17 +57,6 @@ const fileType = computed(() => {
     pdf: 'PDF', json: 'JSON', txt: 'TXT',
   };
   return typeMap[ext] || ext.toUpperCase() || '-';
-});
-
-const truncatedName = computed(() => {
-  const name = props.item.name;
-  const charWidth = 7.5;
-  const maxLength = Math.max(20, Math.floor(containerWidth.value / charWidth));
-
-  if (name.length <= maxLength) return name;
-
-  const half = Math.floor((maxLength - 3) / 2);
-  return name.slice(0, half) + '...' + name.slice(-half);
 });
 
 const formatDate = (date: Date): string => {
@@ -170,7 +164,10 @@ const handleRowClick = () => {
   font-size: 13px;
   font-weight: 500;
   color: var(--text-primary);
-  flex-shrink: 0;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .item-type {
