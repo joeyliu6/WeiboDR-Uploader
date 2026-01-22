@@ -23,6 +23,23 @@ const SERVICE_STATUS_CACHE_TTL = 10 * 60 * 1000;
 // 自动刷新间隔（5 分钟）
 const AUTO_REFRESH_INTERVAL = 5 * 60 * 1000;
 
+/**
+ * 将 S3 对象列表转换为 StorageObject 文件列表
+ * 过滤掉目录占位符和无效对象
+ */
+function toStorageFiles(
+  objects: BaseStorageObject[],
+  prefix: string,
+  filter?: (name: string) => boolean
+): StorageObject[] {
+  return objects.flatMap((obj) => {
+    const name = obj.key.replace(prefix, '');
+    if (!name || name.endsWith('/')) return [];
+    if (filter && !filter(name)) return [];
+    return [{ ...obj, type: 'file' as const, name }];
+  });
+}
+
 export interface CloudStorageReturn {
   /** 当前激活的服务 */
   activeService: Ref<CloudServiceType>;
@@ -230,11 +247,7 @@ export function useCloudStorage(): CloudStorageReturn {
       }));
 
       // 处理文件
-      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
-        ...obj,
-        type: 'file' as const,
-        name: obj.key.replace(currentPath.value, ''),
-      }));
+      const files = toStorageFiles(result.objects, currentPath.value);
 
       const newObjects = [...folders, ...files];
 
@@ -331,11 +344,7 @@ export function useCloudStorage(): CloudStorageReturn {
       }));
 
       // 处理文件
-      const files: StorageObject[] = result.objects.map((obj: BaseStorageObject) => ({
-        ...obj,
-        type: 'file' as const,
-        name: obj.key.replace(currentPath.value, ''),
-      }));
+      const files = toStorageFiles(result.objects, currentPath.value);
 
       // 合并文件夹和文件
       objects.value = [...folders, ...files];
@@ -474,15 +483,11 @@ export function useCloudStorage(): CloudStorageReturn {
       });
 
       // 前端过滤
-      const filtered = result.objects.filter((obj: BaseStorageObject) =>
-        obj.name.toLowerCase().includes(query.toLowerCase())
+      objects.value = toStorageFiles(
+        result.objects,
+        currentPath.value,
+        (name) => name.toLowerCase().includes(query.toLowerCase())
       );
-
-      objects.value = filtered.map((obj: BaseStorageObject) => ({
-        ...obj,
-        type: 'file' as const,
-        name: obj.key.replace(currentPath.value, ''),
-      }));
 
       // 搜索模式下禁用分页
       pagination.setHasMore(false);
