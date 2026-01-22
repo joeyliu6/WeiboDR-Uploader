@@ -137,42 +137,51 @@ export function useConfigManager() {
   }
 
   /**
-   * 测试微博连接
-   * 通过 Rust 后端上传测试图片验证 Cookie（与知乎、牛客保持一致）
-   * @param cookie 微博 Cookie
+   * 通用 Cookie 连接测试
+   * @param serviceName 服务名称（用于日志）
+   * @param cookie Cookie 字符串
+   * @param invokeCommand Rust 命令名
+   * @param invokeParams 命令参数
+   * @param preValidate 可选的前置验证函数
    */
-  async function testWeiboConnection(cookie: string): Promise<TestConnectionResult> {
+  async function testCookieConnectionGeneric(
+    serviceName: string,
+    cookie: string,
+    invokeCommand: string,
+    invokeParams: Record<string, unknown>,
+    preValidate?: () => TestConnectionResult | null
+  ): Promise<TestConnectionResult> {
     try {
-      console.log('[Cookie测试] 开始测试微博连接...');
+      console.log(`[${serviceName}Cookie测试] 开始测试连接...`);
 
       if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
+        return { success: false, message: 'Cookie 不能为空' };
+      }
+
+      if (preValidate) {
+        const validationResult = preValidate();
+        if (validationResult) return validationResult;
       }
 
       try {
-        const successMessage = await invoke<string>('test_weibo_connection', { weiboCookie: cookie });
-        console.log('[Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
+        const successMessage = await invoke<string>(invokeCommand, invokeParams);
+        console.log(`[${serviceName}Cookie测试] ✓ 测试成功`);
+        return { success: true, message: successMessage };
       } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
+        return { success: false, message: String(errorMessage) };
       }
     } catch (error) {
       const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[Cookie测试] 测试微博连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
+      console.error(`[${serviceName}Cookie测试] 测试连接失败:`, error);
+      return { success: false, message: errorMsg };
     }
+  }
+
+  /**
+   * 测试微博连接
+   */
+  async function testWeiboConnection(cookie: string): Promise<TestConnectionResult> {
+    return testCookieConnectionGeneric('微博', cookie, 'test_weibo_connection', { weiboCookie: cookie });
   }
 
   /**
@@ -251,228 +260,60 @@ export function useConfigManager() {
 
   /**
    * 测试牛客连接
-   * @param cookie 牛客 Cookie
    */
   async function testNowcoderConnection(cookie: string): Promise<TestConnectionResult> {
-    try {
-      console.log('[牛客Cookie测试] 开始测试牛客连接...');
-
-      if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
-      }
-
-      try {
-        const successMessage = await invoke<string>('test_nowcoder_cookie', { nowcoderCookie: cookie });
-        console.log('[牛客Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
-      } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[牛客Cookie测试] 测试牛客连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
-    }
+    return testCookieConnectionGeneric('牛客', cookie, 'test_nowcoder_cookie', { nowcoderCookie: cookie });
   }
 
   /**
    * 测试知乎连接
-   * @param cookie 知乎 Cookie
    */
   async function testZhihuConnection(cookie: string): Promise<TestConnectionResult> {
-    try {
-      console.log('[知乎Cookie测试] 开始测试知乎连接...');
-
-      if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
-      }
-
-      try {
-        const successMessage = await invoke<string>('test_zhihu_connection', { zhihuCookie: cookie });
-        console.log('[知乎Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
-      } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[知乎Cookie测试] 测试知乎连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
-    }
+    return testCookieConnectionGeneric('知乎', cookie, 'test_zhihu_connection', { zhihuCookie: cookie });
   }
 
   /**
    * 测试纳米连接
-   * @param cookie 纳米 Cookie
    */
   async function testNamiConnection(cookie: string): Promise<TestConnectionResult> {
-    try {
-      console.log('[纳米Cookie测试] 开始测试纳米连接...');
+    // 从 Cookie 中提取 Auth-Token
+    const authTokenMatch = cookie.match(/Auth-Token=([^;]+)/);
+    const authToken = authTokenMatch ? authTokenMatch[1] : '';
 
-      if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
-      }
-
-      // 验证 Cookie 中是否包含 Auth-Token
+    return testCookieConnectionGeneric('纳米', cookie, 'test_nami_connection', { cookie, authToken }, () => {
       const provider = getCookieProvider('nami');
       if (provider && !validateCookie(cookie, provider.cookieValidation)) {
-        return {
-          success: false,
-          message: 'Cookie 中缺少 Auth-Token 字段（请点击"自动获取Cookie"按钮）'
-        };
+        return { success: false, message: 'Cookie 中缺少 Auth-Token 字段（请点击"自动获取Cookie"按钮）' };
       }
-
-      // 从 Cookie 中提取 Auth-Token
-      const authTokenMatch = cookie.match(/Auth-Token=([^;]+)/);
-      const authToken = authTokenMatch ? authTokenMatch[1] : '';
-
       if (!authToken) {
-        return {
-          success: false,
-          message: 'Cookie 中未找到 Auth-Token，请重新获取'
-        };
+        return { success: false, message: 'Cookie 中未找到 Auth-Token，请重新获取' };
       }
-
-      try {
-        const successMessage = await invoke<string>('test_nami_connection', { cookie, authToken });
-        console.log('[纳米Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
-      } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[纳米Cookie测试] 测试纳米连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
-    }
+      return null;
+    });
   }
 
   /**
    * 测试哔哩哔哩连接
-   * @param cookie 哔哩哔哩 Cookie
    */
   async function testBilibiliConnection(cookie: string): Promise<TestConnectionResult> {
-    try {
-      console.log('[哔哩哔哩Cookie测试] 开始测试哔哩哔哩连接...');
-
-      if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
-      }
-
-      // 验证 Cookie 中是否包含必要字段
+    return testCookieConnectionGeneric('哔哩哔哩', cookie, 'test_bilibili_connection', { bilibiliCookie: cookie }, () => {
       if (!cookie.includes('SESSDATA=') || !cookie.includes('bili_jct=')) {
-        return {
-          success: false,
-          message: 'Cookie 中缺少 SESSDATA 或 bili_jct 字段'
-        };
+        return { success: false, message: 'Cookie 中缺少 SESSDATA 或 bili_jct 字段' };
       }
-
-      try {
-        const successMessage = await invoke<string>('test_bilibili_connection', { bilibiliCookie: cookie });
-        console.log('[哔哩哔哩Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
-      } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[哔哩哔哩Cookie测试] 测试哔哩哔哩连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
-    }
+      return null;
+    });
   }
 
   /**
    * 测试超星连接
-   * @param cookie 超星 Cookie
    */
   async function testChaoxingConnection(cookie: string): Promise<TestConnectionResult> {
-    try {
-      console.log('[超星Cookie测试] 开始测试超星连接...');
-
-      if (!cookie || cookie.trim().length === 0) {
-        return {
-          success: false,
-          message: 'Cookie 不能为空'
-        };
-      }
-
-      // 验证 Cookie 中是否包含 _uid 字段
+    return testCookieConnectionGeneric('超星', cookie, 'test_chaoxing_connection', { chaoxingCookie: cookie }, () => {
       if (!cookie.includes('_uid=')) {
-        return {
-          success: false,
-          message: 'Cookie 中缺少 _uid 字段（请点击"自动获取Cookie"按钮）'
-        };
+        return { success: false, message: 'Cookie 中缺少 _uid 字段（请点击"自动获取Cookie"按钮）' };
       }
-
-      try {
-        const successMessage = await invoke<string>('test_chaoxing_connection', { chaoxingCookie: cookie });
-        console.log('[超星Cookie测试] ✓ 测试成功');
-        return {
-          success: true,
-          message: successMessage
-        };
-      } catch (errorMessage) {
-        return {
-          success: false,
-          message: String(errorMessage)
-        };
-      }
-    } catch (error) {
-      const errorMsg = error instanceof Error ? error.message : String(error);
-      console.error('[超星Cookie测试] 测试超星连接失败:', error);
-      return {
-        success: false,
-        message: errorMsg
-      };
-    }
+      return null;
+    });
   }
 
   /**
