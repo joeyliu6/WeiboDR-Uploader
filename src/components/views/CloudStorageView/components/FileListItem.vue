@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import Checkbox from 'primevue/checkbox';
 import type { StorageObject } from '../types';
+import { formatFileSize } from '../../../../utils/formatters';
 
 const props = defineProps<{
   item: StorageObject;
@@ -31,14 +32,6 @@ const fileType = computed(() => {
   };
   return typeMap[ext] || ext.toUpperCase() || '-';
 });
-
-const formatSize = (bytes: number): string => {
-  if (bytes === 0) return '-';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-};
 
 const formatDate = (date: Date): string => {
   return date.toLocaleDateString('zh-CN', {
@@ -93,7 +86,7 @@ const handleRowClick = () => {
 
     <!-- 元信息 -->
     <div class="item-meta">
-      <span class="item-size">{{ formatSize(item.size) }}</span>
+      <span class="item-size">{{ formatFileSize(item.size, { emptyText: '-' }) }}</span>
       <span class="item-time">{{ formatDate(item.lastModified) }}</span>
     </div>
   </div>

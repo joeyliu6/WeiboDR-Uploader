@@ -2,6 +2,7 @@
 import { computed } from 'vue';
 import Button from 'primevue/button';
 import type { StorageObject, ViewMode } from '../types';
+import { formatFileSize } from '../../../../utils/formatters';
 
 const props = withDefaults(
   defineProps<{
@@ -44,15 +45,6 @@ const icon = computed(() => {
   if (!isImage.value) return 'pi-file';
   return '';
 });
-
-// 格式化文件大小
-const formatSize = (bytes: number): string => {
-  if (bytes === 0) return '-';
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(1) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(1) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(1) + ' GB';
-};
 
 // 处理点击
 const handleClick = (e: MouseEvent) => {
@@ -117,7 +109,7 @@ const handleCheckboxClick = (e: MouseEvent) => {
     <div class="file-info">
       <div class="file-name" :title="item.name">{{ item.name }}</div>
       <div class="file-meta">
-        <span class="file-size">{{ formatSize(item.size) }}</span>
+        <span class="file-size">{{ formatFileSize(item.size, { emptyText: '-' }) }}</span>
       </div>
     </div>
 

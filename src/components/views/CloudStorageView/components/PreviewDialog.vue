@@ -2,6 +2,7 @@
 import Dialog from 'primevue/dialog';
 import Button from 'primevue/button';
 import type { StorageObject, LinkFormat } from '../types';
+import { formatFileSize } from '../../../../utils/formatters';
 
 const props = defineProps<{
   /** 是否显示 */
@@ -16,14 +17,6 @@ const emit = defineEmits<{
   delete: [file: StorageObject];
   download: [file: StorageObject];
 }>();
-
-// 格式化文件大小
-const formatSize = (bytes: number): string => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-};
 
 // 格式化日期
 const formatDate = (date: Date): string => {
@@ -70,7 +63,7 @@ const closeDialog = () => {
         </div>
         <div class="info-row">
           <span class="info-label">大小</span>
-          <span class="info-value">{{ formatSize(file.size) }}</span>
+          <span class="info-value">{{ formatFileSize(file.size) }}</span>
         </div>
         <div class="info-row">
           <span class="info-label">最后修改</span>

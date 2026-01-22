@@ -5,6 +5,7 @@ import SplitButton from 'primevue/splitbutton';
 import Skeleton from 'primevue/skeleton';
 import CopyableUrl from './CopyableUrl.vue';
 import type { StorageObject, LinkFormat } from '../types';
+import { formatFileSize } from '../../../../utils/formatters';
 
 const props = defineProps<{
   file: StorageObject | null;
@@ -118,13 +119,6 @@ const handleDefaultCopy = () => {
   }
 };
 
-const formatSize = (bytes: number): string => {
-  if (bytes < 1024) return bytes + ' B';
-  if (bytes < 1024 * 1024) return (bytes / 1024).toFixed(2) + ' KB';
-  if (bytes < 1024 * 1024 * 1024) return (bytes / (1024 * 1024)).toFixed(2) + ' MB';
-  return (bytes / (1024 * 1024 * 1024)).toFixed(2) + ' GB';
-};
-
 const formatDate = (date: Date): string => {
   const y = date.getFullYear();
   const m = String(date.getMonth() + 1).padStart(2, '0');
@@ -219,7 +213,7 @@ const handleOverlayClick = (e: MouseEvent) => {
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">大小</span>
-                  <span class="meta-value">{{ formatSize(file.size) }}</span>
+                  <span class="meta-value">{{ formatFileSize(file.size) }}</span>
                 </div>
                 <div class="meta-item">
                   <span class="meta-label">时间</span>
