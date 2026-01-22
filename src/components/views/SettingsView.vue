@@ -17,6 +17,7 @@ import { useHistoryManager } from '../../composables/useHistory';
 import { useAnalytics } from '../../composables/useAnalytics';
 import { createDefaultAutoSyncConfig, type AutoSyncConfig } from '../../composables/useAutoSync';
 import { useServiceAvailability } from '../../composables/useServiceAvailability';
+import { SERVICE_DISPLAY_NAMES } from '../../constants/serviceNames';
 
 // 组件
 import HostingSettingsPanel from '../settings/HostingSettingsPanel.vue';
@@ -117,24 +118,10 @@ const testingConnections = ref<Record<string, boolean>>({
 // 可用服务列表
 const availableServices = ref<ServiceType[]>([]);
 
-// 图床名称映射
+// 图床名称映射（基于常量，覆盖部分显示名称以适应 UI）
 const serviceNames: Record<ServiceType, string> = {
-  weibo: '微博',
-  r2: 'R2',
-  jd: '京东',
-  nowcoder: '牛客',
-  qiyu: '七鱼',
-  zhihu: '知乎',
-  nami: '纳米',
-  bilibili: 'B站',
-  chaoxing: '超星',
-  smms: 'SM.MS',
-  github: 'GitHub',
-  imgur: 'Imgur',
-  tencent: '腾讯云',
-  aliyun: '阿里云',
-  qiniu: '七牛云',
-  upyun: '又拍云'
+  ...SERVICE_DISPLAY_NAMES,
+  r2: 'R2',  // 设置界面使用简短名称
 };
 
 // 自动同步配置

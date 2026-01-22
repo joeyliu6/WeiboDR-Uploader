@@ -84,46 +84,10 @@ const localAnalyticsEnabled = computed({
 
 // ==================== 方法 ====================
 
-function handlePrefixEnabledChange() {
-  emit('save');
-}
-
 function handlePrefixChange(index: number, value: string) {
   const newList = [...props.prefixList];
   newList[index] = value;
   emit('update:prefixList', newList);
-}
-
-function handlePrefixBlur() {
-  emit('save');
-}
-
-function handleSelectedChange() {
-  emit('save');
-}
-
-function handleAddPrefix() {
-  emit('addPrefix');
-}
-
-function handleRemovePrefix(index: number) {
-  emit('removePrefix', index);
-}
-
-function handleResetToDefault() {
-  emit('resetToDefault');
-}
-
-function handleClearHistory() {
-  emit('clearHistory');
-}
-
-function handleClearCache() {
-  emit('clearCache');
-}
-
-function handleAnalyticsToggle() {
-  emit('save');
 }
 </script>
 
@@ -144,7 +108,7 @@ function handleAnalyticsToggle() {
           v-model="localLinkPrefixEnabled"
           :binary="true"
           inputId="prefix-enable"
-          @change="handlePrefixEnabledChange"
+          @change="emit('save')"
         />
         <label for="prefix-enable" class="font-medium cursor-pointer">启用链接前缀</label>
       </div>
@@ -155,17 +119,17 @@ function handleAnalyticsToggle() {
             v-model="localSelectedPrefixIndex"
             :value="idx"
             :inputId="'p-' + idx"
-            @change="handleSelectedChange"
+            @change="emit('save')"
           />
           <InputText
             :modelValue="prefix"
             @update:modelValue="(val) => handlePrefixChange(idx, val as string)"
-            @blur="handlePrefixBlur"
+            @blur="emit('save')"
             class="flex-1"
           />
           <Button
             icon="pi pi-trash"
-            @click="handleRemovePrefix(idx)"
+            @click="emit('removePrefix', idx)"
             text
             severity="danger"
             :disabled="prefixList.length <= 1"
@@ -175,14 +139,14 @@ function handleAnalyticsToggle() {
           <Button
             label="添加新前缀"
             icon="pi pi-plus"
-            @click="handleAddPrefix"
+            @click="emit('addPrefix')"
             outlined
             size="small"
           />
           <Button
             label="恢复默认前缀"
             icon="pi pi-refresh"
-            @click="handleResetToDefault"
+            @click="emit('resetToDefault')"
             outlined
             severity="secondary"
             size="small"
@@ -203,14 +167,14 @@ function handleAnalyticsToggle() {
           icon="pi pi-trash"
           severity="danger"
           outlined
-          @click="handleClearHistory"
+          @click="emit('clearHistory')"
         />
         <Button
           label="清理应用缓存"
           icon="pi pi-refresh"
           severity="secondary"
           outlined
-          @click="handleClearCache"
+          @click="emit('clearCache')"
           :loading="isClearingCache"
         />
       </div>
@@ -233,7 +197,7 @@ function handleAnalyticsToggle() {
           </div>
           <ToggleSwitch
             v-model="localAnalyticsEnabled"
-            @change="handleAnalyticsToggle"
+            @change="emit('save')"
           />
         </div>
       </div>
