@@ -75,6 +75,14 @@ function handleServiceChange() {
 function handleViewModeChange() {
   emit('save');
 }
+
+function toggleService(service: ServiceType) {
+  const current = localAvailableServices.value;
+  localAvailableServices.value = current.includes(service)
+    ? current.filter(s => s !== service)
+    : [...current, service];
+  handleServiceChange();
+}
 </script>
 
 <template>
@@ -115,14 +123,14 @@ function handleViewModeChange() {
             v-for="svc in PRIVATE_SERVICES"
             :key="svc"
             class="toggle-chip"
+            @click="toggleService(svc)"
           >
             <Checkbox
-              :inputId="'svc-' + svc"
-              v-model="localAvailableServices"
-              :value="svc"
-              @change="handleServiceChange"
+              :modelValue="localAvailableServices.includes(svc)"
+              :binary="true"
+              @click.stop
             />
-            <label :for="'svc-' + svc">{{ serviceNames[svc] }}</label>
+            <span class="toggle-label">{{ serviceNames[svc] }}</span>
           </div>
         </div>
       </div>
@@ -134,14 +142,14 @@ function handleViewModeChange() {
             v-for="svc in PUBLIC_SERVICES"
             :key="svc"
             class="toggle-chip"
+            @click="toggleService(svc)"
           >
             <Checkbox
-              :inputId="'svc-' + svc"
-              v-model="localAvailableServices"
-              :value="svc"
-              @change="handleServiceChange"
+              :modelValue="localAvailableServices.includes(svc)"
+              :binary="true"
+              @click.stop
             />
-            <label :for="'svc-' + svc">{{ serviceNames[svc] }}</label>
+            <span class="toggle-label">{{ serviceNames[svc] }}</span>
           </div>
         </div>
       </div>
@@ -247,7 +255,7 @@ function handleViewModeChange() {
 }
 
 .toggle-chip:hover {
-  border-color: var(--text-muted);
+  border-color: var(--primary);
 }
 
 .toggle-chip label {
