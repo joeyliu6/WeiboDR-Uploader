@@ -470,6 +470,7 @@ watch(currentPath, () => {
   overflow: hidden;
   padding: 16px;
   padding-bottom: 0;
+  padding-right: 0; /* 让滚动条贴边 */
 }
 
 /* 分页栏 */

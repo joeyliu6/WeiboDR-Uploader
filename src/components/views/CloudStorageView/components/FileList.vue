@@ -328,6 +328,7 @@ const handleSelectAll = (checked: boolean) => {
   height: 100%;
   overflow-y: auto;
   padding: 8px;
+  padding-right: 0; /* 让滚动条贴边 */
 }
 
 /* 列表表头 */
@@ -336,6 +337,7 @@ const handleSelectAll = (checked: boolean) => {
   align-items: center;
   gap: 10px;
   padding: 8px 12px;
+  padding-right: 24px; /* 补偿内容间距 */
   border-bottom: 1px solid var(--border-subtle);
   font-size: 12px;
   color: var(--text-muted);
@@ -343,7 +345,8 @@ const handleSelectAll = (checked: boolean) => {
   position: sticky;
   top: -8px;
   z-index: 10;
-  margin: -8px -8px 6px -8px;
+  margin: -8px 0 6px -8px;
+  background: var(--bg-app);
 }
 
 .header-checkbox {
@@ -386,7 +389,8 @@ const handleSelectAll = (checked: boolean) => {
   display: flex;
   flex-direction: column;
   gap: 6px;
-  margin: 0 -8px;
+  margin: 0 0 0 -8px;
+  padding-right: 24px; /* 补偿内容间距 */
 }
 
 /* 滚动条 */
