@@ -185,6 +185,11 @@ onUnmounted(() => {
   width: 200px;
 }
 
+.search-wrapper :deep(.p-inputtext:enabled:focus) {
+  outline: none;
+  box-shadow: none;
+}
+
 .search-clear {
   position: absolute;
   right: 2px;
@@ -205,7 +210,7 @@ onUnmounted(() => {
 
 .ghost-button:hover {
   background: var(--hover-overlay) !important;
-  border-color: var(--text-muted) !important;
+  border-color: var(--primary) !important;
   color: var(--text-primary) !important;
 }
 </style>

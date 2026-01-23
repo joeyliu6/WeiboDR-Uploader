@@ -121,9 +121,10 @@ const handleRowClick = () => {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 12px;
+  margin: 0 -12px;
+  padding: 10px 24px;
   border: none;
-  border-bottom: 1px solid rgba(148, 163, 184, 0.15);
+  border-bottom: 1px solid var(--border-subtle-light);
   border-radius: 0;
   cursor: pointer;
   transition: background-color 0.15s ease;
