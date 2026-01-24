@@ -197,15 +197,15 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
       }
 
       // ⭐ 流水线处理：分批获取元数据 + 上传
-      // 每批 50 张图片，避免同时发起大量请求
+      // 每批 50 张图片，限制同时进行的批次数量避免网络拥塞
       const batches = chunkArray(valid, METADATA_BATCH_SIZE);
-      console.log(`[上传] 开始流水线处理：${valid.length} 个文件，分 ${batches.length} 批`);
+      const MAX_CONCURRENT_BATCHES = 2;  // 最多同时处理 2 个批次
+      console.log(`[上传] 开始流水线处理：${valid.length} 个文件，分 ${batches.length} 批，最大并发 ${MAX_CONCURRENT_BATCHES} 批`);
 
       isUploading.value = true;
 
-      // 流水线处理各批次（并行）
-      // 每批：获取元数据 → 加入队列 → 开始上传
-      const batchPromises = batches.map(async (batchFiles, batchIndex) => {
+      // 批次处理函数
+      const processBatch = async (batchFiles: string[], batchIndex: number) => {
         console.log(`[上传] 批次 ${batchIndex + 1}/${batches.length}：开始获取 ${batchFiles.length} 个文件的元数据`);
 
         // 1. 批量获取元数据（并发控制）
@@ -231,10 +231,38 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
         await processUploadQueue(queueItems, config, enabledServices);
 
         console.log(`[上传] 批次 ${batchIndex + 1}：上传完成`);
-      });
+      };
 
-      // 等待所有批次完成
-      await Promise.all(batchPromises);
+      // 限制并发批次数量，避免网络拥塞和服务器限流
+      let activeBatches = 0;
+      let batchIndex = 0;
+
+      await new Promise<void>((resolve) => {
+        const runNextBatch = () => {
+          // 所有批次都已完成
+          if (batchIndex >= batches.length && activeBatches === 0) {
+            resolve();
+            return;
+          }
+
+          // 在并发限制内启动新批次
+          while (activeBatches < MAX_CONCURRENT_BATCHES && batchIndex < batches.length) {
+            const currentIndex = batchIndex++;
+            activeBatches++;
+
+            processBatch(batches[currentIndex], currentIndex)
+              .catch((error) => {
+                console.error(`[上传] 批次 ${currentIndex + 1} 处理失败:`, error);
+              })
+              .finally(() => {
+                activeBatches--;
+                runNextBatch();
+              });
+          }
+        };
+
+        runNextBatch();
+      });
 
       console.log('[上传] 所有批次处理完成');
 
@@ -313,7 +341,10 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
                 if (pendingResults.length > 0) {
                   console.log(`[历史记录] 处理等待队列: ${pendingResults.length} 个结果`);
                   for (const pending of pendingResults) {
-                    addResultToHistoryItem(historyId, pending);
+                    const success = await addResultToHistoryItem(historyId, pending);
+                    if (!success) {
+                      console.warn(`[历史记录] ${pending.serviceId} 结果追加失败，但不影响上传`);
+                    }
                   }
                   pendingResults.length = 0; // 清空队列
                 }
@@ -323,7 +354,10 @@ export function useUploadManager(queueManager?: UploadQueueManager) {
               }
             } else if (serviceResult.status === 'success' && historyCreated) {
               // 后续成功结果追加到已有记录
-              addResultToHistoryItem(historyId, serviceResult);
+              const success = await addResultToHistoryItem(historyId, serviceResult);
+              if (!success) {
+                console.warn(`[历史记录] ${serviceResult.serviceId} 结果追加失败，但不影响上传`);
+              }
             } else if (serviceResult.status === 'success' && historyCreating && !historyCreated) {
               // 正在创建历史记录期间到达的结果，加入等待队列
               pendingResults.push(serviceResult);

@@ -82,13 +82,14 @@ export class MultiServiceUploader {
     console.log('[MultiUploader] 开始并行上传到:', enabledServices);
 
     // 确保 config.services 存在（兼容旧版本配置）
-    if (!config.services) {
-      console.warn('[MultiUploader] 配置中缺少 services 字段，使用默认值');
-      config.services = {};
-    }
+    // 使用安全副本，避免修改传入的 config 对象
+    const safeConfig: UserConfig = {
+      ...config,
+      services: config.services || {}
+    };
 
     // 1. 过滤出已配置的图床
-    const validServices = this.filterConfiguredServices(enabledServices, config);
+    const validServices = this.filterConfiguredServices(enabledServices, safeConfig);
 
     // 检查是否有启用的服务
     if (enabledServices.length === 0) {
@@ -124,7 +125,7 @@ export class MultiServiceUploader {
 
           try {
             const uploader = UploaderFactory.create(serviceId);
-            const serviceConfig = config.services[serviceId];
+            const serviceConfig = safeConfig.services[serviceId];
 
             // 立即触发进度回调,显示"开始上传"状态
             if (onProgress) {
@@ -275,14 +276,14 @@ export class MultiServiceUploader {
   ): Promise<UploadResult> {
     console.log(`[MultiUploader] 重试上传到 ${serviceId}`);
 
-    // 确保 config.services 存在（兼容旧版本配置）
-    if (!config.services) {
-      console.warn('[MultiUploader] 配置中缺少 services 字段，使用默认值');
-      config.services = {};
-    }
+    // 使用安全副本，避免修改传入的 config 对象
+    const safeConfig: UserConfig = {
+      ...config,
+      services: config.services || {}
+    };
 
     const uploader = UploaderFactory.create(serviceId);
-    const serviceConfig = config.services[serviceId];
+    const serviceConfig = safeConfig.services[serviceId];
 
     // 验证配置
     const validation = await uploader.validateConfig(serviceConfig);
@@ -306,8 +307,21 @@ export class MultiServiceUploader {
   /** 无需配置的图床列表 */
   private static readonly NO_CONFIG_SERVICES: ServiceType[] = ['jd', 'qiyu'];
 
+  /** 各图床必填字段映射表 */
+  private static readonly REQUIRED_FIELDS: Partial<Record<ServiceType, string[]>> = {
+    r2: ['accountId', 'accessKeyId', 'secretAccessKey', 'bucketName', 'publicDomain'],
+    smms: ['token'],
+    github: ['token', 'owner', 'repo'],
+    imgur: ['clientId'],
+    tencent: ['secretId', 'secretKey', 'bucket', 'region', 'publicDomain'],
+    aliyun: ['accessKeyId', 'accessKeySecret', 'bucket', 'region', 'publicDomain'],
+    qiniu: ['accessKey', 'secretKey', 'bucket', 'publicDomain'],
+    upyun: ['operator', 'password', 'bucket', 'publicDomain'],
+  };
+
   /**
    * 过滤出已配置的图床
+   * 在过滤阶段验证配置完整性，避免上传时才报错
    */
   private filterConfiguredServices(
     enabledServices: ServiceType[],
@@ -327,18 +341,23 @@ export class MultiServiceUploader {
 
       // Cookie 类图床：统一检查 cookie 字段
       if (MultiServiceUploader.COOKIE_BASED_SERVICES.includes(serviceId)) {
-        const cfg = serviceConfig as any;
-        if (!cfg.cookie?.trim()) {
+        const cfg = serviceConfig as Record<string, unknown>;
+        if (!(cfg.cookie as string)?.trim()) {
           console.warn(`[MultiUploader] ${serviceId} Cookie 未配置，跳过`);
           return false;
         }
         return true;
       }
 
-      // R2：检查必填字段
-      if (serviceId === 'r2') {
-        const r2 = serviceConfig as any;
-        if (!r2.accountId || !r2.accessKeyId || !r2.secretAccessKey || !r2.bucketName || !r2.publicDomain) {
+      // 通用必填字段校验
+      const requiredFields = MultiServiceUploader.REQUIRED_FIELDS[serviceId];
+      if (requiredFields) {
+        const cfg = serviceConfig as Record<string, unknown>;
+        const hasAll = requiredFields.every(field => {
+          const val = cfg[field];
+          return typeof val === 'string' ? val.trim() : val;
+        });
+        if (!hasAll) {
           console.warn(`[MultiUploader] ${serviceId} 配置不完整，跳过`);
           return false;
         }

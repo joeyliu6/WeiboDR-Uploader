@@ -509,13 +509,10 @@ export class UploadQueueManager {
     if (completedItems.length > maxSize) {
       // 队列是按时间倒序排列的（最新在前），所以取后面的删除
       const itemsToRemove = completedItems.slice(maxSize);
+      const idsToRemove = new Set(itemsToRemove.map(item => item.id));
 
-      itemsToRemove.forEach(item => {
-        const index = this.queueState.queueItems.value.findIndex(i => i.id === item.id);
-        if (index !== -1) {
-          this.queueState.queueItems.value.splice(index, 1);
-        }
-      });
+      // 一次性过滤，只触发一次 Vue 响应式更新
+      this.queueState.queueItems.value = items.filter(item => !idsToRemove.has(item.id));
 
       console.log(`[UploadQueue] 内存优化: 已删除 ${itemsToRemove.length} 条旧记录，保留最近 ${maxSize} 条`);
     }
