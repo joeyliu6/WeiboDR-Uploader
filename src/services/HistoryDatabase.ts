@@ -897,6 +897,19 @@ class HistoryDatabase {
   }
 
   /**
+   * JSON 容错解析，防止数据损坏导致整个查询失败
+   */
+  private safeJsonParse<T>(json: string | null, fallback: T, field: string, id: string): T {
+    if (!json) return fallback;
+    try {
+      return JSON.parse(json);
+    } catch (e) {
+      console.error(`[HistoryDB] ${field} JSON 解析失败: ${id}`, e);
+      return fallback;
+    }
+  }
+
+  /**
    * 将数据库行转换为 HistoryItem
    * 注意：color_type 和 has_alpha 字段已废弃，不再读取
    */
@@ -907,10 +920,10 @@ class HistoryDatabase {
       localFileName: row.local_file_name,
       filePath: row.file_path || undefined,
       primaryService: row.primary_service as ServiceType,
-      results: JSON.parse(row.results),
+      results: this.safeJsonParse(row.results, [], 'results', row.id),
       generatedLink: row.generated_link,
-      linkCheckStatus: row.link_check_status ? JSON.parse(row.link_check_status) : undefined,
-      linkCheckSummary: row.link_check_summary ? JSON.parse(row.link_check_summary) : undefined,
+      linkCheckStatus: this.safeJsonParse(row.link_check_status, undefined, 'linkCheckStatus', row.id),
+      linkCheckSummary: this.safeJsonParse(row.link_check_summary, undefined, 'linkCheckSummary', row.id),
       // 图片元信息（简化版，移除了 colorType 和 hasAlpha）
       width: row.width,
       height: row.height,

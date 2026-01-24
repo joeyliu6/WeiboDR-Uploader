@@ -944,10 +944,11 @@ export function migrateConfig(config: UserConfig): UserConfig {
         ...migratedConfig.services,
         ...newServices
       },
-      availableServices: [
+      // 使用 Set 去重，避免已存在的服务重复添加
+      availableServices: [...new Set([
         ...(migratedConfig.availableServices || ['weibo', 'r2', 'jd', 'nowcoder', 'qiyu', 'zhihu', 'nami', 'bilibili', 'chaoxing']),
         'smms', 'github', 'imgur', 'tencent', 'aliyun', 'qiniu', 'upyun'
-      ]
+      ] as ServiceType[])]
     };
 
     console.log('[配置迁移] 从版本 1 迁移到版本 2：新增 7 个图床');

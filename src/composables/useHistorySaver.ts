@@ -27,7 +27,7 @@ export interface UseHistorySaverReturn {
   addResultToHistoryItem(
     historyId: string,
     result: SingleServiceResult
-  ): Promise<void>;
+  ): Promise<boolean>;
 }
 
 // ==================== 内部辅助函数 ====================
@@ -145,12 +145,13 @@ export function useHistorySaver(): UseHistorySaverReturn {
   /**
    * 向已有历史记录添加结果
    * 使用 SQLite 更新操作，无需读取全部数据
+   * @returns 是否成功追加（false 表示失败，调用方可据此通知用户）
    */
   async function addResultToHistoryItem(
     historyId: string,
     result: SingleServiceResult
-  ): Promise<void> {
-    if (!historyId || result.status !== 'success') return;
+  ): Promise<boolean> {
+    if (!historyId || result.status !== 'success') return true; // 无需处理的情况视为成功
 
     const MAX_ATTEMPTS = 2;
 
@@ -163,7 +164,7 @@ export function useHistorySaver(): UseHistorySaverReturn {
             continue;
           }
           console.warn(`[历史记录] 记录 ${historyId} 不存在，无法追加 ${result.serviceId} 结果`);
-          return;
+          return false;
         }
 
         // 检查是否已存在（防止重复）
@@ -171,7 +172,7 @@ export function useHistorySaver(): UseHistorySaverReturn {
           (r: HistoryItem['results'][number]) => r.serviceId === result.serviceId
         );
         if (exists) {
-          return;
+          return true; // 已存在视为成功
         }
 
         const updatedResults = [...(item.results || []), result];
@@ -180,15 +181,17 @@ export function useHistorySaver(): UseHistorySaverReturn {
 
         invalidateCache();
         await emitHistoryUpdated([historyId]);
-        return;
+        return true;
       } catch (error) {
         if (attempt < MAX_ATTEMPTS - 1) {
           await new Promise(resolve => setTimeout(resolve, 50));
         } else {
-          console.error('[历史记录] 追加结果失败:', error);
+          console.error(`[历史记录] 追加 ${result.serviceId} 结果失败:`, error);
+          return false;
         }
       }
     }
+    return false;
   }
 
   return {
