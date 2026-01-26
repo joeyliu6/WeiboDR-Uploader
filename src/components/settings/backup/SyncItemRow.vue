@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { ref, computed } from 'vue';
+import { ref, computed, onMounted, onUnmounted } from 'vue';
 import Button from 'primevue/button';
 import { useClickOutside } from '../../../composables/useClickOutside';
+
+const MENU_OPEN_EVENT = 'sync-row-menu-open';
 
 interface SyncStatusInfo {
   lastSync?: string | null;
@@ -47,6 +49,29 @@ const moreMenuVisible = ref(false);
 const uploadMenuVisible = ref(false);
 const downloadMenuVisible = ref(false);
 
+const instanceId = Math.random().toString(36).substr(2, 9);
+
+function broadcastMenuOpen() {
+  window.dispatchEvent(new CustomEvent(MENU_OPEN_EVENT, {
+    detail: { instanceId }
+  }));
+}
+
+function handleOtherMenuOpen(event: Event) {
+  const customEvent = event as CustomEvent;
+  if (customEvent.detail.instanceId !== instanceId) {
+    closeAllMenus();
+  }
+}
+
+onMounted(() => {
+  window.addEventListener(MENU_OPEN_EVENT, handleOtherMenuOpen);
+});
+
+onUnmounted(() => {
+  window.removeEventListener(MENU_OPEN_EVENT, handleOtherMenuOpen);
+});
+
 const { target: moreMenuRef } = useClickOutside(() => {
   moreMenuVisible.value = false;
 });
@@ -82,8 +107,8 @@ const statusClass = computed(() => {
 });
 
 const statusText = computed(() => {
-  if (!props.syncStatus.lastSync) return '未同步';
-  if (props.syncStatus.result === 'success') return '已同步';
+  if (!props.syncStatus.lastSync) return '尚未同步';
+  if (props.syncStatus.result === 'success') return '同步完成';
   if (props.syncStatus.result === 'partial') return '部分同步';
   return '同步失败';
 });
@@ -114,18 +139,21 @@ function toggleMoreMenu() {
   const wasVisible = moreMenuVisible.value;
   closeAllMenus();
   moreMenuVisible.value = !wasVisible;
+  if (!wasVisible) broadcastMenuOpen();
 }
 
 function toggleUploadMenu() {
   const wasVisible = uploadMenuVisible.value;
   closeAllMenus();
   uploadMenuVisible.value = !wasVisible;
+  if (!wasVisible) broadcastMenuOpen();
 }
 
 function toggleDownloadMenu() {
   const wasVisible = downloadMenuVisible.value;
   closeAllMenus();
   downloadMenuVisible.value = !wasVisible;
+  if (!wasVisible) broadcastMenuOpen();
 }
 
 function handleExportLocal() {

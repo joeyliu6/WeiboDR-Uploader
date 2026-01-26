@@ -31,10 +31,6 @@ const hasValidConfig = computed(() => {
   return !!(activeProfile.value.url && activeProfile.value.username);
 });
 
-const activeProfileName = computed(() => {
-  return activeProfile.value?.name || '';
-});
-
 const shouldAutoExpand = computed(() => {
   // 无配置
   if (props.modelValue.profiles.length === 0) return true;
@@ -128,8 +124,23 @@ function handleSave() {
   emit('save');
 }
 
-function handleTest() {
+function handleTestAndSave() {
+  emit('save');
   emit('test');
+}
+
+// 服务商预设
+const providerPresets = [
+  { name: '坚果云', url: 'https://dav.jianguoyun.com/dav/' },
+  { name: 'Nextcloud', url: 'https://your-domain.com/remote.php/dav/files/USERNAME/' },
+  { name: 'TeraCloud', url: 'https://seto.teracloud.jp/dav/' },
+  { name: 'Alist', url: 'http://localhost:5244/dav/' },
+  { name: '群晖', url: 'https://your-nas-ip:5006/webdav/' }
+];
+
+function applyPreset(preset: typeof providerPresets[0]) {
+  if (!activeProfile.value) return;
+  updateActiveProfileField('url', preset.url);
 }
 </script>
 
@@ -139,14 +150,7 @@ function handleTest() {
     <button class="collapsible-header" @click="toggleExpand">
       <div class="header-left">
         <span class="header-title">WebDAV 配置</span>
-        <span v-if="hasValidConfig" class="config-badge success">
-          <i class="pi pi-check-circle"></i>
-          {{ activeProfileName }}
-        </span>
-        <span v-else class="config-badge warning">
-          <i class="pi pi-exclamation-circle"></i>
-          未配置
-        </span>
+        <span v-if="!hasValidConfig" class="config-hint">未配置</span>
       </div>
       <i :class="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
     </button>
@@ -160,21 +164,27 @@ function handleTest() {
             v-for="profile in modelValue.profiles"
             :key="profile.id"
             class="profile-tab"
-            :class="{ active: modelValue.activeId === profile.id }"
+            :class="{
+              active: modelValue.activeId === profile.id,
+              'is-in-use': modelValue.activeId === profile.id && hasValidConfig
+            }"
             @click="handleSwitchProfile(profile.id)"
           >
-            <span class="profile-indicator"></span>
+            <span
+              v-if="modelValue.activeId === profile.id && hasValidConfig"
+              class="in-use-dot"
+            ></span>
             <span>{{ profile.name }}</span>
           </button>
           <button class="profile-tab add-btn" @click="handleAddProfile">
-            <i class="pi pi-plus"></i>
+            + 新建
           </button>
         </div>
 
         <!-- 当前配置表单 -->
         <div v-if="activeProfile" class="webdav-form">
           <div class="form-grid">
-            <div class="form-item">
+            <div class="form-item span-full">
               <label>配置名称</label>
               <InputText
                 :modelValue="activeProfile.name"
@@ -183,8 +193,24 @@ function handleTest() {
                 placeholder="如：坚果云、群晖 NAS"
               />
             </div>
-            <div class="form-item">
-              <label>服务器 URL</label>
+            <div class="form-item span-full">
+              <div class="label-row">
+                <label>服务器 URL</label>
+                <div class="preset-inline">
+                  <span class="preset-label">快速填充:</span>
+                  <div class="preset-buttons">
+                    <button
+                      v-for="preset in providerPresets"
+                      :key="preset.name"
+                      class="preset-btn"
+                      @click="applyPreset(preset)"
+                      :title="preset.url"
+                    >
+                      {{ preset.name }}
+                    </button>
+                  </div>
+                </div>
+              </div>
               <InputText
                 :modelValue="activeProfile.url"
                 @update:modelValue="(v) => updateActiveProfileField('url', v as string)"
@@ -222,15 +248,16 @@ function handleTest() {
           </div>
           <div class="webdav-actions-row">
             <Button
-              label="测试连接"
+              label="测试并保存"
               icon="pi pi-check"
-              @click="handleTest"
+              @click="handleTestAndSave"
               :loading="testing"
-              outlined
+              :disabled="!hasValidConfig"
               size="small"
             />
+            <div class="spacer"></div>
             <Button
-              label="删除此配置"
+              label="删除"
               icon="pi pi-trash"
               @click="handleDeleteProfile(activeProfile.id)"
               severity="danger"
@@ -313,29 +340,10 @@ function handleTest() {
   font-weight: 600;
 }
 
-/* 配置状态徽章 */
-.config-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 4px 12px;
-  border-radius: 12px;
+/* 未配置提示 */
+.config-hint {
   font-size: 12px;
-  font-weight: 500;
-}
-
-.config-badge.success {
-  background: rgba(16, 185, 129, 0.1);
-  color: var(--success);
-}
-
-.config-badge.warning {
-  background: rgba(245, 158, 11, 0.1);
-  color: var(--warning);
-}
-
-.config-badge i {
-  font-size: 12px;
+  color: var(--text-muted);
 }
 
 /* 展开内容 */
@@ -376,20 +384,17 @@ function handleTest() {
   color: var(--primary);
 }
 
-.profile-tab .profile-indicator {
-  width: 8px;
-  height: 8px;
+/* "使用中"小绿点 */
+.in-use-dot {
+  width: 6px;
+  height: 6px;
   border-radius: 50%;
-  background: var(--text-muted);
-}
-
-.profile-tab.active .profile-indicator {
-  background: var(--primary);
+  background: var(--success);
+  flex-shrink: 0;
 }
 
 .profile-tab.add-btn {
-  border-style: dashed;
-  padding: 8px 12px;
+  color: var(--text-muted);
 }
 
 .profile-tab.add-btn:hover {
@@ -406,10 +411,75 @@ function handleTest() {
 
 .webdav-actions-row {
   display: flex;
+  align-items: center;
   gap: 12px;
   margin-top: 16px;
   padding-top: 16px;
   border-top: 1px solid var(--border-subtle);
+}
+
+.spacer {
+  flex: 1;
+}
+
+/* 服务商预设按钮 */
+.preset-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.preset-btn {
+  padding: 6px 12px;
+  font-size: 12px;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  background: var(--bg-card);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.preset-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: rgba(59, 130, 246, 0.05);
+}
+
+/* 标签行：标签 + 快速填充按钮 */
+.label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+/* 快速填充内联容器 */
+.preset-inline {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.preset-label {
+  font-size: 12px;
+  color: var(--text-muted);
+  white-space: nowrap;
+}
+
+/* 内联时按钮更紧凑 */
+.preset-inline .preset-btn {
+  padding: 4px 10px;
+  font-size: 11px;
+}
+
+/* 响应式：窄屏时换行 */
+@media (max-width: 600px) {
+  .label-row {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+  }
 }
 
 .empty-webdav {

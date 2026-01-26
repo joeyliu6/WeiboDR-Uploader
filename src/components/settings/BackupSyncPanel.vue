@@ -3,11 +3,11 @@
 
 import { computed, onMounted } from 'vue';
 import Divider from 'primevue/divider';
-import ToggleSwitch from 'primevue/toggleswitch';
 import { useBackupSync } from '../../composables/useBackupSync';
 import type { WebDAVConfig, AutoSyncConfig } from '../../config/types';
 
 import SyncItemRow from './backup/SyncItemRow.vue';
+import AutoSyncRow from './backup/AutoSyncRow.vue';
 import WebDAVConfigCollapsible from './backup/WebDAVConfigCollapsible.vue';
 
 // ==================== Props ====================
@@ -112,18 +112,27 @@ const historySyncStatus = computed(() => ({
   error: syncStatus.value.historySyncError
 }));
 
-const autoSyncEnabled = computed({
-  get: () => localAutoSyncConfig.value.enabled,
-  set: (val) => {
-    localAutoSyncConfig.value = { ...localAutoSyncConfig.value, enabled: val };
-    handleSave();
-  }
-});
+// 间隔选项（不含自定义，简化版）
+const intervalOptions = [
+  { label: '30 分钟', value: 0.5 },
+  { label: '1 小时', value: 1 },
+  { label: '3 小时', value: 3 },
+  { label: '6 小时', value: 6 },
+  { label: '12 小时', value: 12 },
+  { label: '24 小时', value: 24 },
+  { label: '2 天', value: 48 },
+  { label: '5 天', value: 120 }
+];
 
-const autoSyncIntervalText = computed(() => {
-  const hours = localAutoSyncConfig.value.intervalHours || 24;
-  return `每 ${hours} 小时`;
-});
+function handleAutoSyncEnabledChange(val: boolean) {
+  localAutoSyncConfig.value = { ...localAutoSyncConfig.value, enabled: val };
+  handleSave();
+}
+
+function handleAutoSyncIntervalChange(val: number) {
+  localAutoSyncConfig.value = { ...localAutoSyncConfig.value, intervalHours: val };
+  handleSave();
+}
 
 onMounted(async () => {
   await loadSyncStatus();
@@ -235,30 +244,14 @@ function handleHistoryCloudAction(action: string) {
 
     <Divider />
 
-    <!-- 分组标题：自动化 -->
-    <div class="group-title">自动化</div>
-
-    <!-- 自动同步开关行 -->
-    <div class="auto-sync-container">
-      <div class="auto-sync-row" :title="!isWebDAVConnected ? '当前配置不完整' : ''">
-        <div class="row-left">
-          <div class="row-info">
-            <div class="row-title">自动同步</div>
-            <div class="row-desc">
-              <template v-if="autoSyncEnabled">
-                {{ autoSyncIntervalText }}同步一次
-              </template>
-              <template v-else>
-                定时自动备份配置和历史记录
-              </template>
-            </div>
-          </div>
-        </div>
-        <div class="row-right">
-          <ToggleSwitch v-model="autoSyncEnabled" :disabled="!isWebDAVConnected" />
-        </div>
-      </div>
-    </div>
+    <!-- 自动同步行（作为同步项目第三行） -->
+    <AutoSyncRow
+      :config="localAutoSyncConfig"
+      :is-cloud-enabled="isWebDAVConnected"
+      :interval-options="intervalOptions"
+      @update:enabled="handleAutoSyncEnabledChange"
+      @update:interval="handleAutoSyncIntervalChange"
+    />
 
     <Divider />
 
@@ -285,7 +278,7 @@ function handleHistoryCloudAction(action: string) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 24px;
-  margin-bottom: 24px;
+  margin-bottom: 16px;
 }
 
 .header-left h2 {
@@ -335,68 +328,8 @@ function handleHistoryCloudAction(action: string) {
   font-size: 14px;
   font-weight: 600;
   color: var(--text-primary);
-  margin-top: 14px;
-  margin-bottom: 14px;
+  margin-top: 16px;
+  margin-bottom: 12px;
 }
 
-/* 自动同步容器 */
-.auto-sync-container {
-  overflow: hidden;
-}
-
-/* 自动同步行 */
-.auto-sync-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 16px;
-  gap: 16px;
-  transition: background-color 0.15s;
-}
-
-.auto-sync-row:hover {
-  background: var(--primary-hover-bg);
-}
-
-.row-left {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-}
-
-.row-icon {
-  width: 40px;
-  height: 40px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: var(--primary-hover-bg);
-  border-radius: 8px;
-  color: var(--primary);
-}
-
-.row-icon i {
-  font-size: 18px;
-}
-
-.row-info {
-  display: flex;
-  flex-direction: column;
-  gap: 2px;
-}
-
-.row-title {
-  font-size: 14px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.row-desc {
-  font-size: 13px;
-  color: var(--text-muted);
-}
-
-.row-right {
-  flex-shrink: 0;
-}
 </style>
