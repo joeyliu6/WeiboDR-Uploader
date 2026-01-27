@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import ToggleSwitch from 'primevue/toggleswitch';
-import Dropdown from 'primevue/dropdown';
+import Select from 'primevue/select';
 import type { AutoSyncConfig } from '../../../config/types';
 
 interface IntervalOption {
@@ -50,7 +50,7 @@ const selectedInterval = computed({
     <!-- 右侧：下拉框 + 开关 -->
     <div class="item-right">
       <div class="auto-sync-controls">
-        <Dropdown
+        <Select
           v-model="selectedInterval"
           :options="intervalOptions"
           :disabled="!isCloudEnabled || !enabled"
