@@ -181,6 +181,61 @@ export interface SmmsServiceConfig extends BaseServiceConfig {
 }
 
 /**
+ * GitHub CDN 提供商配置
+ */
+export interface GithubCdnProvider {
+  /** 提供商名称 */
+  name: string;
+  /** URL 模板，支持占位符: {owner}, {repo}, {branch}, {path} */
+  urlTemplate: string;
+  /** 是否为预设（预设不可删除） */
+  isPreset?: boolean;
+}
+
+/**
+ * GitHub CDN 加速配置
+ */
+export interface GithubCdnConfig {
+  /** 是否启用 CDN 加速 */
+  enabled: boolean;
+  /** 当前选中的 CDN 索引 */
+  selectedIndex: number;
+  /** CDN 列表（预设 + 自定义） */
+  cdnList: GithubCdnProvider[];
+}
+
+/**
+ * 默认 GitHub CDN 列表
+ */
+export const DEFAULT_GITHUB_CDN_LIST: GithubCdnProvider[] = [
+  {
+    name: 'GitHub Raw',
+    urlTemplate: 'https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}',
+    isPreset: true
+  },
+  {
+    name: 'jsDelivr CDN',
+    urlTemplate: 'https://cdn.jsdelivr.net/gh/{owner}/{repo}@{branch}/{path}',
+    isPreset: true
+  },
+  {
+    name: 'jsdmirror',
+    urlTemplate: 'https://cdn.jsdmirror.com/gh/{owner}/{repo}@{branch}/{path}',
+    isPreset: true
+  },
+  {
+    name: 'Statically CDN',
+    urlTemplate: 'https://cdn.statically.io/gh/{owner}/{repo}@{branch}/{path}',
+    isPreset: true
+  },
+  {
+    name: 'GitHub Proxy',
+    urlTemplate: 'https://ghproxy.com/https://raw.githubusercontent.com/{owner}/{repo}/{branch}/{path}',
+    isPreset: true
+  }
+];
+
+/**
  * GitHub 图床服务配置
  * 使用 GitHub 仓库作为图床，需要 Personal Access Token
  */
@@ -197,6 +252,8 @@ export interface GithubServiceConfig extends BaseServiceConfig {
   path: string;
   /** 自定义域名（可选） */
   customDomain?: string;
+  /** CDN 加速配置 */
+  cdnConfig?: GithubCdnConfig;
 }
 
 /**
@@ -402,7 +459,7 @@ export const DEFAULT_PREFIXES: string[] = [
  * 每次配置格式变更时递增此版本号
  * 迁移函数将根据此版本号决定是否需要执行迁移
  */
-export const CONFIG_VERSION = 2;
+export const CONFIG_VERSION = 3;
 
 export interface UserConfig {
   /**
@@ -615,7 +672,12 @@ export const DEFAULT_CONFIG: UserConfig = {
       owner: '',
       repo: '',
       branch: 'main',
-      path: 'images/'
+      path: 'images/',
+      cdnConfig: {
+        enabled: false,  // 默认不启用 CDN，使用原始 GitHub 链接
+        selectedIndex: 0,
+        cdnList: [...DEFAULT_GITHUB_CDN_LIST]
+      }
     },
     imgur: {
       enabled: false,  // Imgur 需要配置，默认不启用
@@ -952,6 +1014,21 @@ export function migrateConfig(config: UserConfig): UserConfig {
     };
 
     console.log('[配置迁移] 从版本 1 迁移到版本 2：新增 7 个图床');
+  }
+
+  // 版本 2 -> 3：新增 GitHub CDN 加速配置
+  if (currentVersion < 3) {
+    if (migratedConfig.services?.github && !migratedConfig.services.github.cdnConfig) {
+      migratedConfig.services.github = {
+        ...migratedConfig.services.github,
+        cdnConfig: {
+          enabled: false,
+          selectedIndex: 0,
+          cdnList: [...DEFAULT_GITHUB_CDN_LIST]
+        }
+      };
+    }
+    console.log('[配置迁移] 从版本 2 迁移到版本 3：新增 GitHub CDN 加速配置');
   }
 
   // 未来版本迁移示例：

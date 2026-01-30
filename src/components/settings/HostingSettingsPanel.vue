@@ -3,6 +3,7 @@ import { computed } from 'vue';
 import InputText from 'primevue/inputtext';
 import Password from 'primevue/password';
 import Textarea from 'primevue/textarea';
+import Button from 'primevue/button';
 import HostingCard from './HostingCard.vue';
 import { getCategoryIcon } from '../../utils/icons';
 
@@ -25,7 +26,14 @@ interface CookieFormData {
 
 interface TokenFormData {
   smms: { token: string };
-  github: { token: string; owner: string; repo: string; branch: string; path: string; customDomain?: string };
+  github: {
+    token: string;
+    owner: string;
+    repo: string;
+    branch: string;
+    path: string;
+    customDomain?: string;
+  };
   imgur: { clientId: string; clientSecret?: string };
 }
 

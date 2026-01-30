@@ -1,5 +1,7 @@
 import { BaseUploader } from '../base/BaseUploader';
 import { UploadResult, ValidationResult, UploadOptions, ProgressCallback } from '../base/types';
+import { transformGithubUrl, parseGithubRawUrl } from '../../utils/githubCdn';
+import type { GithubServiceConfig } from '../../config/types';
 
 interface GithubRustResult {
   url: string;
@@ -50,33 +52,53 @@ export class GithubUploader extends BaseUploader {
   ): Promise<UploadResult> {
     this.log('info', '开始上传到 GitHub', { filePath });
 
+    const config = options.config as GithubServiceConfig;
+
     const rustResult = await this.uploadViaRust(
       filePath,
       {
-        githubToken: options.config.token,
-        owner: options.config.owner,
-        repo: options.config.repo,
-        branch: options.config.branch || 'main',
-        path: options.config.path || 'images/'
+        githubToken: config.token,
+        owner: config.owner,
+        repo: config.repo,
+        branch: config.branch || 'main',
+        path: config.path || 'images/'
       },
       onProgress
     ) as GithubRustResult;
 
-    this.log('info', 'GitHub 上传成功', { url: rustResult.url });
+    // 应用 CDN 转换或自定义域名
+    const finalUrl = this.applyUrlTransform(rustResult.url, config);
+
+    this.log('info', 'GitHub 上传成功', { rawUrl: rustResult.url, finalUrl });
 
     return {
       serviceId: 'github',
       fileKey: rustResult.sha || rustResult.remotePath || rustResult.url,
-      url: rustResult.url,
+      url: finalUrl,
       metadata: {
         sha: rustResult.sha,
-        remotePath: rustResult.remotePath
+        remotePath: rustResult.remotePath,
+        rawUrl: rustResult.url
       }
     };
   }
 
+  private applyUrlTransform(rawUrl: string, config: GithubServiceConfig): string {
+    // 优先使用自定义域名
+    if (config.customDomain) {
+      const parts = parseGithubRawUrl(rawUrl);
+      if (parts) {
+        const domain = config.customDomain.replace(/\/$/, '');
+        return `${domain}/${parts.path}`;
+      }
+    }
+
+    // 应用 CDN 转换
+    return transformGithubUrl(rawUrl, config.cdnConfig);
+  }
+
   getPublicUrl(result: UploadResult): string {
-    // Rust 后端已返回完整的 download_url，直接使用
+    // URL 已在 upload 时完成转换，直接返回
     return result.url;
   }
 
