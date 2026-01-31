@@ -30,6 +30,9 @@ interface Props {
 
   /** 加载状态 */
   loading: LoadingState;
+
+  /** 服务商名称 */
+  providerName?: string;
 }
 
 const props = defineProps<Props>();
@@ -107,10 +110,11 @@ const statusClass = computed(() => {
 });
 
 const statusText = computed(() => {
-  if (!props.syncStatus.lastSync) return '尚未同步';
-  if (props.syncStatus.result === 'success') return '同步完成';
-  if (props.syncStatus.result === 'partial') return '部分同步';
-  return '同步失败';
+  const provider = props.providerName || '';
+  if (!props.syncStatus.lastSync) return provider ? `${provider} · 尚未同步` : '尚未同步';
+  if (props.syncStatus.result === 'success') return provider ? `${provider} · 同步完成` : '同步完成';
+  if (props.syncStatus.result === 'partial') return provider ? `${provider} · 部分同步` : '部分同步';
+  return provider ? `${provider} · 同步失败` : '同步失败';
 });
 
 const isHistoryType = computed(() => props.type === 'history');
@@ -178,27 +182,19 @@ function handleSimpleUpload() {
 
 <template>
   <div class="sync-item-row">
-    <!-- 左侧：信息 -->
+    <!-- 左侧：图标 + 信息 -->
     <div class="item-left">
+      <div class="item-icon">
+        <i :class="itemConfig.icon"></i>
+      </div>
       <div class="item-info">
         <div class="item-title">{{ itemConfig.title }}</div>
         <div class="item-desc">{{ itemConfig.description }}</div>
       </div>
     </div>
 
-    <!-- 右侧：状态 + 操作 -->
+    <!-- 右侧：操作 + 状态 -->
     <div class="item-right">
-      <!-- 状态信息 -->
-      <div class="item-status">
-        <span class="status-text" :class="statusClass">
-          <span class="status-dot"></span>
-          {{ statusText }}
-        </span>
-        <span v-if="syncStatus.lastSync" class="last-sync">
-          {{ formatDetailedDate(syncStatus.lastSync) }}
-        </span>
-      </div>
-
       <!-- 操作按钮组 -->
       <div class="item-actions">
         <!-- 上传按钮 -->
@@ -301,6 +297,17 @@ function handleSimpleUpload() {
             </div>
           </Transition>
         </div>
+      </div>
+
+      <!-- 状态信息 -->
+      <div class="item-status">
+        <span class="status-text" :class="statusClass">
+          <span class="status-dot"></span>
+          {{ statusText }}
+        </span>
+        <span v-if="syncStatus.lastSync" class="last-sync">
+          {{ formatDetailedDate(syncStatus.lastSync) }}
+        </span>
       </div>
     </div>
   </div>

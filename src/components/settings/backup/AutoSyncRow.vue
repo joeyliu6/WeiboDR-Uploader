@@ -39,8 +39,11 @@ const selectedInterval = computed({
 
 <template>
   <div class="sync-item-row">
-    <!-- 左侧：信息 -->
+    <!-- 左侧：图标 + 信息 -->
     <div class="item-left">
+      <div class="item-icon">
+        <i class="pi pi-sync"></i>
+      </div>
       <div class="item-info">
         <div class="item-title">自动同步</div>
         <div class="item-desc">定时自动备份配置和历史记录</div>
@@ -91,6 +94,22 @@ const selectedInterval = computed({
   gap: 12px;
   flex: 1;
   min-width: 0;
+}
+
+.item-icon {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--primary-hover-bg);
+  border-radius: 8px;
+  color: var(--primary);
+  flex-shrink: 0;
+}
+
+.item-icon i {
+  font-size: 18px;
 }
 
 .item-info {

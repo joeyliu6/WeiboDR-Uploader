@@ -334,11 +334,7 @@ const actions: Record<string, () => Promise<void>> = {
   imgur: () => testTokenConnection('imgur', formData.value.imgur.clientId),
 };
 
-async function handleS3Test(serviceId: string) {
-  await testConn(actions[serviceId], serviceId);
-}
-
-async function handleTokenTest(serviceId: string) {
+async function handleServiceTest(serviceId: string) {
   await testConn(actions[serviceId], serviceId);
 }
 
@@ -436,21 +432,41 @@ async function testActiveWebDAV() {
   if (!profile) return;
   testingConnections.value.webdav = true;
   try {
-    const result = await invoke<boolean>('test_webdav_connection', {
-      url: profile.url,
-      username: profile.username,
-      password: profile.password
+    const result = await invoke<string>('test_webdav_connection', {
+      config: {
+        url: profile.url,
+        username: profile.username,
+        password: profile.password,
+        remotePath: profile.remotePath || '/PicNexus/'
+      }
     });
-    if (result) {
-      toast.showConfig('success', TOAST_MESSAGES.auth.success('WebDAV'));
-    } else {
-      toast.showConfig('error', TOAST_MESSAGES.auth.failed('WebDAV'));
-    }
+    // 更新连接状态为成功
+    updateWebDAVProfileStatus(profile.id, 'success', undefined);
+    toast.showConfig('success', result || TOAST_MESSAGES.auth.success('WebDAV'));
   } catch (e) {
-    toast.showConfig('error', TOAST_MESSAGES.auth.connectionFailed('WebDAV', String(e)));
+    // 更新连接状态为失败，并记录错误信息
+    const errorMsg = String(e);
+    updateWebDAVProfileStatus(profile.id, 'failed', errorMsg);
+    toast.showConfig('error', TOAST_MESSAGES.auth.connectionFailed('WebDAV', errorMsg));
   } finally {
     testingConnections.value.webdav = false;
   }
+}
+
+function updateWebDAVProfileStatus(profileId: string, status: 'pending' | 'success' | 'failed', error?: string) {
+  const profiles = formData.value.webdav.profiles.map(p => {
+    if (p.id === profileId) {
+      return {
+        ...p,
+        connectionStatus: status,
+        lastTestedAt: status !== 'pending' ? Date.now() : p.lastTestedAt,
+        lastError: error
+      };
+    }
+    return p;
+  });
+  formData.value.webdav.profiles = profiles;
+  saveSettings();
 }
 
 // ==================== 其他处理函数 ====================
@@ -581,8 +597,8 @@ onUnmounted(() => {
           :is-checking-jd="isCheckingJd"
           :is-checking-qiyu="isCheckingQiyu"
           @save="saveSettings"
-          @test-private="handleS3Test"
-          @test-token="handleTokenTest"
+          @test-private="handleServiceTest"
+          @test-token="handleServiceTest"
           @test-cookie="handleCookieTest"
           @check-builtin="handleBuiltinCheck"
           @login-cookie="handleCookieLogin"

@@ -365,6 +365,15 @@ export interface WebDAVProfile {
 
   /** 远程路径 */
   remotePath: string;
+
+  /** 连接状态 */
+  connectionStatus?: 'pending' | 'success' | 'failed';
+
+  /** 最后测试时间戳 */
+  lastTestedAt?: number;
+
+  /** 最后错误信息 */
+  lastError?: string;
 }
 
 /**

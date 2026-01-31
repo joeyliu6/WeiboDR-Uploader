@@ -77,19 +77,6 @@ const isWebDAVConnected = computed(() => {
   return !!(profile && profile.url && profile.username);
 });
 
-const connectionStatusClass = computed(() => {
-  if (!props.webdavConfig.profiles.length) return 'not-configured';
-  if (!isWebDAVConnected.value) return 'disconnected';
-  return 'connected';
-});
-
-const connectionStatusText = computed(() => {
-  if (!props.webdavConfig.profiles.length) return '未配置';
-  if (!activeWebDAVProfile.value) return '未选择';
-  if (!isWebDAVConnected.value) return '当前配置不完整';
-  return `${activeWebDAVProfile.value.name} · 启用`;
-});
-
 const localWebDAVConfig = computed({
   get: () => props.webdavConfig,
   set: (val) => emit('update:webdavConfig', val)
@@ -190,17 +177,11 @@ function handleHistoryCloudAction(action: string) {
 
 <template>
   <div class="backup-sync-panel">
-    <!-- 标题区（融合状态） -->
+    <!-- 标题区 -->
     <div class="section-header-row">
       <div class="header-left">
         <h2>备份与同步</h2>
         <p class="section-desc">基于 WebDAV 的配置管理与数据流转服务</p>
-      </div>
-      <div class="header-right">
-        <span class="status-indicator" :class="connectionStatusClass">
-          <span class="status-dot"></span>
-          {{ connectionStatusText }}
-        </span>
       </div>
     </div>
 
@@ -212,6 +193,7 @@ function handleHistoryCloudAction(action: string) {
       type="config"
       :sync-status="configSyncStatus"
       :is-cloud-enabled="isWebDAVConnected"
+      :provider-name="activeWebDAVProfile?.name"
       :loading="{
         upload: uploadSettingsLoading,
         download: downloadSettingsLoading,
@@ -231,6 +213,7 @@ function handleHistoryCloudAction(action: string) {
       type="history"
       :sync-status="historySyncStatus"
       :is-cloud-enabled="isWebDAVConnected"
+      :provider-name="activeWebDAVProfile?.name"
       :loading="{
         upload: uploadHistoryLoading,
         download: downloadHistoryLoading,
@@ -286,38 +269,6 @@ function handleHistoryCloudAction(action: string) {
   font-weight: 700;
   color: var(--text-primary);
   margin: 0 0 6px 0;
-}
-
-.header-right {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-shrink: 0;
-}
-
-/* 状态指示器 */
-.status-indicator {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 13px;
-  font-weight: 500;
-}
-
-.status-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-
-.status-indicator.connected {
-  color: var(--success);
-}
-
-.status-indicator.disconnected,
-.status-indicator.not-configured {
-  color: var(--text-muted);
 }
 
 /* 分组标题 */

@@ -32,13 +32,25 @@ const hasValidConfig = computed(() => {
 });
 
 const shouldAutoExpand = computed(() => {
-  // 无配置
   if (props.modelValue.profiles.length === 0) return true;
-  // 未选择活动配置
   if (!props.modelValue.activeId) return true;
-  // 活动配置不完整
   if (activeProfile.value && (!activeProfile.value.url || !activeProfile.value.username)) return true;
   return false;
+});
+
+// 状态文字
+const statusLabel = computed(() => {
+  if (props.testing) return '验证中...';
+  if (!activeProfile.value) return '未启用';
+  if (!hasValidConfig.value) return '需配置';
+  return '待验证'; // 已配置，待验证
+});
+
+// 状态样式类
+const statusClass = computed(() => {
+  if (props.testing) return 'status-testing';
+  if (!activeProfile.value) return 'status-disabled';
+  return 'status-warning'; // 需配置或待验证
 });
 
 onMounted(() => {
@@ -124,23 +136,35 @@ function handleSave() {
   emit('save');
 }
 
-function handleTestAndSave() {
+function handleTest() {
   emit('save');
   emit('test');
 }
 
-// 服务商预设
+// 服务商预设（扩展）
 const providerPresets = [
   { name: '坚果云', url: 'https://dav.jianguoyun.com/dav/' },
   { name: 'Nextcloud', url: 'https://your-domain.com/remote.php/dav/files/USERNAME/' },
-  { name: 'TeraCloud', url: 'https://seto.teracloud.jp/dav/' },
+  { name: '群晖 NAS', url: 'https://your-nas-ip:5006/webdav/' },
   { name: 'Alist', url: 'http://localhost:5244/dav/' },
-  { name: '群晖', url: 'https://your-nas-ip:5006/webdav/' }
+  { name: 'TeraCloud', url: 'https://seto.teracloud.jp/dav/' },
+  { name: 'OwnCloud', url: 'https://your-domain.com/remote.php/webdav/' }
 ];
 
 function applyPreset(preset: typeof providerPresets[0]) {
   if (!activeProfile.value) return;
-  updateActiveProfileField('url', preset.url);
+
+  const updatedProfiles = props.modelValue.profiles.map(p => {
+    if (p.id === props.modelValue.activeId) {
+      return { ...p, url: preset.url, name: preset.name };
+    }
+    return p;
+  });
+
+  emit('update:modelValue', {
+    ...props.modelValue,
+    profiles: updatedProfiles
+  });
 }
 </script>
 
@@ -149,76 +173,74 @@ function applyPreset(preset: typeof providerPresets[0]) {
     <!-- 折叠头部 -->
     <button class="collapsible-header" @click="toggleExpand">
       <div class="header-left">
-        <span class="header-title">WebDAV 配置</span>
-        <span v-if="!hasValidConfig" class="config-hint">未配置</span>
+        <span class="header-title">WebDAV 同步</span>
+        <span class="header-status-text" :class="statusClass">{{ statusLabel }}</span>
       </div>
       <i :class="expanded ? 'pi pi-chevron-up' : 'pi pi-chevron-down'"></i>
     </button>
 
-    <!-- 展开内容 -->
-    <Transition name="collapse">
-      <div v-if="expanded" class="collapsible-content">
-        <!-- 配置切换卡片 -->
-        <div class="webdav-profile-tabs">
-          <button
-            v-for="profile in modelValue.profiles"
-            :key="profile.id"
-            class="profile-tab"
-            :class="{
-              active: modelValue.activeId === profile.id,
-              'is-in-use': modelValue.activeId === profile.id && hasValidConfig
-            }"
-            @click="handleSwitchProfile(profile.id)"
-          >
-            <span
-              v-if="modelValue.activeId === profile.id && hasValidConfig"
-              class="in-use-dot"
-            ></span>
-            <span>{{ profile.name }}</span>
-          </button>
-          <button class="profile-tab add-btn" @click="handleAddProfile">
-            + 新建
-          </button>
+    <!-- 展开内容（CSS Grid auto-height 动画） -->
+    <div class="collapsible-content-wrapper">
+      <div class="collapsible-content">
+        <!-- 下划线风格 Tabs -->
+        <div class="tabs-row">
+          <div class="tabs-list">
+            <button
+              v-for="profile in modelValue.profiles"
+              :key="profile.id"
+              class="tab-btn"
+              :class="{ active: modelValue.activeId === profile.id }"
+              @click="handleSwitchProfile(profile.id)"
+            >
+              {{ profile.name }}
+            </button>
+          </div>
+          <button class="add-btn" @click="handleAddProfile" title="新建配置">+</button>
         </div>
 
         <!-- 当前配置表单 -->
-        <div v-if="activeProfile" class="webdav-form">
-          <div class="form-grid">
-            <div class="form-item span-full">
-              <label>配置名称</label>
-              <InputText
-                :modelValue="activeProfile.name"
-                @update:modelValue="(v) => updateActiveProfileField('name', v as string)"
-                @blur="handleSave"
-                placeholder="如：坚果云、群晖 NAS"
-              />
+        <div v-if="activeProfile" class="simple-form">
+          <!-- 快速填充预设（独立区块） -->
+          <div class="form-row">
+            <label class="row-label">快速填充</label>
+            <div class="preset-chips">
+              <button
+                v-for="preset in providerPresets"
+                :key="preset.name"
+                class="chip-btn"
+                @click="applyPreset(preset)"
+                :title="preset.url"
+              >
+                {{ preset.name }}
+              </button>
             </div>
-            <div class="form-item span-full">
-              <div class="label-row">
-                <label>服务器 URL</label>
-                <div class="preset-inline">
-                  <span class="preset-label">快速填充:</span>
-                  <div class="preset-buttons">
-                    <button
-                      v-for="preset in providerPresets"
-                      :key="preset.name"
-                      class="preset-btn"
-                      @click="applyPreset(preset)"
-                      :title="preset.url"
-                    >
-                      {{ preset.name }}
-                    </button>
-                  </div>
-                </div>
-              </div>
-              <InputText
-                :modelValue="activeProfile.url"
-                @update:modelValue="(v) => updateActiveProfileField('url', v as string)"
-                @blur="handleSave"
-                placeholder="https://dav.example.com"
-              />
-            </div>
-            <div class="form-item">
+          </div>
+
+          <!-- 配置名称（单列） -->
+          <div class="form-field">
+            <label>配置名称</label>
+            <InputText
+              :modelValue="activeProfile.name"
+              @update:modelValue="(v) => updateActiveProfileField('name', v as string)"
+              @blur="handleSave"
+              placeholder="如：坚果云、群晖 NAS"
+            />
+          </div>
+
+          <!-- 服务器 URL（单列） -->
+          <div class="form-field">
+            <label>服务器 URL</label>
+            <InputText
+              :modelValue="activeProfile.url"
+              @update:modelValue="(v) => updateActiveProfileField('url', v as string)"
+              @blur="handleSave"
+              placeholder="https://dav.example.com"
+            />
+          </div>
+
+          <!-- 用户名/密码（并排） -->
+          <div class="form-row-split">
+            <div class="form-field">
               <label>用户名</label>
               <InputText
                 :modelValue="activeProfile.username"
@@ -226,7 +248,7 @@ function applyPreset(preset: typeof providerPresets[0]) {
                 @blur="handleSave"
               />
             </div>
-            <div class="form-item">
+            <div class="form-field">
               <label>密码</label>
               <Password
                 :modelValue="activeProfile.password"
@@ -236,28 +258,32 @@ function applyPreset(preset: typeof providerPresets[0]) {
                 toggleMask
               />
             </div>
-            <div class="form-item span-full">
-              <label>远程路径</label>
-              <InputText
-                :modelValue="activeProfile.remotePath"
-                @update:modelValue="(v) => updateActiveProfileField('remotePath', v as string)"
-                @blur="handleSave"
-                placeholder="/PicNexus/"
-              />
-            </div>
           </div>
-          <div class="webdav-actions-row">
+
+          <!-- 远程路径（单列） -->
+          <div class="form-field">
+            <label>远程路径</label>
+            <InputText
+              :modelValue="activeProfile.remotePath"
+              @update:modelValue="(v) => updateActiveProfileField('remotePath', v as string)"
+              @blur="handleSave"
+              placeholder="/PicNexus/"
+            />
+          </div>
+
+          <!-- 操作按钮 -->
+          <div class="form-actions">
             <Button
-              label="测试并保存"
+              label="测试连接"
               icon="pi pi-check"
-              @click="handleTestAndSave"
+              @click="handleTest"
               :loading="testing"
               :disabled="!hasValidConfig"
               size="small"
             />
             <div class="spacer"></div>
             <Button
-              label="删除"
+              label="删除配置"
               icon="pi pi-trash"
               @click="handleDeleteProfile(activeProfile.id)"
               severity="danger"
@@ -273,7 +299,7 @@ function applyPreset(preset: typeof providerPresets[0]) {
           <Button label="添加配置" icon="pi pi-plus" @click="handleAddProfile" outlined />
         </div>
       </div>
-    </Transition>
+    </div>
   </div>
 </template>
 
@@ -284,25 +310,16 @@ function applyPreset(preset: typeof providerPresets[0]) {
 .webdav-collapsible {
   background: var(--bg-card);
   border: 1px solid var(--border-subtle);
-  border-radius: 12px;
+  border-radius: 8px;
   margin-top: 24px;
   overflow: hidden;
-  transition: border-color 0.2s ease;
-}
-
-.webdav-collapsible:hover {
-  border-color: var(--primary);
 }
 
 .webdav-collapsible.expanded {
-  border-color: var(--primary);
+  border-color: var(--border-subtle);
 }
 
 .webdav-collapsible.needs-attention {
-  border-color: var(--warning);
-}
-
-.webdav-collapsible.needs-attention:hover {
   border-color: var(--warning);
 }
 
@@ -312,7 +329,7 @@ function applyPreset(preset: typeof providerPresets[0]) {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 16px 20px;
+  padding: 14px 16px;
   background: transparent;
   border: none;
   cursor: pointer;
@@ -327,94 +344,181 @@ function applyPreset(preset: typeof providerPresets[0]) {
 .header-left {
   display: flex;
   align-items: center;
-  gap: 12px;
-}
-
-.header-left > i {
-  font-size: 18px;
-  color: var(--text-secondary);
+  gap: 10px;
 }
 
 .header-title {
-  font-size: 15px;
+  font-size: 14px;
   font-weight: 600;
 }
 
-/* 未配置提示 */
-.config-hint {
+.header-status-text {
   font-size: 12px;
   color: var(--text-muted);
 }
 
-/* 展开内容 */
-.collapsible-content {
-  padding: 0 20px 20px;
-}
-
-/* WebDAV 配置标签页 */
-.webdav-profile-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
-  flex-wrap: wrap;
-}
-
-.profile-tab {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 8px 16px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 6px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.2s;
-  font-size: 13px;
-}
-
-.profile-tab:hover {
-  border-color: var(--primary);
-  color: var(--text-primary);
-}
-
-.profile-tab.active {
-  border-color: var(--primary);
-  background: rgba(59, 130, 246, 0.1);
+.header-status-text.status-testing {
   color: var(--primary);
 }
 
-/* "使用中"小绿点 */
-.in-use-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--success);
-  flex-shrink: 0;
+.header-status-text.status-warning {
+  color: var(--warning);
 }
 
-.profile-tab.add-btn {
+.header-status-text.status-disabled {
   color: var(--text-muted);
 }
 
-.profile-tab.add-btn:hover {
+/* CSS Grid auto-height 动画 */
+.collapsible-content-wrapper {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 0.25s ease;
+}
+
+.expanded .collapsible-content-wrapper {
+  grid-template-rows: 1fr;
+}
+
+.collapsible-content {
+  overflow: hidden;
+  padding: 0 16px;
+}
+
+.expanded .collapsible-content {
+  padding-bottom: 16px;
+}
+
+/* 下划线风格 Tabs */
+.tabs-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid var(--border-subtle);
+  margin-bottom: 16px;
+}
+
+.tabs-list {
+  display: flex;
+  gap: 4px;
+}
+
+.tab-btn {
+  padding: 8px 12px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--text-secondary);
+  font-size: 13px;
+  line-height: 20px;
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-bottom: -1px;
+}
+
+.tab-btn:hover {
+  color: var(--text-primary);
+}
+
+.tab-btn.active {
+  color: var(--primary);
+  border-bottom-color: var(--primary);
+}
+
+.add-btn {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-subtle);
+  border-radius: 4px;
+  color: var(--text-muted);
+  font-size: 16px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.add-btn:hover {
   border-color: var(--primary);
   color: var(--primary);
 }
 
-/* 表单 */
-.webdav-form {
-  background: var(--bg-card);
-  border-radius: 8px;
-  padding: 20px;
+/* 简洁表单 */
+.simple-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 
-.webdav-actions-row {
+.form-row {
   display: flex;
   align-items: center;
   gap: 12px;
-  margin-top: 16px;
-  padding-top: 16px;
+  flex-wrap: wrap;
+}
+
+.row-label {
+  font-size: 13px;
+  color: var(--text-secondary);
+  white-space: nowrap;
+}
+
+/* 纯文字 Chips */
+.preset-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip-btn {
+  padding: 4px 10px;
+  background: var(--bg-secondary);
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.chip-btn:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.form-field label {
+  font-size: 13px;
+  color: var(--text-secondary);
+}
+
+/* 用户名/密码并排 */
+.form-row-split {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+@media (max-width: 500px) {
+  .form-row-split {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* 操作按钮 */
+.form-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+  padding-top: 14px;
   border-top: 1px solid var(--border-subtle);
 }
 
@@ -422,72 +526,11 @@ function applyPreset(preset: typeof providerPresets[0]) {
   flex: 1;
 }
 
-/* 服务商预设按钮 */
-.preset-buttons {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.preset-btn {
-  padding: 6px 12px;
-  font-size: 12px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 4px;
-  background: var(--bg-card);
-  color: var(--text-secondary);
-  cursor: pointer;
-  transition: all 0.15s;
-}
-
-.preset-btn:hover {
-  border-color: var(--primary);
-  color: var(--primary);
-  background: rgba(59, 130, 246, 0.05);
-}
-
-/* 标签行：标签 + 快速填充按钮 */
-.label-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-/* 快速填充内联容器 */
-.preset-inline {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.preset-label {
-  font-size: 12px;
-  color: var(--text-muted);
-  white-space: nowrap;
-}
-
-/* 内联时按钮更紧凑 */
-.preset-inline .preset-btn {
-  padding: 4px 10px;
-  font-size: 11px;
-}
-
-/* 响应式：窄屏时换行 */
-@media (max-width: 600px) {
-  .label-row {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 8px;
-  }
-}
-
+/* 空状态 */
 .empty-webdav {
   text-align: center;
-  padding: 32px;
+  padding: 32px 16px;
   color: var(--text-muted);
-  background: var(--bg-card);
-  border-radius: 8px;
 }
 
 .empty-webdav p {
@@ -503,25 +546,5 @@ function applyPreset(preset: typeof providerPresets[0]) {
 
 :deep(.p-password-input) {
   width: 100%;
-}
-
-/* 折叠动画 */
-.collapse-enter-active,
-.collapse-leave-active {
-  transition: all 0.25s ease;
-  overflow: hidden;
-}
-
-.collapse-enter-from,
-.collapse-leave-to {
-  opacity: 0;
-  max-height: 0;
-  padding-top: 0;
-  padding-bottom: 0;
-}
-
-.collapse-enter-to,
-.collapse-leave-from {
-  max-height: 600px;
 }
 </style>
